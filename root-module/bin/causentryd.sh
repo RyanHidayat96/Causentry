@@ -75,7 +75,7 @@ ensure_ui
     [ $((n % 6)) -eq 0 ] && ensure_ui
     # control-UI app: run its pending commands + refresh the state snapshot
     [ -f "$DIR/uirpc.sh" ] && sh "$DIR/uirpc.sh" serve >/dev/null 2>&1; rc=$?
-    echo "$(date '+%m-%d %H:%M:%S') tick=$n uirpc=$rc" >> "$DIR/.watchdog.log"
+    [ "$rc" -ne 0 ] && echo "$(date '+%m-%d %H:%M:%S') uirpc serve rc=$rc" >> "$DIR/.watchdog.log"
     [ $((n % 6)) -eq 0 ] && sh "$DIR/uirpc.sh" apps >/dev/null 2>&1
     evaluate
   done

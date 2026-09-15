@@ -1,0 +1,12 @@
+# Causentry - deny the privileged SELinux vantage point that hardened apps abuse.
+#
+# A service with android:useAppZygote="true" + isolatedProcess="true" is forked from a
+# per-app zygote; its ZygotePreload then runs in the app_zygote domain, which AOSP grants
+# selinux_check_context / selinux_check_access (the means to interrogate the kernel about
+# labels and access vectors). Hardened apps (PairIP/Zimperium) use that to detect tampering
+# and force-close. Blocking app_zygote's access to selinuxfs neutralises the probe entirely -
+# no in-process injection, no framework hook required (KernelSU loads these rules at boot).
+deny app_zygote security_t:dir { open read search getattr };
+deny app_zygote security_t:file { open read getattr ioctl map };
+deny app_zygote selinuxfs:dir { open read search getattr };
+deny app_zygote selinuxfs:file { open read getattr ioctl map };
