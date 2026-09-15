@@ -44,6 +44,10 @@ public final class CausentryModule implements IXposedHookLoadPackage {
             // System-side components: never injected into the protected app itself.
             if ("android".equals(lp.packageName)) {
                 SystemCloak.hookSystemServer(lp.classLoader);
+                // on some ROMs (MIUI/HyperOS) the settings provider runs inside the system
+                // process instead of its own - hooking it here covers both layouts
+                SystemCloak.hookSettingsProvider(lp.classLoader);
+                AppOpsCloak.install(lp.classLoader);
                 // package cloaking: protected apps keep seeing the device as if the
                 // detection apps were not installed, while everyone else still does
                 PackageCloak.install(lp.classLoader);

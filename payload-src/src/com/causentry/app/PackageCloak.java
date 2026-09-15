@@ -123,7 +123,7 @@ public final class PackageCloak {
         protected void beforeHookedMethod(MethodHookParam param) {
             try {
                 String pkg = firstString(param.args);
-                if (pkg != null && isCloaked(pkg) && isTarget(Binder.getCallingUid())) {
+                if (pkg != null && isCloaked(pkg) && CloakCfg.callerIsTarget()) {
                     param.setResult(-1);
                 }
             } catch (Throwable ignored) {
@@ -137,7 +137,7 @@ public final class PackageCloak {
         protected void beforeHookedMethod(MethodHookParam param) {
             try {
                 String pkg = firstString(param.args);
-                if (pkg != null && isCloaked(pkg) && isTarget(Binder.getCallingUid())) {
+                if (pkg != null && isCloaked(pkg) && CloakCfg.callerIsTarget()) {
                     param.setResult(2);   // COMPONENT_ENABLED_STATE_DISABLED
                 }
             } catch (Throwable ignored) {
@@ -150,7 +150,7 @@ public final class PackageCloak {
         @Override
         protected void afterHookedMethod(MethodHookParam param) {
             try {
-                if (!isTarget(Binder.getCallingUid())) return;
+                if (!CloakCfg.callerIsTarget()) return;
                 String name = nameOf(param.getResult());
                 if (name != null && isCloaked(name)) {
                     XposedBridge.log("Causentry cloak: " + methodName(param) + " leaked " + name
@@ -166,7 +166,7 @@ public final class PackageCloak {
         @Override
         protected void afterHookedMethod(MethodHookParam param) {
             try {
-                if (!isTarget(Binder.getCallingUid())) return;
+                if (!CloakCfg.callerIsTarget()) return;
                 Object res = param.getResult();
                 if (!(res instanceof String[])) return;
                 String[] in = (String[]) res;
@@ -184,7 +184,7 @@ public final class PackageCloak {
         @Override
         protected void afterHookedMethod(MethodHookParam param) {
             try {
-                if (!isTarget(Binder.getCallingUid())) return;
+                if (!CloakCfg.callerIsTarget()) return;
                 Object res = param.getResult();
                 if (res == null) return;
                 List<?> in = null;

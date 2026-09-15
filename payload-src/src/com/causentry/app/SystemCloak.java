@@ -35,8 +35,8 @@ public final class SystemCloak {
     public static void hookSettingsProvider(ClassLoader cl) {
         Class<?> provider = XposedHelpers.findClassIfExists("com.android.providers.settings.SettingsProvider", cl);
         if (provider == null) {
-            Log.w(Cfg.TAG, "SettingsProvider class not found");
-            return;
+            return;   // normal when the provider lives inside its own process
+
         }
         XposedBridge.hookAllMethods(provider, "call", new XC_MethodHook() {
             @Override
