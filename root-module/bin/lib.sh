@@ -41,7 +41,7 @@ jbool() {
   [ "$v" = "true" ] && echo 1 || echo 0
 }
 
-# string field: jstr hideMode -> cloak
+# string field: jstr hideMode -> hide
 jstr() {
   sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" "$CONF" 2>/dev/null | head -1
 }

@@ -1,6 +1,6 @@
 #!/system/bin/sh
 # Causentry - boot stage: harden, stage the runtime, start the daemon and the UI.
-# (No post-fs-data.sh on purpose: CODEX.md keeps that stage absent by default.)
+# No post-fs-data.sh on purpose: wait for Android services before touching settings.
 MODDIR=${0%/*}
 DIR=/data/adb/causentry
 LOG="$DIR/causentry.log"
