@@ -6,6 +6,29 @@ LOG=$DIR/causentry.log
 
 log() { echo "$(date '+%m-%d %H:%M:%S') $*" >> "$LOG"; }
 
+valid_package_name() {
+  case "$1" in ""|.*|*..*|*.) return 1;; esac
+  case "$1" in *[!A-Za-z0-9._]*) return 1;; esac
+  case "$1" in *.*) return 0;; esac
+  return 1
+}
+
+json_escape() {
+  printf '%s' "$1" | tr '\r\n' '  ' | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+json_string() {
+  printf '"%s"' "$(json_escape "$1")"
+}
+
+bool_json() {
+  case "$1" in 1|true|TRUE|yes|on) printf true;; *) printf false;; esac
+}
+
+ere_escape() {
+  printf '%s' "$1" | sed 's/[][\\.^$*+?{}()|]/\\&/g'
+}
+
 # list items of a JSON string array: jlist targets
 jlist() {
   sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*\[([^]]*)\].*/\1/p" "$CONF" 2>/dev/null \
@@ -24,7 +47,24 @@ jstr() {
 }
 
 # how to deal with detection packages: cloak (default) | hide | uninstall
-hide_mode() { m=$(jstr hideMode); [ -n "$m" ] && echo "$m" || echo cloak; }
+hide_mode() {
+  m=$(jstr hideMode)
+  case "$m" in cloak|hide|uninstall) echo "$m";; *) echo cloak;; esac
+}
+
+# "cloak" needs an installed system_server hook backend. The native Zygisk backend
+# in this repo is still experimental, so production builds must fall back to pm hide
+# unless a maintainer explicitly enables a verified backend in config.json.
+cloak_backend_ready() { [ "$(jbool systemCloak)" = 1 ]; }
+
+effective_hide_mode() {
+  m=$(hide_mode)
+  if [ "$m" = "cloak" ] && ! cloak_backend_ready; then
+    echo hide
+  else
+    echo "$m"
+  fi
+}
 
 is_target() {
   for t in $(jlist targets); do [ "$t" = "$1" ] && return 0; done
@@ -67,6 +107,16 @@ find_busybox() {
   done
   command -v busybox 2>/dev/null && return 0
   return 1
+}
+
+ensure_ui() {
+  [ -d "$DIR/webroot" ] || return 1
+  BUSYBOX=$(find_busybox 2>/dev/null) || return 1
+  if pgrep -f "httpd -p 127.0.0.1:8899" >/dev/null 2>&1; then
+    return 0
+  fi
+  setsid "$BUSYBOX" httpd -p 127.0.0.1:8899 -h "$DIR/webroot" >/dev/null 2>&1 < /dev/null &
+  return 0
 }
 
 find_resetprop() {
@@ -117,7 +167,8 @@ wait_settings() {
 # Falls back to the global toggles when an app has no explicit entry.
 # ---------------------------------------------------------------------------
 app_block() {   # raw {...} block for a package, empty when absent
-  sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*\{([^}]*)\}.*/\1/p" "$CONF" 2>/dev/null | head -1
+  key=$(ere_escape "$1")
+  sed -nE "s/.*\"$key\"[[:space:]]*:[[:space:]]*\{([^}]*)\}.*/\1/p" "$CONF" 2>/dev/null | head -1
 }
 
 app_feat() {    # app_feat <pkg> <key> -> 1/0/'' ('' = not configured per app)

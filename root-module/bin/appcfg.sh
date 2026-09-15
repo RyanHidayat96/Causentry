@@ -40,15 +40,15 @@ uniq_list() {   # uniq_list <newline list> -> space separated, unique
 emit() {   # emit <targets> <denylist> <hardened> <appentries>
   printf '{"targets":'
   printf '['
-  f=1; for i in $1; do [ $f -eq 1 ] || printf ','; f=0; printf '"%s"' "$i"; done
+  f=1; for i in $1; do valid_package_name "$i" || continue; [ $f -eq 1 ] || printf ','; f=0; json_string "$i"; done
   printf ']'
   printf ',"denylist":'
   printf '['
-  f=1; for i in $2; do [ $f -eq 1 ] || printf ','; f=0; printf '"%s"' "$i"; done
+  f=1; for i in $2; do valid_package_name "$i" || continue; [ $f -eq 1 ] || printf ','; f=0; json_string "$i"; done
   printf ']'
   printf ',"hardened":'
   printf '['
-  f=1; for i in $3; do [ $f -eq 1 ] || printf ','; f=0; printf '"%s"' "$i"; done
+  f=1; for i in $3; do valid_package_name "$i" || continue; [ $f -eq 1 ] || printf ','; f=0; json_string "$i"; done
   printf ']'
   printf ',"apps":{'
   emit_entries "$4"
@@ -60,11 +60,12 @@ emit() {   # emit <targets> <denylist> <hardened> <appentries>
   printf ',"hooks":%s' "$( [ "$(jbool hooks)" = 1 ] && echo true || echo false )"
   printf ',"hideRootApps":%s' "$( [ "$(jbool hideRootApps)" = 1 ] && echo true || echo false )"
   printf ',"uiApk":%s' "$( [ "$(jbool uiApk)" = 1 ] && echo true || echo false )"
+  printf ',"systemCloak":%s' "$( [ "$(jbool systemCloak)" = 1 ] && echo true || echo false )"
   # keys this script does not edit must survive a rewrite
   M=$(jstr hideMode); [ -n "$M" ] || M=cloak
   printf ',"hideMode":"%s"' "$M"
   printf ',"cloakPackages":['
-  f=1; for p in $(jlist cloakPackages); do [ $f -eq 1 ] || printf ','; f=0; printf '"%s"' "$p"; done
+  f=1; for p in $(jlist cloakPackages); do valid_package_name "$p" || continue; [ $f -eq 1 ] || printf ','; f=0; json_string "$p"; done
   printf ']'
   printf '}'
 }
@@ -72,12 +73,12 @@ emit() {   # emit <targets> <denylist> <hardened> <appentries>
 case "${1:-show}" in
   set)
     pkg="$APP_PKG_NEW"; feats="${APP_FEATS_NEW:-devOff,mock}"
-    [ -n "$pkg" ] || { echo "no package"; exit 1; }
+    valid_package_name "$pkg" || { echo "invalid package"; exit 1; }
     d=false; m=false; i=true
     case ",$feats," in *",devOff,"*) d=true;; esac
     case ",$feats," in *",mock,"*)   m=true;; esac
     case ",$feats," in *",isolate,"*) i=true;; *) i=false;; esac
-    blk="\"$pkg\":{\"devOff\":$d,\"mock\":$m,\"isolate\":$i}"
+    blk="$(json_string "$pkg"):{\"devOff\":$d,\"mock\":$m,\"isolate\":$i}"
     T=$(uniq_list "$(jlist targets | tr '\n' ' ')")
     H=$(uniq_list "$(jlist hardened | tr '\n' ' ')")
     case " $T " in *" $pkg "*) ;; *) T="$T $pkg";; esac
@@ -100,6 +101,7 @@ case "${1:-show}" in
     ;;
   del)
     pkg="$APP_PKG_NEW"
+    valid_package_name "$pkg" || { echo "invalid package"; exit 1; }
     T=""
     for t in $(jlist targets | tr '\n' ' '); do [ "$t" = "$pkg" ] && continue; T="$T $t"; done
     T=$(uniq_list "$T")

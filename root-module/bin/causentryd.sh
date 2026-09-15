@@ -12,6 +12,14 @@ CONF=$DIR/config.json
 
 STATE=$DIR/runtime.state
 SAVED=$DIR/devsaved
+WATCHDOG_PID=
+
+touch_heartbeat() { date +%s > "$DIR/heartbeat" 2>/dev/null; }
+
+cleanup() {
+  [ -n "$WATCHDOG_PID" ] && kill "$WATCHDOG_PID" 2>/dev/null
+}
+trap cleanup INT TERM EXIT
 
 any_target_running() {
   # kept for reference; the live gate is target_in_foreground (see lib.sh)
@@ -30,7 +38,11 @@ evaluate() {
 }
 
 activate() {
-  feat_running devOff autoDevOff || return 0
+  fg=$(foreground_pkg)
+  [ -n "$fg" ] || return 0
+  want_dev=$(app_feat_or "$fg" devOff autoDevOff)
+  want_mock=$(app_feat_or "$fg" mock hideMockLocation)
+  [ "$want_dev" = 1 ] || [ "$want_mock" = 1 ] || return 0
   if [ ! -f "$SAVED" ]; then
     wait_settings 15 || { log "cloak skipped: settings service not ready (flags not readable)"; return 0; }
     if ! save_dev_flags "$SAVED"; then
@@ -39,11 +51,13 @@ activate() {
     fi
     log "saved original flags ($(tr '\n' ' ' < "$SAVED"))"
   fi
-  settings put global development_settings_enabled 0
-  settings put secure development_settings_enabled 0
-  feat_running mock hideMockLocation && settings put secure mock_location 0
+  if [ "$want_dev" = 1 ]; then
+    settings put global development_settings_enabled 0
+    settings put secure development_settings_enabled 0
+  fi
+  [ "$want_mock" = 1 ] && settings put secure mock_location 0
   echo active > "$STATE"
-  log "cloak ON (protected app running)"
+  log "cloak ON ($fg devOff=$want_dev mock=$want_mock)"
 }
 
 deactivate() {
@@ -64,12 +78,7 @@ log "daemon start (pid $$)"
 # initial sync with reality (foreground only)
 evaluate
 ensure_ui
-
-# heartbeat writer: a dedicated loop that can never block, so liveness is always
-# honest even when the watchdog's state work is slow (activate/wait_settings can stall)
-(
-  while true; do date +%s > "$DIR/heartbeat" 2>/dev/null; sleep 5; done
-) &
+touch_heartbeat
 
 # watchdog: keeps the state honest even if events were missed
 (
@@ -83,8 +92,10 @@ ensure_ui
     [ "$rc" -ne 0 ] && echo "$(date '+%m-%d %H:%M:%S') uirpc serve rc=$rc" >> "$DIR/.watchdog.log"
     [ $((n % 6)) -eq 0 ] && sh "$DIR/uirpc.sh" apps >/dev/null 2>&1
     evaluate
+    touch_heartbeat
   done
 ) &
+WATCHDOG_PID=$!
 
 # event driven (fast path). logcat can end on its own (buffer clear, restart) - the
 # stream is re-opened forever, otherwise a single hiccup used to end the daemon.

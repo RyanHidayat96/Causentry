@@ -32,8 +32,11 @@ bin.mt.plus bin.mt.termex eu.thedarken.sdm eu.thedarken.sdm.unlocker
 com.coderstory.toolkit org.adaway io.github.xiaotong6666.fusehide com.daiesp
 com.termux com.android.virtualization.terminal ma.wanam.youtubeadaway"
 
-extras() { jlist root_packages; [ -f "$DIR/root_extra.txt" ] && cat "$DIR/root_extra.txt"; }
-installed() { pm list packages --user 0 2>/dev/null | grep -q "^package:${1}$"; }
+extras() {
+  { jlist root_packages; [ -f "$DIR/root_extra.txt" ] && cat "$DIR/root_extra.txt"; } \
+    | while IFS= read -r p; do valid_package_name "$p" && echo "$p"; done
+}
+installed() { valid_package_name "$1" && pm list packages --user 0 2>/dev/null | grep -q "^package:${1}$"; }
 never_hide() { [ "$1" = "com.causentry.app" ] && return 0; return 1; }
 
 case "$1" in
@@ -42,7 +45,7 @@ case "$1" in
   scan)    for p in $DB $(extras); do installed "$p" && echo "$p"; done ;;
   hide)
     n=0
-    MODE=$(hide_mode)
+    MODE=$(effective_hide_mode)
     for p in $DB $(extras); do
       never_hide "$p" && continue
       if installed "$p"; then

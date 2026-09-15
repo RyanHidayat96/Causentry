@@ -12,6 +12,8 @@ import android.webkit.WebView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import org.json.JSONObject;
+
 /**
  * Causentry control UI.
  *
@@ -26,6 +28,14 @@ public class UiActivity extends Activity {   // cache-busting on update
     private WebView web;
     private TextView status;
     private LinearLayout splash;
+
+    private static boolean isPackageName(String s) {
+        return s != null && s.matches("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+");
+    }
+
+    private static boolean isFeatureId(String s) {
+        return "d-devOff".equals(s) || "d-mock".equals(s) || "d-isolate".equals(s);
+    }
 
     /** fade the native splash away once the bundled page has painted */
     private void hideSplash() {
@@ -97,6 +107,9 @@ public class UiActivity extends Activity {   // cache-busting on update
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setCacheMode(WebSettings.LOAD_NO_CACHE);   // the page ships inside the APK
+        s.setAllowFileAccessFromFileURLs(false);
+        s.setAllowUniversalAccessFromFileURLs(false);
+        s.setDatabaseEnabled(false);
         web.setBackgroundColor(Color.parseColor("#0a0e13"));
         // page console -> logcat (tag CAUSENTRY_JS) so UI problems are diagnosable
         web.setWebChromeClient(new WebChromeClient() {
@@ -107,22 +120,38 @@ public class UiActivity extends Activity {   // cache-busting on update
             }
         });
         web.setWebViewClient(new android.webkit.WebViewClient() {
+            private boolean allow(String url) {
+                return url != null && url.startsWith(PAGE);
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                return !allow(url);
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, android.webkit.WebResourceRequest request) {
+                return request == null || request.getUrl() == null || !allow(request.getUrl().toString());
+            }
+
             @Override
             public void onPageFinished(WebView view, String url) {
                 hideSplash();
                 // am start --es app <pkg> opens that app's detail page directly
                 String app = getIntent() != null ? getIntent().getStringExtra("app") : null;
-                if (app != null && !app.isEmpty()) {
+                if (isPackageName(app)) {
                     web.evaluateJavascript(
-                            "window.CausentryOpenApp && window.CausentryOpenApp('" + app + "')", null);
+                            "window.CausentryOpenApp && window.CausentryOpenApp("
+                                    + JSONObject.quote(app) + ")", null);
                 }
                 // headless automation: --ez apply true drives the real Apply handler,
                 // optionally with a feature forced on/off first (audit / smoke test)
                 if (getIntent() != null && getIntent().getBooleanExtra("apply", false)) {
                     String feat = getIntent().getStringExtra("feature");
                     boolean on = getIntent().getBooleanExtra("on", true);
-                    if (feat != null && !feat.isEmpty()) {
-                        web.evaluateJavascript("window.CausentrySetFeature('" + feat + "', " + on + ")", null);
+                    if (isFeatureId(feat)) {
+                        web.evaluateJavascript("window.CausentrySetFeature("
+                                + JSONObject.quote(feat) + ", " + on + ")", null);
                     }
                     web.postDelayed(new Runnable() {
                         public void run() {

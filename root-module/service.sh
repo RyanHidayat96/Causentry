@@ -33,10 +33,7 @@ if ! pgrep -f causentry-loop.sh >/dev/null 2>&1; then
 fi
 
 # --- control UI: loopback only, token protected ---
-BUSYBOX=$(find_busybox 2>/dev/null)
-if [ -n "$BUSYBOX" ]; then
-  pkill -f "httpd -p 127.0.0.1:8899" 2>/dev/null
-  setsid "$BUSYBOX" httpd -p 127.0.0.1:8899 -h "$DIR/webroot" >/dev/null 2>&1 < /dev/null &
+if ensure_ui; then
   echo "$(date '+%m-%d %H:%M:%S') [service] ui ready" >> "$LOG"
 else
   echo "$(date '+%m-%d %H:%M:%S') [service] no busybox: control UI skipped (CLI unaffected)" >> "$LOG"

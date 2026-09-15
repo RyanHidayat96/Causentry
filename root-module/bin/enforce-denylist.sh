@@ -2,9 +2,10 @@
 DIR=/data/adb/causentry
 # Causentry — enforce the denylist once (called by the daemon after config change)
 . "$DIR/lib.sh"
-MODE=$(hide_mode)
+MODE=$(effective_hide_mode)
 [ "$MODE" = "cloak" ] && MODE="cloak"
 for pkg in $(jlist denylist); do
+  valid_package_name "$pkg" || continue
   if [ "$MODE" = "cloak" ]; then continue; fi
   if pm list packages --user 0 2>/dev/null | grep -q "^package:${pkg}$"; then
     if [ "$MODE" = "hide" ]; then

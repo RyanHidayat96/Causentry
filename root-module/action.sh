@@ -13,13 +13,7 @@ if [ ! -s "$DIR/ui.token" ]; then
 fi
 TOKEN=$(cat "$DIR/ui.token")
 
-BUSYBOX=$(find_busybox 2>/dev/null)
-if [ -n "$BUSYBOX" ]; then
-  pkill -f "httpd -p 127.0.0.1:8899" 2>/dev/null
-  "$BUSYBOX" httpd -p 127.0.0.1:8899 -h "$DIR/webroot" >/dev/null 2>&1
-fi
-
-if [ -n "$BUSYBOX" ]; then
+if ensure_ui; then
   echo "Opening Causentry UI..."
   am start -a android.intent.action.VIEW -d "http://127.0.0.1:8899/index.html?t=$TOKEN" >/dev/null 2>&1
 else

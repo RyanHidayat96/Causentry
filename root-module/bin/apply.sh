@@ -23,7 +23,11 @@ fi
 
 # 1) denylisted packages. Default mode is CLOAK: nothing is uninstalled or hidden -
 #    the system_server hook makes protected apps unable to see them (see cloak.sh).
-MODE=$(hide_mode)
+RAW_MODE=$(hide_mode)
+MODE=$(effective_hide_mode)
+if [ "$RAW_MODE" != "$MODE" ]; then
+  log "hideMode=$RAW_MODE requested but no verified system cloak backend is enabled; using $MODE fallback"
+fi
 if [ "$MODE" = "uninstall" ]; then
   for pkg in $(jlist denylist); do
     if pm list packages --user 0 2>/dev/null | grep -q "^package:${pkg}$"; then
@@ -37,7 +41,7 @@ elif [ "$MODE" = "hide" ]; then
   for pkg in $(jlist denylist); do
     pm hide --user 0 "$pkg" >/dev/null 2>&1 && log "hidden (pm hide): $pkg"
   done
-else
+elif [ "$MODE" = "cloak" ]; then
   log "hideMode=cloak: detection packages stay installed (filtered in system_server)"
 fi
 
@@ -48,14 +52,10 @@ if [ "$(jbool hideRootApps)" = 1 ] && [ -x "$DIR/root-apps.sh" ]; then
   log "root apps scan+hide done"
 fi
 
-# 2) mock location never enabled while a protected app runs
-if [ "$(jbool hideMockLocation)" = 1 ]; then
-  if wait_settings 20; then
-    settings put secure mock_location 0
-  else
-    log "settings service not up yet; mock flag left to the daemon"
-  fi
-fi
+# 2) mock location is handled by the foreground state machine in causentryd.sh.
+#    apply.sh may run at boot or from the UI, so changing it here would make a
+#    device-wide setting drift without a guaranteed per-app restore point.
+log "mock-location flag left to daemon state machine"
 
 # 3) SUSFS path hiding (kernel level) — reapplied here so the UI can toggle it
 SUSFS=$(find_susfs)

@@ -38,7 +38,7 @@ put() {  # put <tmpfile> <dest>
   return 0
 }
 
-jstr() { printf '%s' "$1" | tr -d '"' | tr '\n' ' '; }
+flat() { printf '%s' "$1" | tr -d '"' | tr '\n' ' '; }
 
 snapshot() {
   [ -d "/data/data/$APP_PKG" ] || return 0
@@ -57,7 +57,7 @@ snapshot() {
   suggests=$(sh "$DIR/root-apps.sh" suggest 2>/dev/null | tr '\n' ',')
   {
     printf '{"state":"%s","daemon":%s,"ts":%s,"age":%s,"global":"%s","secure":"%s","mock":"%s",' \
-      "$(jstr "$state")" "$dalive" "$(date +%s)" "$dage" \
+      "$(flat "$state")" "$dalive" "$(date +%s)" "$dage" \
       "$(settings get global development_settings_enabled 2>/dev/null)" \
       "$(settings get secure development_settings_enabled 2>/dev/null)" \
       "$(settings get secure mock_location 2>/dev/null)"
@@ -73,9 +73,9 @@ snapshot() {
       "$( [ "$(jbool hooks)" = 1 ] && echo true || echo false )" \
       "$( [ "$(jbool hideRootApps)" = 1 ] && echo true || echo false )" \
       "$( [ "$(jbool uiApk)" = 1 ] && echo true || echo false )"
-    printf '"rootApps":"%s","rootSuggest":"%s",' "$(jstr "$rootapps")" "$(jstr "$suggests")"
+    printf '"rootApps":'; json_string "$rootapps"; printf ',"rootSuggest":'; json_string "$suggests"; printf ','
     printf '"config":%s,' "$(tr -d '\n' < "$CONF" 2>/dev/null || echo '{}')"
-    printf '"log":"%s"}' "$(jstr "$(tail -25 "$DIR/causentry.log" 2>/dev/null)")"
+    printf '"log":'; json_string "$(tail -25 "$DIR/causentry.log" 2>/dev/null)"; printf '}'
   } > "$T"
   put "$T" "$APP_DIR/status.json"
   [ "$T" = "$DIR/.status.tmp" ] && mv -f "$T" "$DIR/status.json.tmp" 2>/dev/null || rm -f "$T" 2>/dev/null
@@ -110,23 +110,46 @@ process_cmds() {
     line=$(cat "$f" 2>/dev/null | tr -d '\n')
     rm -f "$f"
     act=$(printf '%s' "$line" | sed -nE 's/.*"action"[[:space:]]*:[[:space:]]*"([a-z]+)".*/\1/p')
-    getf() { printf '%s' "$line" | sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p"; }
+    getf() {
+      v=$(printf '%s' "$line" | sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" | head -1)
+      if [ -z "$v" ]; then
+        v=$(printf '%s' "$line" | sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*([^,}]*).*/\1/p" | head -1 | tr -d ' ')
+      fi
+      printf '%s' "$v"
+    }
     case "$act" in
       save)
         targets=$(getf targets); denylist=$(getf denylist); hardened=$(getf hardened)
         ad=$(getf autoDevOff); hm=$(getf hideMockLocation); ah=$(getf alwaysHidden)
         sf=$(getf susfs); hk=$(getf hooks); hr=$(getf hideRootApps); ui=$(getf uiApk)
-        tojson_arr() { printf '['; fl=1; for i in $(echo "$1" | tr ',' ' '); do [ -z "$i" ] && continue; [ $fl -eq 1 ] || printf ','; fl=0; printf '"%s"' "$i"; done; printf ']'; }
-        bj() { [ "$1" = 1 ] && printf true || printf false; }
+        tojson_arr() { printf '['; fl=1; for i in $(echo "$1" | tr ',' ' '); do valid_package_name "$i" || continue; [ $fl -eq 1 ] || printf ','; fl=0; json_string "$i"; done; printf ']'; }
+        bj() { bool_json "$1"; }
+        APPS_T="$DIR/.uirpc-appentries"
+        grep -oE '"[^"]+":\{"devOff":[^}]*\}' "$DIR/config.json" 2>/dev/null > "$APPS_T" || : > "$APPS_T"
+        emit_saved_entries() {
+          f=1
+          while IFS= read -r e; do
+            [ -n "$e" ] || continue
+            [ $f -eq 1 ] || printf ','
+            f=0
+            printf '%s' "$e"
+          done < "$APPS_T"
+        }
         {
           printf '{"targets":'; tojson_arr "$targets"
           printf ',"denylist":'; tojson_arr "$denylist"
           printf ',"hardened":'; tojson_arr "$hardened"
+          printf ',"apps":{'; emit_saved_entries; printf '}'
           printf ',"autoDevOff":'; bj "$ad"; printf ',"hideMockLocation":'; bj "$hm"
           printf ',"alwaysHidden":'; bj "$ah"; printf ',"susfs":'; bj "$sf"
           printf ',"hooks":'; bj "$hk"; printf ',"hideRootApps":'; bj "$hr"
-          printf ',"uiApk":'; bj "$ui"; printf '}'
+          printf ',"uiApk":'; bj "$ui"
+          printf ',"systemCloak":'; bj "$(jbool systemCloak)"
+          printf ',"hideMode":'; json_string "$(hide_mode)"
+          printf ',"cloakPackages":'; tojson_arr "$(jlist cloakPackages | tr '\n' ',')"
+          printf '}'
         } > "$DIR/config.json"
+        rm -f "$APPS_T"
         chmod 644 "$DIR/config.json"
         log "config saved (control-UI app)"
         sh "$DIR/apply.sh" app >> "$LOG" 2>&1
@@ -136,33 +159,27 @@ process_cmds() {
       roothide) sh "$DIR/root-apps.sh" hide >> "$LOG" 2>&1 ;;
       hideone)
         pkg=$(getf pkg)
-        if [ -n "$pkg" ]; then
+        if valid_package_name "$pkg"; then
           grep -qx "$pkg" "$DIR/root_extra.txt" 2>/dev/null || echo "$pkg" >> "$DIR/root_extra.txt"
           sh "$DIR/root-apps.sh" hide >> "$LOG" 2>&1
         fi
         ;;
       refresh) apps_snapshot ;;
       savecfg)
-        # the app writes the complete config it wants; validate, install, apply
-        cfg="$CMD_DIR/config.json"
-        if [ -f "$cfg" ] && grep -q '"targets"' "$cfg"; then
-          tr -d '\n' < "$cfg" > "$DIR/config.json"
-          chmod 644 "$DIR/config.json"
-          log "config saved (control-UI app, full)"
-          sh "$DIR/apply.sh" app >> "$LOG" 2>&1
-        fi
-        rm -f "$cfg" ;;
+        # Deprecated: complete config replacement is too broad for a bridge command.
+        rm -f "$CMD_DIR/config.json"
+        log "ignored deprecated savecfg command" ;;
       setapp)
         # {"action":"setapp","pkg":"x","features":"devOff,mock"} -> enable + set features
         pkg=$(getf pkg); feats=$(getf features)
-        if [ -n "$pkg" ]; then
+        if valid_package_name "$pkg"; then
           APP_PKG_NEW="$pkg" APP_FEATS_NEW="$feats" sh "$DIR/appcfg.sh" set >> "$LOG" 2>&1
           sh "$DIR/apply.sh" app >> "$LOG" 2>&1
         fi
         ;;
       delapp)
         pkg=$(getf pkg)
-        [ -n "$pkg" ] && APP_PKG_NEW="$pkg" sh "$DIR/appcfg.sh" del >> "$LOG" 2>&1
+        valid_package_name "$pkg" && APP_PKG_NEW="$pkg" sh "$DIR/appcfg.sh" del >> "$LOG" 2>&1
         ;;
     esac
     snapshot

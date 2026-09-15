@@ -13,7 +13,7 @@ MAX_AGE=30
 
 if [ -f "$LOCK" ]; then
   old=$(cat "$LOCK" 2>/dev/null)
-  if [ -n "$old" ] && kill -0 "$old" 2>/dev/null; then
+  if [ -n "$old" ] && tr '\0' ' ' < "/proc/$old/cmdline" 2>/dev/null | grep -q "causentry-loop.sh"; then
     exit 0                      # already supervised
   fi
 fi

@@ -19,6 +19,8 @@ Cargo.lock
 release/
 root-module/payload/Causentry.apk
 root-module/bin/causentryd
+root-module/payload/*.idsig
+zygisk-src/build*/
 
 # OS/editor
 Thumbs.db
@@ -37,4 +39,3 @@ causentry.keystore
 /bpjstku-fix/jadx-res/
 /bpjstku-fix/diag/
 /bpjstku-fix/tools/
-

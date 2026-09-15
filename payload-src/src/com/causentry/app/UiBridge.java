@@ -2,10 +2,15 @@ package com.causentry.app;
 
 import android.webkit.JavascriptInterface;
 
+import org.json.JSONObject;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileReader;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Bridge between the UI page (bundled in assets) and the root daemon.
@@ -15,6 +20,9 @@ import java.io.FileReader;
  * on its next cycle (about 5 seconds).
  */
 public class UiBridge {
+
+    private static final Set<String> ACTIONS = new HashSet<>(Arrays.asList(
+            "refresh", "apply", "restore", "roothide", "hideone", "setapp", "delapp", "save"));
 
     private final UiActivity activity;
 
@@ -37,24 +45,21 @@ public class UiBridge {
     /** installed app labels: {"com.bpjstku":"JMO", ...} */
     @JavascriptInterface
     public String labels() {
-        StringBuilder sb = new StringBuilder("{");
+        JSONObject outJson = new JSONObject();
         try {
             android.content.pm.PackageManager pm = activity.getPackageManager();
             java.util.List<android.content.pm.ApplicationInfo> apps =
                     pm.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA);
-            boolean first = true;
             for (android.content.pm.ApplicationInfo ai : apps) {
                 if (ai == null || ai.packageName == null) continue;
                 CharSequence l = pm.getApplicationLabel(ai);
                 String label = l == null ? "" : l.toString();
-                label = label.replace("\\", " ").replace("\"", "'").replace("\n", " ").replace("\r", " ").trim();
-                if (!first) sb.append(',');
-                first = false;
-                sb.append('"').append(ai.packageName).append("\":\"").append(label).append('"');
+                label = label.replace("\n", " ").replace("\r", " ").trim();
+                outJson.put(ai.packageName, label);
             }
         } catch (Exception ignored) {
         }
-        String json = sb.append('}').toString();
+        String json = outJson.toString();
         try {   // share the names with the daemon so the browser view gets them too
             File f = new File(activity.getFilesDir(), "labels.json");
             FileOutputStream out = new FileOutputStream(f);
@@ -68,6 +73,7 @@ public class UiBridge {
     @JavascriptInterface
     public String icon(String pkg) {
         try {
+            if (!isPackageName(pkg)) return "";
             android.content.pm.PackageManager pm = activity.getPackageManager();
             android.graphics.drawable.Drawable d = pm.getApplicationIcon(pkg);
             int size = Math.round(activity.getResources().getDisplayMetrics().density * 40f);  // 40dp
@@ -90,6 +96,13 @@ public class UiBridge {
     @JavascriptInterface
     public String command(String json) {
         try {
+            if (json == null || json.length() > 8192) {
+                return "{\"ok\":false,\"error\":\"invalid command\"}";
+            }
+            JSONObject obj = new JSONObject(json);
+            if (!isAllowed(obj)) {
+                return "{\"ok\":false,\"error\":\"rejected command\"}";
+            }
             File dir = new File(activity.getFilesDir(), "cmd");
             if (!dir.exists() && !dir.mkdirs()) {
                 return "{\"ok\":false,\"error\":\"cannot create command dir\"}";
@@ -97,7 +110,7 @@ public class UiBridge {
             File f = new File(dir, "cmd-" + System.currentTimeMillis() + ".json");
             FileOutputStream out = new FileOutputStream(f);
             try {
-                out.write(json.getBytes("UTF-8"));
+                out.write(obj.toString().getBytes("UTF-8"));
             } finally {
                 out.close();
             }
@@ -142,5 +155,25 @@ public class UiBridge {
         } catch (Exception e) {
             return "{}";
         }
+    }
+
+    private static boolean isAllowed(JSONObject obj) {
+        String action = obj.optString("action", "");
+        if (!ACTIONS.contains(action)) return false;
+        if ("setapp".equals(action) || "delapp".equals(action) || "hideone".equals(action)) {
+            if (!isPackageName(obj.optString("pkg", ""))) return false;
+        }
+        if ("setapp".equals(action)) {
+            String[] parts = obj.optString("features", "").split(",");
+            for (String p : parts) {
+                if (p.isEmpty()) continue;
+                if (!"devOff".equals(p) && !"mock".equals(p) && !"isolate".equals(p)) return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isPackageName(String s) {
+        return s != null && s.matches("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+");
     }
 }

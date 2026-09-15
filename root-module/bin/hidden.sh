@@ -6,7 +6,7 @@ case "${1:-unhide}" in
   unhide)
     n=0
     for p in $(jlist denylist) $(jlist cloakPackages) $(sh "$DIR/root-apps.sh" list 2>/dev/null); do
-      [ -n "$p" ] || continue
+      valid_package_name "$p" || continue
       pm unhide --user 0 "$p" >/dev/null 2>&1 && n=$((n+1))
     done
     echo "unhidden packages: $n"

@@ -11,13 +11,18 @@ OUT_DIR=/data/system/causentry
 OUT=$OUT_DIR/cloak.json
 
 hidden_list() {
-  for p in $(jlist denylist) $(jlist cloakPackages); do echo "$p"; done
-  sh "$DIR/root-apps.sh" list 2>/dev/null
+  { for p in $(jlist denylist) $(jlist cloakPackages); do echo "$p"; done
+    sh "$DIR/root-apps.sh" list 2>/dev/null
+  } | while IFS= read -r p; do valid_package_name "$p" && echo "$p"; done
 }
 
 uid_of() {
-  cmd package list packages -U --user 0 2>/dev/null \
-    | sed -nE "s/^package:$1 uid:([0-9]+)$/\1/p" | head -1
+  valid_package_name "$1" || return 1
+  cmd package list packages -U --user 0 2>/dev/null | while IFS= read -r line; do
+    case "$line" in
+      "package:$1 uid:"*) echo "${line##* uid:}"; break;;
+    esac
+  done | head -1
 }
 
 mkdir -p "$OUT_DIR" 2>/dev/null
@@ -27,6 +32,7 @@ T="$(mktemp 2>/dev/null || echo "$DIR/.cloak.tmp")"
 printf '{"targetUids":[' > "$T"
 first=1
 for t in $(jlist targets); do
+  valid_package_name "$t" || continue
   u=$(uid_of "$t")
   [ -n "$u" ] || continue
   [ $first -eq 1 ] || printf ',' >> "$T"
@@ -36,27 +42,28 @@ done
 printf '],"targets":[' >> "$T"
 first=1
 for t in $(jlist targets); do
+  valid_package_name "$t" || continue
   [ $first -eq 1 ] || printf ',' >> "$T"
   first=0
-  printf '"%s"' "$t" >> "$T"
+  json_string "$t" >> "$T"
 done
 printf '],"hidden":[' >> "$T"
 first=1
 for p in $(hidden_list | sort -u); do
-  [ -n "$p" ] || continue
+  valid_package_name "$p" || continue
   [ $first -eq 1 ] || printf ',' >> "$T"
   first=0
-  printf '"%s"' "$p" >> "$T"
+  json_string "$p" >> "$T"
 done
 printf '],"appZygote":[' >> "$T"
 first=1
 for t in $(jlist targets); do
-  # per-app entry looks like  "com.x":{"devOff":true,"mock":true,"isolate":false}
-  ent=$(grep -oE "\"$t\":\{[^}]*\}" "$CONF" 2>/dev/null | head -1)
-  case "$ent" in *'"isolate":false'*) continue;; esac
+  valid_package_name "$t" || continue
+  iso=$(app_feat "$t" isolate)
+  [ "$iso" = 0 ] && continue
   [ $first -eq 1 ] || printf ',' >> "$T"
   first=0
-  printf '"%s"' "$t" >> "$T"
+  json_string "$t" >> "$T"
 done
 printf ']}' >> "$T"
 
