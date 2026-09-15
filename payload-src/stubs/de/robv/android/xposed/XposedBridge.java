@@ -22,4 +22,8 @@ public final class XposedBridge {
     public static Set<XC_MethodHook.Unhook> hookAllConstructors(Class<?> hookClass, XC_MethodHook callback) {
         return null;
     }
+
+    public static XC_MethodHook.Unhook hookMethod(java.lang.reflect.Member hookMethod, XC_MethodHook callback) {
+        return null;
+    }
 }

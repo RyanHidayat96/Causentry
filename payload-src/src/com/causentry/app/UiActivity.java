@@ -29,6 +29,16 @@ public class UiActivity extends Activity {   // cache-busting on update
     protected void onCreate(Bundle state) {
         super.onCreate(state);
 
+        if (getIntent() != null && getIntent().getBooleanExtra("probe", false)) {
+            // headless mode: run the self-check and finish (used by the daemon/tests)
+            try {
+                SelfProbe.write(this);
+            } catch (Throwable ignored) {
+            }
+            finish();
+            return;
+        }
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.parseColor("#0a0e13"));

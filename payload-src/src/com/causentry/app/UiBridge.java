@@ -107,6 +107,24 @@ public class UiBridge {
         }
     }
 
+    /** run the self-check in this app process and store it for the UI/daemon */
+    @JavascriptInterface
+    public String probe() {
+        try {
+            String json = SelfProbe.run(activity).toString();
+            File f = new File(activity.getFilesDir(), "probe.json");
+            FileOutputStream out = new FileOutputStream(f);
+            try {
+                out.write(json.getBytes("UTF-8"));
+            } finally {
+                out.close();
+            }
+            return json;
+        } catch (Exception e) {
+            return "{\"error\":\"" + String.valueOf(e.getMessage()).replace("\"", "'") + "\"}";
+        }
+    }
+
     private String read(String name) {
         try {
             File f = new File(activity.getFilesDir(), name);

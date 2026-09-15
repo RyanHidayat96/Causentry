@@ -87,12 +87,81 @@ public final class PackageCloak {
                     XposedBridge.log("Causentry cloak: hooked " + n + " methods on " + name);
                 }
             }
+            // diagnostics: watch every binder-facing PMS method for cloaked package names,
+            // so a leaking API shows up by name instead of being guessed at
+            for (String name : CANDIDATES) {
+                try {
+                    Class<?> c = XposedHelpers.findClass(name, cl);
+                    if (c != null) hooked += hookEveryMethod(c);
+                } catch (Throwable ignored) {
+                }
+            }
             CloakCfg.refresh();
             XposedBridge.log("Causentry cloak installed in system_server: methods=" + hooked
                     + " targets=" + CloakCfg.TARGETS + " hidden=" + CloakCfg.HIDDEN.size());
         } catch (Throwable t) {
             XposedBridge.log("Causentry cloak failed: " + t);
         }
+    }
+
+    /** hooks every declared method; any call/result naming a cloaked package is logged */
+    private static int hookEveryMethod(Class<?> c) {
+        int n = 0;
+        for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
+            if (m.getParameterCount() > 12) continue;
+            final String mname = m.getName();
+            try {
+                XposedBridge.hookMethod(m, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam p) {
+                        try {
+                            if (!CloakCfg.callerIsTarget()) return;
+                            String hit = firstCloakedIn(argsText(p.args));
+                            if (hit != null) {
+                                XposedBridge.log("Causentry diag: " + mname + " ARG " + hit
+                                        + " caller=" + android.os.Binder.getCallingUid());
+                            }
+                        } catch (Throwable ignored) {
+                        }
+                    }
+
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam p) {
+                        try {
+                            if (!CloakCfg.callerIsTarget()) return;
+                            String hit = firstCloakedIn(String.valueOf(p.getResult()));
+                            if (hit != null) {
+                                XposedBridge.log("Causentry diag: " + mname + " RESULT " + hit
+                                        + " caller=" + android.os.Binder.getCallingUid());
+                            }
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                });
+                n++;
+            } catch (Throwable ignored) {
+            }
+        }
+        return n;
+    }
+
+    private static String argsText(Object[] args) {
+        if (args == null) return "";
+        StringBuilder sb = new StringBuilder();
+        for (Object a : args) {
+            sb.append(String.valueOf(a)).append('|');
+            if (sb.length() > 400) break;
+        }
+        return sb.toString();
+    }
+
+    private static String firstCloakedIn(String text) {
+        if (text == null || text.isEmpty()) return null;
+        CloakCfg.refresh();
+        for (String p : CloakCfg.HIDDEN) {
+            if (text.contains(p)) return p;
+        }
+        return null;
     }
 
     /* ------------------------------------------------------------------ */

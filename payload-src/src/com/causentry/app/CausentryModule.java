@@ -48,6 +48,9 @@ public final class CausentryModule implements IXposedHookLoadPackage {
                 // process instead of its own - hooking it here covers both layouts
                 SystemCloak.hookSettingsProvider(lp.classLoader);
                 AppOpsCloak.install(lp.classLoader);
+                // deny the app-zygote spawn path (PairIP/zIPS use the app_zygote SELinux
+                // domain for privileged checks)
+                AppZygoteCloak.install(lp.classLoader);
                 // package cloaking: protected apps keep seeing the device as if the
                 // detection apps were not installed, while everyone else still does
                 PackageCloak.install(lp.classLoader);
