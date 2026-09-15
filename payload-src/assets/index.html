@@ -606,6 +606,9 @@ function renderList(){
 }
 
 /* ---------- render: detail ---------- */
+// deep link for the native shell (am start --es app <pkg>) and for automation
+window.CausentryOpenApp = function(pkg){ try { showDetail(pkg); } catch (e) {} };
+
 function renderDetail(pkg){
   const feats = (S.cfg.apps || {})[pkg] || null;
   $("d-lead").textContent = monogram(appName(pkg), pkg);

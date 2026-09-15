@@ -110,6 +110,12 @@ public class UiActivity extends Activity {   // cache-busting on update
             @Override
             public void onPageFinished(WebView view, String url) {
                 hideSplash();
+                // am start --es app <pkg> opens that app's detail page directly
+                String app = getIntent() != null ? getIntent().getStringExtra("app") : null;
+                if (app != null && !app.isEmpty()) {
+                    web.evaluateJavascript(
+                            "window.CausentryOpenApp && window.CausentryOpenApp('" + app + "')", null);
+                }
             }
         });
         web.addJavascriptInterface(new UiBridge(this), "Causentry");
