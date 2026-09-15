@@ -1,3 +1,0 @@
-C:/Users/exery/Documents/tools/Causentry/zygisk-src/build/CMakeFiles/causentry-zygisk.dir
-C:/Users/exery/Documents/tools/Causentry/zygisk-src/build/CMakeFiles/edit_cache.dir
-C:/Users/exery/Documents/tools/Causentry/zygisk-src/build/CMakeFiles/rebuild_cache.dir
