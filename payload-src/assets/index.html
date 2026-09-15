@@ -623,7 +623,12 @@ function renderDetail(pkg){
   $("d-isolate").checked = feats ? (feats.isolate !== false) : true;
   $("d-rootapps").textContent = S.snap.hideRootApps ? t("ok_on") : t("ok_off");
   $("d-susfs").textContent = (S.snap.susfs || t("ok_unsupported"));
-  $("d-note").textContent = isHardened(pkg) ? t("noteHardened") : t("noteNormal");
+  const down = (S.snap && S.snap.daemon === false);
+  $("d-note").textContent = down ? t("daemonDown") : (isHardened(pkg) ? t("noteHardened") : t("noteNormal"));
+  // nothing can be applied while the watch daemon is down - say so instead of
+  // pretending the change was saved
+  $("btnApplyApp").disabled = down;
+  $("btnRemoveApp").disabled = down;
   $("btnRemoveApp").textContent = isProtected(pkg) ? t("remove") : t("remove");
   localise();
 }
