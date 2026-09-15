@@ -24,6 +24,25 @@ every bypass here is **system / kernel side**.
 Runtime state lives in `/data/adb/causentry/` (config, log, hidden package list,
 UI token). Nothing is written inside protected apps.
 
+## Per-app bypass (the main flow)
+
+Pick an app in the control UI, choose its bypass, press **Apply for this app**:
+
+```json
+"targets": ["com.bpjstku"],
+"apps": { "com.bpjstku": { "devOff": true, "mock": true } }
+```
+
+* `devOff` - hide the developer-options flag only while that app runs
+* `mock`   - force `mock_location=0` (and hide fake-GPS packages) while it runs
+* apps without an entry fall back to the global toggles (`autoDevOff`, `hideMockLocation`)
+
+The daemon resolves the running app's own feature set on every activation, and restores
+the real flags as soon as no protected app is in the foreground.
+
+CLI equivalent: `APP_PKG_NEW=com.x APP_FEATS_NEW=devOff,mock sh bin/appcfg.sh set`
+(`del` removes it again, `show` prints the current mapping).
+
 ## Configuration (`/data/adb/causentry/config.json`)
 
 | Key | Meaning |
@@ -39,9 +58,42 @@ UI token). Nothing is written inside protected apps.
 | `hideRootApps` | hide Magisk Manager & friends for the user |
 | `hooks` | install/scope the optional in-process payload (non-hardened apps only) |
 
-## Control UI
+## Control UI (the app) — design rules
 
-`service.sh` serves a token-protected UI on **127.0.0.1:8899** only:
+The page shipped inside the APK follows the Android accessibility + Material list guidance:
+
+| Rule | Implementation |
+|---|---|
+| Touch targets >= 48dp, >= 8dp apart | every row/button/switch hit area is at least 48x48 CSS px (`--tap`) |
+| List items: leading slot + 2 lines + trailing | monogram circle + app name + package + state chips + chevron |
+| One primary action per screen | sticky bottom bar with **Apply for this app** (destructive action next to it, behind a confirm dialog) |
+| Progressive disclosure | Apps is the only expanded card; Advanced / Detection packages / Root apps / Actions collapse and show a summary in the header |
+| Destructive actions ask first | Remove protection and Restore everything both open a confirmation dialog |
+| Never a dead end | loading skeletons, "no match" empty state and a "daemon not running" error state with the fix |
+| Feedback | toast for every queued action (queued / applied / failed) |
+| Contrast | WCAG AA verified for every muted label (measured, not guessed) |
+| Accessibility | role=switch + aria-checked + aria-label on switch rows, aria-live toast, aria-expanded collapsibles, focus-visible rings, prefers-reduced-motion honoured |
+| Language | follows the phone language (English / Indonesian), overridable in Advanced -> Language |
+
+## Control UI (the app)
+
+Installing the zip is enough: at boot `apply.sh` installs `payload/Causentry.apk` as a
+launcher app (disable with `"uiApk": false`). The app:
+
+* shows the same interface as before, bundled inside the APK (`assets/index.html`),
+* talks to the root daemon through **its own private files dir** - the daemon drops
+  `status.json` / `apps.json` there and executes the commands the app queues in `files/cmd/`,
+* therefore needs **no root prompt, no LSPosed, no web server and no network**.
+
+`127.0.0.1:8899` (busybox httpd) still exists for the browser and for automation
+(`wwwroot/cgi-bin/api.sh`), and the daemon restarts it if it dies - but nothing depends
+on it: if busybox is missing the app keeps working.
+
+## Legacy: browser access
+
+
+
+`service.sh` also serves a token-protected page on **127.0.0.1:8899** only:
 
 ```
 http://127.0.0.1:8899/index.html?t=<contents of /data/adb/causentry/ui.token>

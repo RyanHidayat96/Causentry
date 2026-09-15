@@ -13,12 +13,15 @@ D=/data/adb/causentry
 SERIAL="${SERIAL:-}"
 ADB=(adb); [ -n "$SERIAL" ] && ADB=(adb -s "$SERIAL")
 
+# native tools (adb) need native paths, not MSYS /c/...
+winpath() { printf '%s' "$1" | sed -E 's|^/([a-zA-Z])/|\1:/|'; }
+
 ver=$(sed -n 's/^version=v\{0,1\}//p' "$MOD/module.prop" | head -1)
 ZIP="$ROOT/release/Causentry-KSUN-v$ver.zip"
 [ -f "$ZIP" ] || { echo "no zip at $ZIP - run scripts/package-universal-module.sh first"; exit 1; }
 
 echo "== pushing $ZIP =="
-"${ADB[@]}" push "$ZIP" "/sdcard/Download/$(basename "$ZIP")"
+"${ADB[@]}" push "$(winpath "$ZIP")" "/sdcard/Download/$(basename "$ZIP")"
 echo "   install: KernelSU manager -> Modules -> Install from storage -> Download/$(basename "$ZIP")"
 
 if [ "${1:-}" != "--live" ]; then
@@ -29,10 +32,10 @@ fi
 echo "== staging live runtime =="
 "${ADB[@]}" shell rm -rf /sdcard/causentry-stage
 "${ADB[@]}" shell mkdir -p /sdcard/causentry-stage/bin /sdcard/causentry-stage/webroot/cgi-bin
-"${ADB[@]}" push "$MOD/bin/." /sdcard/causentry-stage/bin/ >/dev/null
-"${ADB[@]}" push "$MOD/webroot/." /sdcard/causentry-stage/webroot/ >/dev/null
-"${ADB[@]}" push "$MOD/config.default.json" /sdcard/causentry-stage/config.default.json >/dev/null
-"${ADB[@]}" push "$MOD/payload/Causentry.apk" /sdcard/causentry-stage/Causentry.apk >/dev/null
+"${ADB[@]}" push "$(winpath "$MOD/bin/.")" /sdcard/causentry-stage/bin/ >/dev/null
+"${ADB[@]}" push "$(winpath "$MOD/webroot/.")" /sdcard/causentry-stage/webroot/ >/dev/null
+"${ADB[@]}" push "$(winpath "$MOD/config.default.json")" /sdcard/causentry-stage/config.default.json >/dev/null
+"${ADB[@]}" push "$(winpath "$MOD/payload/Causentry.apk")" /sdcard/causentry-stage/Causentry.apk >/dev/null
 
 "${ADB[@]}" shell "su -c '
   mkdir -p $D/webroot/cgi-bin

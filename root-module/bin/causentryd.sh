@@ -14,40 +14,46 @@ STATE=$DIR/runtime.state
 SAVED=$DIR/devsaved
 
 any_target_running() {
+  # kept for reference; the live gate is target_in_foreground (see lib.sh)
   for t in $(jlist targets); do
     if pidof "$t" >/dev/null 2>&1; then return 0; fi
   done
   return 1
 }
 
+evaluate() {
+  if target_in_foreground; then
+    [ "$(cat "$STATE" 2>/dev/null)" = "active" ] || activate
+  else
+    [ "$(cat "$STATE" 2>/dev/null)" = "idle" ] || deactivate
+  fi
+}
+
 activate() {
-  [ "$(jbool autoDevOff)" = 1 ] || return 0
+  feat_running devOff autoDevOff || return 0
   if [ ! -f "$SAVED" ]; then
-    {
-      echo "global=$(settings get global development_settings_enabled)"
-      echo "secure=$(settings get secure development_settings_enabled)"
-      echo "mock=$(settings get secure mock_location)"
-    } > "$SAVED"
+    wait_settings 15 || { log "cloak skipped: settings service not ready (flags not readable)"; return 0; }
+    if ! save_dev_flags "$SAVED"; then
+      log "cloak skipped: could not read the current dev flags safely"
+      return 0
+    fi
     log "saved original flags ($(tr '\n' ' ' < "$SAVED"))"
   fi
   settings put global development_settings_enabled 0
   settings put secure development_settings_enabled 0
-  [ "$(jbool hideMockLocation)" = 1 ] && settings put secure mock_location 0
+  feat_running mock hideMockLocation && settings put secure mock_location 0
   echo active > "$STATE"
   log "cloak ON (protected app running)"
 }
 
 deactivate() {
-  if [ "$(jbool alwaysHidden)" = 1 ]; then return 0; fi
+  [ "$(jbool alwaysHidden)" = 1 ] && { echo idle > "$STATE"; return 0; }
   if [ -f "$SAVED" ]; then
-    g=$(sed -n 's/^global=//p' "$SAVED")
-    s=$(sed -n 's/^secure=//p' "$SAVED")
-    m=$(sed -n 's/^mock=//p' "$SAVED")
-    [ -n "$g" ] && [ "$g" != "null" ] && settings put global development_settings_enabled "$g"
-    [ -n "$s" ] && [ "$s" != "null" ] && settings put secure development_settings_enabled "$s"
-    [ -n "$m" ] && [ "$m" != "null" ] && settings put secure mock_location "$m"
+    restore_dev_flags "$SAVED" && log "cloak OFF (flags restored)"
     rm -f "$SAVED"
-    log "cloak OFF (flags restored)"
+  elif [ -f "$DIR/devsaved.last" ]; then
+    # state lost (e.g. an unclean shutdown) - put the last known good values back
+    restore_dev_flags "$DIR/devsaved.last" && log "cloak OFF (restored from last known good flags)"
   fi
   echo idle > "$STATE"
 }
@@ -55,19 +61,21 @@ deactivate() {
 echo "$$" > "$DIR/daemon.pid"
 log "daemon start (pid $$)"
 
-# initial sync with reality
-if any_target_running; then activate; else deactivate; fi
+# initial sync with reality (foreground only)
+evaluate
+ensure_ui
 
 # watchdog: keeps the state honest even if events were missed
 (
+  n=0
   while true; do
     sleep 5
-    st=$(cat "$STATE" 2>/dev/null)
-    if any_target_running; then
-      [ "$st" = "active" ] || activate
-    else
-      [ "$st" = "idle" ] || deactivate
-    fi
+    n=$((n+1))
+    [ $((n % 6)) -eq 0 ] && ensure_ui
+    # control-UI app: run its pending commands + refresh the state snapshot
+    [ -f "$DIR/uirpc.sh" ] && sh "$DIR/uirpc.sh" serve >/dev/null 2>&1
+    [ $((n % 6)) -eq 0 ] && sh "$DIR/uirpc.sh" apps >/dev/null 2>&1
+    evaluate
   done
 ) &
 
@@ -79,7 +87,13 @@ logcat -b events -s am_proc_start -s am_proc_died 2>/dev/null | while read -r li
         case "$line" in
           *",$t,"*|*",$t]"*)
             log "event: start $t"
-            activate
+            # the app checks its environment within the first second: poll briefly
+            i=0
+            while [ "$i" -lt 10 ]; do
+              target_in_foreground && break
+              sleep 0.3; i=$((i+1))
+            done
+            evaluate
             ;;
         esac
       done
@@ -90,7 +104,7 @@ logcat -b events -s am_proc_start -s am_proc_died 2>/dev/null | while read -r li
           *",$t,"*|*",$t]"*)
             log "event: died $t"
             sleep 1
-            any_target_running || deactivate
+            evaluate
             ;;
         esac
       done

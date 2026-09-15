@@ -15,6 +15,9 @@ if [ -f "$DIR/hidden_packages" ]; then
   rm -f "$DIR/hidden_packages"
 fi
 
+# 1b) un-hide anything that was hidden with pm hide
+sh "$DIR/hidden.sh" unhide >/dev/null 2>&1
+
 # 2) restore the real developer-options / mock-location values
 if [ -f "$DIR/devsaved" ]; then
   g=$(sed -n 's/^global=//p' "$DIR/devsaved")

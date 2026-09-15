@@ -37,10 +37,12 @@ case "$action" in
     susfs=$(susfs_variant)
     vector=false
     vector_cli >/dev/null 2>&1 && vector=true
+    uiapk=false
+    pm list packages 2>/dev/null | grep -q "^package:com.causentry.app$" && uiapk=true
     rootlist=""
     [ -x "$DIR/root-apps.sh" ] && rootlist=$(sh "$DIR/root-apps.sh" scan 2>/dev/null | tr '\n' ',')
     printf 'Content-Type: application/json\r\n\r\n'
-    printf '{"state":"%s","daemon":%s,"global":"%s","secure":"%s","mock":"%s","susfs":"%s","vector":%s,"targets":"%s","denylist":"%s","hidden":%s,"version":"1.1.0","alwaysHidden":%s,"autoDevOff":%s,"hooks":%s,"hideMockLocation":%s,"susfsOn":%s,"hideRootApps":%s,"rootApps":"%s"}' \
+    printf '{"state":"%s","daemon":%s,"global":"%s","secure":"%s","mock":"%s","susfs":"%s","vector":%s,"targets":"%s","denylist":"%s","hidden":%s,"version":"1.1.0","alwaysHidden":%s,"autoDevOff":%s,"hooks":%s,"hideMockLocation":%s,"susfsOn":%s,"hideRootApps":%s,"rootApps":"%s","uiApk":%s,"uiAppInstalled":%s}' \
       "$(jstr "$state")" "$dalive" \
       "$(settings get global development_settings_enabled)" \
       "$(settings get secure development_settings_enabled)" \
@@ -55,7 +57,8 @@ case "$action" in
       "$( [ "$(jbool hideMockLocation)" = 1 ] && echo true || echo false )" \
       "$( [ "$(jbool susfs)" = 1 ] && echo true || echo false )" \
       "$( [ "$(jbool hideRootApps)" = 1 ] && echo true || echo false )" \
-      "$(jstr "$rootlist")"
+      "$(jstr "$rootlist")" \
+      "$uiapk" "$uiapk"
     ;;
   rootsuggest)
     printf 'Content-Type: application/json\r\n\r\n{"apps":['
@@ -77,6 +80,32 @@ case "$action" in
     else
       printf '{"ok":false}'
     fi
+    ;;
+  setapp)
+    pkg="$(getp pkg)"; feats="$(getp features)"
+    printf 'Content-Type: application/json\r\n\r\n'
+    if [ -n "$pkg" ]; then
+      APP_PKG_NEW="$pkg" APP_FEATS_NEW="$feats" sh "$DIR/appcfg.sh" set >/dev/null 2>&1
+      sh "$DIR/apply.sh" ui >/dev/null 2>&1
+      printf '{"ok":true}'
+    else
+      printf '{"ok":false}'
+    fi
+    ;;
+  delapp)
+    pkg="$(getp pkg)"
+    printf 'Content-Type: application/json\r\n\r\n'
+    if [ -n "$pkg" ]; then
+      APP_PKG_NEW="$pkg" sh "$DIR/appcfg.sh" del >/dev/null 2>&1
+      printf '{"ok":true}'
+    else
+      printf '{"ok":false}'
+    fi
+    ;;
+  labels)
+    printf 'Content-Type: application/json\r\n\r\n'
+    f=/data/data/com.causentry.app/files/labels.json
+    if [ -s "$f" ]; then cat "$f"; else printf '{}'; fi
     ;;
   rootscan)
     printf 'Content-Type: application/json\r\n\r\n{"apps":['
@@ -122,6 +151,7 @@ case "$action" in
     susfsF="$(getp susfs)"; [ "$susfsF" = 1 ] || susfsF=0
     hooks="$(getp hooks)"; [ "$hooks" = 1 ] || hooks=0
     hideRootApps="$(getp hideRootApps)"; [ "$hideRootApps" = 1 ] || hideRootApps=0
+    uiApk="$(getp uiApk)"; [ "$uiApk" = 1 ] || uiApk=0
 
     tojson_arr() {
       printf '['
@@ -146,6 +176,7 @@ case "$action" in
       printf ',"susfs":';            booljson "$susfsF"
       printf ',"hooks":';            booljson "$hooks"
       printf ',"hideRootApps":';     booljson "$hideRootApps"
+      printf ',"uiApk":';            booljson "$uiApk"
       printf '}'
     } > "$CONF"
     chmod 644 "$CONF"

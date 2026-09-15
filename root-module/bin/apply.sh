@@ -21,15 +21,25 @@ if [ -n "$RESETPROP" ]; then
   log "boot props applied"
 fi
 
-# 1) denylisted packages are disabled for the user (reversible, data preserved)
-for pkg in $(jlist denylist); do
-  if pm list packages --user 0 2>/dev/null | grep -q "^package:${pkg}$"; then
-    if pm uninstall --user 0 "$pkg" >/dev/null 2>&1; then
-      grep -qx "$pkg" "$DIR/hidden_packages" 2>/dev/null || echo "$pkg" >> "$DIR/hidden_packages"
-      log "hidden package: $pkg"
+# 1) denylisted packages. Default mode is CLOAK: nothing is uninstalled or hidden -
+#    the system_server hook makes protected apps unable to see them (see cloak.sh).
+MODE=$(hide_mode)
+if [ "$MODE" = "uninstall" ]; then
+  for pkg in $(jlist denylist); do
+    if pm list packages --user 0 2>/dev/null | grep -q "^package:${pkg}$"; then
+      if pm uninstall --user 0 "$pkg" >/dev/null 2>&1; then
+        grep -qx "$pkg" "$DIR/hidden_packages" 2>/dev/null || echo "$pkg" >> "$DIR/hidden_packages"
+        log "uninstalled for user 0: $pkg"
+      fi
     fi
-  fi
-done
+  done
+elif [ "$MODE" = "hide" ]; then
+  for pkg in $(jlist denylist); do
+    pm hide --user 0 "$pkg" >/dev/null 2>&1 && log "hidden (pm hide): $pkg"
+  done
+else
+  log "hideMode=cloak: detection packages stay installed (filtered in system_server)"
+fi
 
 # 1b) root-indicator apps (Magisk manager, root tooling ...) are hidden for the user.
 #     Measured cause of force-close on Zimperium/PairIP apps: a visible root tool.
@@ -39,7 +49,13 @@ if [ "$(jbool hideRootApps)" = 1 ] && [ -x "$DIR/root-apps.sh" ]; then
 fi
 
 # 2) mock location never enabled while a protected app runs
-[ "$(jbool hideMockLocation)" = 1 ] && settings put secure mock_location 0
+if [ "$(jbool hideMockLocation)" = 1 ]; then
+  if wait_settings 20; then
+    settings put secure mock_location 0
+  else
+    log "settings service not up yet; mock flag left to the daemon"
+  fi
+fi
 
 # 3) SUSFS path hiding (kernel level) — reapplied here so the UI can toggle it
 SUSFS=$(find_susfs)
@@ -49,6 +65,27 @@ if [ "$(jbool susfs)" = 1 ] && [ -n "$SUSFS" ] && "$SUSFS" support >/dev/null 2>
     [ -e "$p" ] && "$SUSFS" add_sus_path "$p" >/dev/null 2>&1
   done
   log "susfs hiding refreshed"
+fi
+
+# 3b) control-UI app: payload/Causentry.apk doubles as a launcher (WebView over the
+#     loopback UI). Installed only when uiApk is enabled and not already present.
+if [ "$(jbool uiApk)" = 1 ] && [ -f "$DIR/Causentry.apk" ]; then
+  if ! pm list packages 2>/dev/null | grep -q "^package:com.causentry.app$"; then
+    if pm install -r "$DIR/Causentry.apk" >> "$LOG" 2>&1; then
+      log "control-UI app installed (com.causentry.app)"
+    else
+      log "control-UI app install failed"
+    fi
+  fi
+  # hand the UI token to the app privately (no root prompt needed inside the app)
+  if [ -s "$DIR/ui.token" ] && [ -d /data/data/com.causentry.app ]; then
+    app_uid=$(stat -c %u /data/data/com.causentry.app 2>/dev/null)
+    mkdir -p /data/data/com.causentry.app/files 2>/dev/null
+    cp -f "$DIR/ui.token" /data/data/com.causentry.app/files/ui.token 2>/dev/null \
+      && chmod 600 /data/data/com.causentry.app/files/ui.token 2>/dev/null \
+      && [ -n "$app_uid" ] && chown "$app_uid:$app_uid" /data/data/com.causentry.app/files/ui.token 2>/dev/null
+    log "ui token handed to control-UI app (uid ${app_uid:-?})"
+  fi
 fi
 
 # 4) optional in-process hook payload (Vector/LSPosed) — only for apps that are NOT
@@ -81,3 +118,6 @@ if [ "$(jbool hooks)" = 1 ]; then
 fi
 
 echo "Causentry: apply($mode) done"
+
+# 5) system_server package cloaking config (non-destructive hiding)
+[ -x "$DIR/cloak.sh" ] && sh "$DIR/cloak.sh" >> "$LOG" 2>&1

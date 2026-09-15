@@ -1,6 +1,6 @@
 #!/system/bin/sh
 # Causentry — shared helpers (sourced by other scripts)
-DIR=/data/adb/causentry
+DIR=${CAUSENTRY_DIR:-/data/adb/causentry}
 CONF=$DIR/config.json
 LOG=$DIR/causentry.log
 
@@ -17,6 +17,14 @@ jbool() {
   v=$(sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*(true|false).*/\1/p" "$CONF" 2>/dev/null | head -1)
   [ "$v" = "true" ] && echo 1 || echo 0
 }
+
+# string field: jstr hideMode -> cloak
+jstr() {
+  sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" "$CONF" 2>/dev/null | head -1
+}
+
+# how to deal with detection packages: cloak (default) | hide | uninstall
+hide_mode() { m=$(jstr hideMode); [ -n "$m" ] && echo "$m" || echo cloak; }
 
 is_target() {
   for t in $(jlist targets); do [ "$t" = "$1" ] && return 0; done
@@ -92,3 +100,96 @@ vector_cli() {
 }
 
 has() { command -v "$1" >/dev/null 2>&1; }
+
+# the settings service is not up yet at the very first boot stage
+settings_ready() { [ -n "$(settings get global development_settings_enabled 2>/dev/null)" ]; }
+wait_settings() {
+  i=0
+  while [ "$i" -lt "${1:-20}" ]; do
+    settings_ready && return 0
+    sleep 1; i=$((i+1))
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# Per-app feature sets: config "apps": {"com.x":{"devOff":true,"mock":true}}
+# Falls back to the global toggles when an app has no explicit entry.
+# ---------------------------------------------------------------------------
+app_block() {   # raw {...} block for a package, empty when absent
+  sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*\{([^}]*)\}.*/\1/p" "$CONF" 2>/dev/null | head -1
+}
+
+app_feat() {    # app_feat <pkg> <key> -> 1/0/'' ('' = not configured per app)
+  blk=$(app_block "$1")
+  [ -n "$blk" ] || { echo ""; return 0; }
+  case "$blk" in
+    *"\"$2\":true"*)  echo 1 ;;
+    *"\"$2\":false"*) echo 0 ;;
+    *) echo "" ;;
+  esac
+}
+
+app_feat_or() { # app_feat_or <pkg> <key> <global-key>
+  v=$(app_feat "$1" "$2")
+  [ -n "$v" ] && { echo "$v"; return 0; }
+  jbool "$3"
+}
+
+# does any running protected app want this feature?
+feat_running() {  # feat_running <per-app key> <global key>
+  for t in $(jlist targets); do
+    pidof "$t" >/dev/null 2>&1 || continue
+    [ "$(app_feat_or "$t" "$1" "$2")" = 1 ] && return 0
+  done
+  return 1
+}
+
+# ---- developer-option flags: read, validate, remember the last good values ----
+# A cloak must never be turned on with unreadable flags: that leaves the device
+# with dev-options hidden forever (nothing to restore at the end).
+valid_flag() { [ -n "$1" ] && [ "$1" != "null" ]; }
+
+read_dev_flags() {   # emits global=/secure=/mock= only when every read worked
+  g=$(settings get global development_settings_enabled 2>/dev/null)
+  s=$(settings get secure development_settings_enabled 2>/dev/null)
+  m=$(settings get secure mock_location 2>/dev/null)
+  valid_flag "$g" || return 1
+  valid_flag "$s" || return 1
+  printf 'global=%s\nsecure=%s\nmock=%s\n' "$g" "$s" "${m:-0}"
+}
+
+save_dev_flags() {   # save_dev_flags <file> -> 0/1
+  out=$(read_dev_flags) || return 1
+  printf '%s' "$out" > "$1"
+  cp -f "$1" "$DIR/devsaved.last" 2>/dev/null    # survives state cleanups
+  return 0
+}
+
+restore_dev_flags() {   # restore_dev_flags <file> -> 0/1
+  [ -f "$1" ] || return 1
+  g=$(sed -n 's/^global=//p' "$1"); s=$(sed -n 's/^secure=//p' "$1"); m=$(sed -n 's/^mock=//p' "$1")
+  valid_flag "$g" || return 1
+  valid_flag "$s" || return 1
+  settings put global development_settings_enabled "$g"
+  settings put secure development_settings_enabled "$s"
+  valid_flag "$m" && settings put secure mock_location "$m"
+  return 0
+}
+
+# ---- foreground app detection -------------------------------------------------
+# The cloak must follow the app the user is actually looking at: a protected app
+# that keeps a background process alive must not keep dev-options hidden forever.
+foreground_pkg() {
+  dumpsys activity activities 2>/dev/null \
+    | sed -nE 's/.*(ResumedActivity|topResumedActivity).*u[0-9]+ ([a-zA-Z0-9._]+)\/.*/\2/p' \
+    | head -1
+}
+target_in_foreground() {
+  fg=$(foreground_pkg)
+  [ -n "$fg" ] || return 1
+  for t in $(jlist targets); do
+    [ "$t" = "$fg" ] && return 0
+  done
+  return 1
+}

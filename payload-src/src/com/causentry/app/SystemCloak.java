@@ -70,46 +70,10 @@ public final class SystemCloak {
     /* ------------------------------------------------------------------ */
 
     public static void hookSystemServer(ClassLoader cl) {
-        Class<?> impl = XposedHelpers.findClassIfExists(
-                "com.android.server.pm.PackageManagerService$IPackageManagerImpl", cl);
-        if (impl == null) {
-            impl = XposedHelpers.findClassIfExists("com.android.server.pm.PackageManagerService", cl);
-        }
-        if (impl == null) {
-            Log.w(Cfg.TAG, "PackageManagerService class not found");
-            return;
-        }
-        XposedBridge.hookAllMethods(impl, "getPackageInfo", new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam param) {
-                try {
-                    String pkg = firstString(param.args);
-                    if (pkg == null) return;
-                    if (!Cfg.get().isPackageHidden(pkg)) return;
-                    int uid = Binder.getCallingUid();
-                    if (!isProtectedUid(uid)) return;
-                    param.setResult(null);   // caller gets NameNotFoundException
-                    Log.i(Cfg.TAG, "hidden package " + pkg + " from uid " + uid);
-                } catch (Throwable t) {
-                    Log.w(Cfg.TAG, "pms hook error: " + t);
-                }
-            }
-        });
-        XposedBridge.hookAllMethods(impl, "getApplicationInfo", new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam param) {
-                try {
-                    String pkg = firstString(param.args);
-                    if (pkg == null) return;
-                    if (!Cfg.get().isPackageHidden(pkg)) return;
-                    if (!isProtectedUid(Binder.getCallingUid())) return;
-                    param.setResult(null);
-                } catch (Throwable t) {
-                    Log.w(Cfg.TAG, "pms hook error: " + t);
-                }
-            }
-        });
-        Log.i(Cfg.TAG, "PackageManager cloak installed");
+        // Package filtering lives in PackageCloak: it reads the daemon-written
+        // /data/system/causentry/cloak.json (system_server cannot read /data/adb, and
+        // SUSFS hides it) and hooks the binder-facing IPackageManager class of this ROM.
+        PackageCloak.install(cl);
     }
 
     /* ------------------------------------------------------------------ */

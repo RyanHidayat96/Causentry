@@ -44,6 +44,9 @@ public final class CausentryModule implements IXposedHookLoadPackage {
             // System-side components: never injected into the protected app itself.
             if ("android".equals(lp.packageName)) {
                 SystemCloak.hookSystemServer(lp.classLoader);
+                // package cloaking: protected apps keep seeing the device as if the
+                // detection apps were not installed, while everyone else still does
+                PackageCloak.install(lp.classLoader);
                 return;
             }
             if ("com.android.providers.settings".equals(lp.packageName)) {

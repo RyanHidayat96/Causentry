@@ -42,9 +42,19 @@ case "$1" in
   scan)    for p in $DB $(extras); do installed "$p" && echo "$p"; done ;;
   hide)
     n=0
+    MODE=$(hide_mode)
     for p in $DB $(extras); do
       never_hide "$p" && continue
       if installed "$p"; then
+        if [ "$MODE" = "cloak" ]; then
+          # cloak mode: leave the app alone, the system_server filter hides it from
+          # protected apps only (that is the whole point)
+          echo "cloaked (not touched): $p"; n=$((n+1)); continue
+        fi
+        if [ "$MODE" = "hide" ]; then
+          pm hide --user 0 "$p" >/dev/null 2>&1 && { echo "hidden: $p"; n=$((n+1)); }
+          continue
+        fi
         if pm uninstall --user 0 "$p" >/dev/null 2>&1; then
           grep -qx "$p" "$DIR/hidden_packages" 2>/dev/null || echo "$p" >> "$DIR/hidden_packages"
           log "root app hidden: $p"

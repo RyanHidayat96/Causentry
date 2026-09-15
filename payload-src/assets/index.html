@@ -759,29 +759,25 @@ document.querySelectorAll(".switch-row").forEach(row => {
 });
 window.addEventListener("keydown", e => { if (e.key === "Escape" && S.view === "detail") showList(); });
 
-
-/* ---------- HTTP transport (browser build: token protected, loopback only) ---------- */
-const P = new URLSearchParams(location.search);
-const TOKEN = P.get("t") || sessionStorage.getItem("causentry_token") || "";
-if (P.get("t")) sessionStorage.setItem("causentry_token", P.get("t"));
-async function api(params){
-  const q = new URLSearchParams(Object.assign({t:TOKEN}, params));
-  try {
-    const r = await fetch("cgi-bin/api.sh?" + q.toString(), {cache:"no-store"});
-    const txt = await r.text();
-    try { return JSON.parse(txt); } catch(e){ return {}; }
-  } catch(e){ return {}; }
-}
-Transport.status = async () => api({action:"status"});
-Transport.apps   = async () => api({action:"apps"});
-Transport.labels = async () => api({action:"labels"});
-Transport.send   = async o => { const r = await api(o); return r.ok === true; };
-Transport.icon   = async pkg => "";   // icons come from PackageManager: only in the APK build
+/* ---------- bridge transport (this page ships inside the APK) ---------- */
+const B = window.Causentry;
+Transport.status = async () => { try { return JSON.parse(B ? B.status() : "{}"); } catch(e){ return {}; } };
+Transport.apps   = async () => { try { return JSON.parse(B ? B.apps() : '{"apps":[]}'); } catch(e){ return {apps:[]}; } };
+Transport.labels = async () => { try { return JSON.parse(B ? B.labels() : "{}"); } catch(e){ return {}; } };
+Transport.send   = async o => { try { return !!(B && JSON.parse(B.command(JSON.stringify(o))).ok); } catch(e){ return false; } };
+Transport.icon   = async pkg => { try { return B ? B.icon(pkg) : ""; } catch(e){ return ""; } };
 
 /* ---------- refresh loop ---------- */
 async function refresh(){
   const s = await Transport.status();
   applySnapshot(s);
+  if (!s || !s.daemon){
+    S.loaded = false;
+    $("appsEmpty").hidden = false;
+    $("appsEmpty").textContent = t("daemonDown");
+    $("appsLoading").hidden = true;
+    return;
+  }
   const a = await Transport.apps();
   S.apps = (a && a.apps) || [];
   if (!Object.keys(S.labels || {}).length) S.labels = await Transport.labels();
@@ -790,6 +786,7 @@ async function refresh(){
   if (S.view === "detail" && S.sel) renderDetail(S.sel);
 }
 
+/* ---------- boot ---------- */
 markLangButtons();
 localise();
 showList();
@@ -809,7 +806,6 @@ document.querySelectorAll(".seg-btn").forEach(b => {
 });
 setInterval(refresh, 5000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
-
 </script>
 </body>
 </html>
