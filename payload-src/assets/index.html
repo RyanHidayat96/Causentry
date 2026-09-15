@@ -328,6 +328,11 @@ pre{background:var(--surface-2);border:1px solid var(--line);border-radius:var(-
         <div class="d" data-i18n="fMockD">Forces mock_location=0 and keeps fake-GPS packages hidden while it runs</div></div>
         <label class="switch"><input type="checkbox" id="d-mock" role="switch" aria-label="Hide mock location"><span class="slider"></span></label>
       </div>
+      <div class="switch-row" data-toggle="d-isolate" role="switch" tabindex="0">
+        <div class="body"><div class="n" data-i18n="fIsolate">Block app-zygote self-checks</div>
+        <div class="d" data-i18n="fIsolateD">Stops services that run from a privileged per-app zygote (PairIP/RASP tamper checks)</div></div>
+        <label class="switch"><input type="checkbox" id="d-isolate" role="switch" aria-label="Block app-zygote self-checks"><span class="slider"></span></label>
+      </div>
 
       <div class="section-label" data-i18n="deviceWide">Device-wide (shared by every app)</div>
       <div class="row">
@@ -395,6 +400,7 @@ const STRINGS = {
     bypassForApp:"Bypass for this app",
     fDevOff:"Hide developer options", fDevOffD:"The app sees dev-mode OFF while it runs; your dev menu is untouched the rest of the time",
     fMock:"Hide mock location / fake GPS", fMockD:"Forces mock_location=0 and keeps fake-GPS packages hidden while it runs",
+    fIsolate:"Block app-zygote self-checks", fIsolateD:"Stops services that run from a privileged per-app zygote (PairIP/RASP tamper checks)",
     deviceWide:"Device-wide (shared by every app)",
     rootHidden:"Root apps hidden", rootHiddenD:"Magisk & friends are invisible to apps",
     kernelHidingD:"SUSFS hides /data/adb, mounts and boot props from every app",
@@ -435,6 +441,7 @@ const STRINGS = {
     bypassForApp:"Bypass untuk app ini",
     fDevOff:"Sembunyikan developer options", fDevOffD:"App melihat dev-mode OFF saat dia jalan; menu dev lo tetap normal di waktu lain",
     fMock:"Sembunyikan mock location / fake GPS", fMockD:"Paksa mock_location=0 dan tahan paket fake-GPS tetap tersembunyi saat app jalan",
+    fIsolate:"Blokir self-check app-zygote", fIsolateD:"Hentikan service yang jalan dari app-zygote istimewa (cek anti-tamper PairIP/RASP)",
     deviceWide:"Device-wide (dipakai semua app)",
     rootHidden:"App root disembunyikan", rootHiddenD:"Magisk & kawan-kawan tidak terlihat oleh app",
     kernelHidingD:"SUSFS menyembunyikan /data/adb, mount, dan boot props dari semua app",
@@ -610,6 +617,7 @@ function renderDetail(pkg){
                           (isHardened(pkg) ? ' <span class="chip warn">' + t("hardenedChip") + "</span>" : "");
   $("d-devOff").checked = feats ? !!feats.devOff : true;
   $("d-mock").checked   = feats ? !!feats.mock   : true;
+  $("d-isolate").checked = feats ? (feats.isolate !== false) : true;
   $("d-rootapps").textContent = S.snap.hideRootApps ? t("ok_on") : t("ok_off");
   $("d-susfs").textContent = (S.snap.susfs || t("ok_unsupported"));
   $("d-note").textContent = isHardened(pkg) ? t("noteHardened") : t("noteNormal");
@@ -673,6 +681,7 @@ async function applyForApp(){
   const feats = [];
   if ($("d-devOff").checked) feats.push("devOff");
   if ($("d-mock").checked)   feats.push("mock");
+  if ($("d-isolate").checked) feats.push("isolate");
   $("btnApplyApp").disabled = true;
   const ok = await Transport.send({action:"setapp", pkg:pkg, features:feats.join(",")});
   $("btnApplyApp").disabled = false;

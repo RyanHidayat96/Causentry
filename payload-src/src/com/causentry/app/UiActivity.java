@@ -3,6 +3,7 @@ package com.causentry.app;
 import android.app.Activity;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.ConsoleMessage;
 import android.webkit.WebChromeClient;
@@ -24,6 +25,19 @@ public class UiActivity extends Activity {   // cache-busting on update
 
     private WebView web;
     private TextView status;
+    private LinearLayout splash;
+
+    /** fade the native splash away once the bundled page has painted */
+    private void hideSplash() {
+        final View s = splash;
+        if (s == null) return;
+        splash = null;
+        s.animate().alpha(0f).setDuration(180).withEndAction(new Runnable() {
+            public void run() {
+                s.setVisibility(View.GONE);
+            }
+        }).start();
+    }
 
     @Override
     protected void onCreate(Bundle state) {
@@ -43,11 +57,40 @@ public class UiActivity extends Activity {   // cache-busting on update
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.parseColor("#0a0e13"));
 
+        // a visible window background: without it the system paints black until the
+        // first frame of the WebView is ready (that is the "black flash" on open)
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(
+                Color.parseColor("#0a0e13")));
+
         status = new TextView(this);
         status.setText("Causentry \u2014 waiting for the daemon\u2026");
         status.setTextColor(Color.parseColor("#8b98a5"));
         status.setTextSize(12f);
         status.setPadding(28, 24, 28, 12);
+
+        // native splash shown immediately, removed when the page has painted
+        splash = new LinearLayout(this);
+        splash.setOrientation(LinearLayout.VERTICAL);
+        splash.setGravity(android.view.Gravity.CENTER);
+        splash.setBackgroundColor(Color.parseColor("#0a0e13"));
+        TextView title = new TextView(this);
+        title.setText("Causentry");
+        title.setTextColor(Color.parseColor("#e8eef5"));
+        title.setTextSize(26f);
+        title.setGravity(android.view.Gravity.CENTER);
+        TextView sub = new TextView(this);
+        sub.setText("loading control panel\u2026");
+        sub.setTextColor(Color.parseColor("#8b98a5"));
+        sub.setTextSize(13f);
+        sub.setGravity(android.view.Gravity.CENTER);
+        android.widget.ProgressBar spin = new android.widget.ProgressBar(this);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sp.topMargin = 36;
+        splash.addView(title);
+        splash.addView(sub, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        splash.addView(spin, sp);
 
         web = new WebView(this);
         WebSettings s = web.getSettings();
@@ -63,11 +106,22 @@ public class UiActivity extends Activity {   // cache-busting on update
                 return true;
             }
         });
+        web.setWebViewClient(new android.webkit.WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                hideSplash();
+            }
+        });
         web.addJavascriptInterface(new UiBridge(this), "Causentry");
 
+        android.widget.FrameLayout stack = new android.widget.FrameLayout(this);
+        stack.addView(web, new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        stack.addView(splash, new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         root.addView(status, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.addView(web, new LinearLayout.LayoutParams(
+        root.addView(stack, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         setContentView(root);
 
@@ -89,6 +143,7 @@ public class UiActivity extends Activity {   // cache-busting on update
                 } else {
                     status.setVisibility(android.view.View.GONE);   // page shows the state itself
                 }
+                hideSplash();   // fallback: never leave the splash up if onPageFinished was missed
             }
         }, 2500);
     }

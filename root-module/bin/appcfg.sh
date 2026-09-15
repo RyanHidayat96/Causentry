@@ -67,10 +67,11 @@ case "${1:-show}" in
   set)
     pkg="$APP_PKG_NEW"; feats="${APP_FEATS_NEW:-devOff,mock}"
     [ -n "$pkg" ] || { echo "no package"; exit 1; }
-    d=false; m=false
+    d=false; m=false; i=true
     case ",$feats," in *",devOff,"*) d=true;; esac
     case ",$feats," in *",mock,"*)   m=true;; esac
-    blk="\"$pkg\":{\"devOff\":$d,\"mock\":$m}"
+    case ",$feats," in *",isolate,"*) i=true;; *) i=false;; esac
+    blk="\"$pkg\":{\"devOff\":$d,\"mock\":$m,\"isolate\":$i}"
     T=$(uniq_list "$(jlist targets | tr '\n' ' ')")
     H=$(uniq_list "$(jlist hardened | tr '\n' ' ')")
     case " $T " in *" $pkg "*) ;; *) T="$T $pkg";; esac

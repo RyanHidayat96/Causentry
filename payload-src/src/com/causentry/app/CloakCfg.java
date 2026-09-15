@@ -40,6 +40,8 @@ public final class CloakCfg {
     public static final Set<Integer> UIDS = new HashSet<>();
     public static final Set<String> TARGETS = new LinkedHashSet<>();
     public static final Set<String> HIDDEN = new LinkedHashSet<>();
+    /** packages whose app-zygote service spawn is denied (per-app "isolate" toggle) */
+    public static final Set<String> APPZYGOTE = new LinkedHashSet<>();
 
     private static long loadedAt = 0L;
     private static String lastStamp = "";
@@ -150,9 +152,11 @@ public final class CloakCfg {
         Set<Integer> uids = new HashSet<>();
         Set<String> targets = new LinkedHashSet<>();
         Set<String> hidden = new LinkedHashSet<>();
+        Set<String> appZygote = new LinkedHashSet<>();
         readInts(json, "\"targetUids\"", uids);
         readStrings(json, "\"targets\"", targets);
         readStrings(json, "\"hidden\"", hidden);
+        readStrings(json, "\"appZygote\"", appZygote);
         if (hidden.isEmpty() && targets.isEmpty() && uids.isEmpty()) return;   // keep last good
         UIDS.clear();
         UIDS.addAll(uids);
@@ -160,6 +164,8 @@ public final class CloakCfg {
         TARGETS.addAll(targets);
         HIDDEN.clear();
         HIDDEN.addAll(hidden);
+        APPZYGOTE.clear();
+        APPZYGOTE.addAll(appZygote.isEmpty() ? targets : appZygote);
     }
 
     private static void readInts(String json, String key, Set<Integer> into) {

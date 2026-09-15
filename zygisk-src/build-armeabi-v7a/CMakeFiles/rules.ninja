@@ -6,15 +6,15 @@
 # It is included in the main 'build.ninja'.
 
 # =============================================================================
-# Project: CMAKE_TRY_COMPILE
-# Configurations: 
+# Project: causentry-zygisk
+# Configurations: Release
 # =============================================================================
 # =============================================================================
 
 #############################################
 # Rule for compiling CXX files.
 
-rule CXX_COMPILER__cmTC_42084_
+rule CXX_COMPILER__causentry-zygisk_Release
   depfile = $DEP_FILE
   deps = gcc
   command = C:\Users\exery\Documents\tools\Causentry\tools\sdk\ndk\26.1.10909125\toolchains\llvm\prebuilt\windows-x86_64\bin\clang++.exe --target=armv7-none-linux-androideabi29 --sysroot=C:/Users/exery/Documents/tools/Causentry/tools/sdk/ndk/26.1.10909125/toolchains/llvm/prebuilt/windows-x86_64/sysroot $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out -c $in
@@ -22,11 +22,11 @@ rule CXX_COMPILER__cmTC_42084_
 
 
 #############################################
-# Rule for linking CXX executable.
+# Rule for linking CXX shared library.
 
-rule CXX_EXECUTABLE_LINKER__cmTC_42084_
-  command = cmd.exe /C "$PRE_LINK && C:\Users\exery\Documents\tools\Causentry\tools\sdk\ndk\26.1.10909125\toolchains\llvm\prebuilt\windows-x86_64\bin\clang++.exe --target=armv7-none-linux-androideabi29 --sysroot=C:/Users/exery/Documents/tools/Causentry/tools/sdk/ndk/26.1.10909125/toolchains/llvm/prebuilt/windows-x86_64/sysroot $FLAGS $LINK_FLAGS $in -o $TARGET_FILE $LINK_PATH $LINK_LIBRARIES && $POST_BUILD"
-  description = Linking CXX executable $TARGET_FILE
+rule CXX_SHARED_LIBRARY_LINKER__causentry-zygisk_Release
+  command = cmd.exe /C "$PRE_LINK && C:\Users\exery\Documents\tools\Causentry\tools\sdk\ndk\26.1.10909125\toolchains\llvm\prebuilt\windows-x86_64\bin\clang++.exe --target=armv7-none-linux-androideabi29 --sysroot=C:/Users/exery/Documents/tools/Causentry/tools/sdk/ndk/26.1.10909125/toolchains/llvm/prebuilt/windows-x86_64/sysroot -fPIC $LANGUAGE_COMPILE_FLAGS $ARCH_FLAGS $LINK_FLAGS -shared $SONAME_FLAG$SONAME -o $TARGET_FILE $in $LINK_PATH $LINK_LIBRARIES && $POST_BUILD"
+  description = Linking CXX shared library $TARGET_FILE
   restat = $RESTAT
 
 
@@ -36,6 +36,15 @@ rule CXX_EXECUTABLE_LINKER__cmTC_42084_
 rule CUSTOM_COMMAND
   command = $COMMAND
   description = $DESC
+
+
+#############################################
+# Rule for re-running cmake.
+
+rule RERUN_CMAKE
+  command = C:\Users\exery\Documents\tools\Causentry\tools\sdk\cmake\3.22.1\bin\cmake.exe --regenerate-during-build -SC:\Users\exery\Documents\tools\Causentry\zygisk-src\jni -BC:\Users\exery\Documents\tools\Causentry\zygisk-src\build-armeabi-v7a
+  description = Re-running CMake...
+  generator = 1
 
 
 #############################################

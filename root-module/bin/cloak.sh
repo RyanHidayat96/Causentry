@@ -48,6 +48,16 @@ for p in $(hidden_list | sort -u); do
   first=0
   printf '"%s"' "$p" >> "$T"
 done
+printf '],"appZygote":[' >> "$T"
+first=1
+for t in $(jlist targets); do
+  # per-app entry looks like  "com.x":{"devOff":true,"mock":true,"isolate":false}
+  ent=$(grep -oE "\"$t\":\{[^}]*\}" "$CONF" 2>/dev/null | head -1)
+  case "$ent" in *'"isolate":false'*) continue;; esac
+  [ $first -eq 1 ] || printf ',' >> "$T"
+  first=0
+  printf '"%s"' "$t" >> "$T"
+done
 printf ']}' >> "$T"
 
 cp -f "$T" "$OUT" 2>/dev/null && chmod 644 "$OUT" 2>/dev/null

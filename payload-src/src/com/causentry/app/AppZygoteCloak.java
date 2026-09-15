@@ -77,6 +77,8 @@ public final class AppZygoteCloak {
     }
 
     private static boolean isTargetPackage(String name) {
-        return name != null && CloakCfg.TARGETS.contains(name);
+        if (name == null) return false;
+        CloakCfg.refresh();
+        return CloakCfg.APPZYGOTE.contains(name);
     }
 }
