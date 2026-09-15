@@ -36,10 +36,15 @@ extras() {
   { jlist root_packages; [ -f "$DIR/root_extra.txt" ] && cat "$DIR/root_extra.txt"; } \
     | while IFS= read -r p; do valid_package_name "$p" && echo "$p"; done
 }
+PKG_CACHE=
+load_packages() {
+  [ -n "$PKG_CACHE" ] && return 0
+  PKG_CACHE=$(pm list packages --user 0 2>/dev/null | sed 's/^package://')
+}
 installed() {
   valid_package_name "$1" || return 1
-  pkg_re=$(ere_escape "$1")
-  pm list packages --user 0 2>/dev/null | grep -q "^package:${pkg_re}$"
+  load_packages
+  printf '%s\n' "$PKG_CACHE" | grep -Fxq "$1"
 }
 never_hide() { [ "$1" = "com.causentry.app" ] && return 0; return 1; }
 

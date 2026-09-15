@@ -14,6 +14,8 @@ DIR=${CAUSENTRY_DIR:-/data/adb/causentry}
 APP_PKG=com.causentry.app
 APP_DIR=/data/data/$APP_PKG/files
 CMD_DIR=$APP_DIR/cmd
+NL='
+'
 
 app_uid() { stat -c %u "/data/data/$APP_PKG" 2>/dev/null; }
 
@@ -49,6 +51,13 @@ json_jlist() {
     json_string "$t"
   done
   printf ']'
+}
+
+list_has_line() {
+  case "$1" in
+    *"$NL$2$NL"*) return 0 ;;
+  esac
+  return 1
 }
 
 snapshot() {
@@ -98,13 +107,15 @@ apps_snapshot() {
   [ -d "/data/data/$APP_PKG" ] || return 0
   ensure_app_dirs
   T=$(mktemp 2>/dev/null || echo "$DIR/.apps.tmp")
+  targets_cache="${NL}$(jlist targets)${NL}"
+  hardened_cache="${NL}$(jlist hardened)${NL}"
   {
     printf '{"apps":['
     f=1
     for pkg in $(pm list packages -3 2>/dev/null | sed 's/package://' | sort); do
       valid_package_name "$pkg" || continue
-      prot=false; is_target "$pkg" && prot=true
-      hard=false; is_hardened "$pkg" && hard=true
+      prot=false; list_has_line "$targets_cache" "$pkg" && prot=true
+      hard=false; list_has_line "$hardened_cache" "$pkg" && hard=true
       [ $f -eq 1 ] || printf ','
       f=0
       printf '{"pkg":'; json_string "$pkg"; printf ',"protected":%s,"hardened":%s}' "$prot" "$hard"

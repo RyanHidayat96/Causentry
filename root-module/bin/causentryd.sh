@@ -13,6 +13,7 @@ CONF=$DIR/config.json
 STATE=$DIR/runtime.state
 SAVED=$DIR/devsaved
 ACTIVE=$DIR/runtime.active
+EVAL_LOCK=$DIR/evaluate.lock
 WATCHDOG_PID=
 
 touch_heartbeat() { date +%s > "$DIR/heartbeat" 2>/dev/null; }
@@ -48,6 +49,19 @@ evaluate() {
   else
     [ "$(cat "$STATE" 2>/dev/null)" = "idle" ] || deactivate
   fi
+}
+
+locked_evaluate() {
+  i=0
+  while ! mkdir "$EVAL_LOCK" 2>/dev/null; do
+    i=$((i+1))
+    [ "$i" -ge 30 ] && { log "evaluate skipped: lock busy"; return 0; }
+    sleep 0.1
+  done
+  evaluate
+  rc=$?
+  rmdir "$EVAL_LOCK" 2>/dev/null
+  return "$rc"
 }
 
 activate() {
@@ -91,7 +105,7 @@ echo "$$" > "$DIR/daemon.pid"
 log "daemon start (pid $$)"
 
 # initial sync with reality (foreground only)
-evaluate
+locked_evaluate
 ensure_ui
 touch_heartbeat
 
@@ -101,15 +115,16 @@ touch_heartbeat
   while true; do
     sleep 5
     n=$((n+1))
+    touch_heartbeat
     [ $((n % 6)) -eq 0 ] && ensure_ui
     # control-UI app: run its pending commands + refresh the state snapshot
     if [ -f "$DIR/uirpc.sh" ]; then
-      sh "$DIR/uirpc.sh" serve >/dev/null 2>&1
+      timeout 12 sh "$DIR/uirpc.sh" serve >/dev/null 2>&1
       rc=$?
       [ "$rc" -ne 0 ] && echo "$(date '+%m-%d %H:%M:%S') uirpc serve rc=$rc" >> "$DIR/.watchdog.log"
-      [ $((n % 6)) -eq 0 ] && sh "$DIR/uirpc.sh" apps >/dev/null 2>&1
+      [ $((n % 6)) -eq 0 ] && timeout 12 sh "$DIR/uirpc.sh" apps >/dev/null 2>&1
     fi
-    evaluate
+    locked_evaluate
     touch_heartbeat
   done
 ) &
@@ -132,7 +147,7 @@ logcat -b events -s "$EV" -s am_proc_died 2>/dev/null | while read -r line; do
               target_in_foreground && break
               sleep 0.3; i=$((i+1))
             done
-            evaluate
+            locked_evaluate
             ;;
         esac
       done
@@ -143,7 +158,7 @@ logcat -b events -s "$EV" -s am_proc_died 2>/dev/null | while read -r line; do
           *",$t,"*|*",$t]"*)
             log "event: died $t"
             sleep 1
-            evaluate
+            locked_evaluate
             ;;
         esac
       done
