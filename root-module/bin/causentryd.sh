@@ -65,13 +65,18 @@ log "daemon start (pid $$)"
 evaluate
 ensure_ui
 
+# heartbeat writer: a dedicated loop that can never block, so liveness is always
+# honest even when the watchdog's state work is slow (activate/wait_settings can stall)
+(
+  while true; do date +%s > "$DIR/heartbeat" 2>/dev/null; sleep 5; done
+) &
+
 # watchdog: keeps the state honest even if events were missed
 (
   n=0
   while true; do
     sleep 5
     n=$((n+1))
-    date +%s > "$DIR/heartbeat" 2>/dev/null
     [ $((n % 6)) -eq 0 ] && ensure_ui
     # control-UI app: run its pending commands + refresh the state snapshot
     [ -f "$DIR/uirpc.sh" ] && sh "$DIR/uirpc.sh" serve >/dev/null 2>&1; rc=$?
