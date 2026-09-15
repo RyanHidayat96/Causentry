@@ -50,7 +50,7 @@ echo "== staging live runtime =="
   kill \$(cat $D/daemon.pid 2>/dev/null) 2>/dev/null
   pkill -f \"httpd -p 127.0.0.1:8899\" 2>/dev/null
   sleep 1
-  setsid /system/bin/sh $D/causentryd.sh >/dev/null 2>&1 < /dev/null &
+  setsid /system/bin/sh $D/causentry-loop.sh >/dev/null 2>&1 < /dev/null &
   setsid /data/adb/ksu/bin/busybox httpd -p 127.0.0.1:8899 -h $D/webroot >/dev/null 2>&1 < /dev/null &
   sleep 2
   echo daemon=\$(cat $D/daemon.pid)

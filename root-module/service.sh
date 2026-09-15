@@ -8,7 +8,7 @@ mkdir -p "$DIR" "$DIR/webroot/cgi-bin" 2>/dev/null
 echo "$(date '+%m-%d %H:%M:%S') [service] starting" >> "$LOG"
 
 # --- stage writable copies (the module dir itself is read-only) ---
-for f in lib.sh apply.sh restore.sh causentryd.sh root-apps.sh enforce-denylist.sh status.sh doctor.sh uirpc.sh appcfg.sh cloak.sh hidden.sh; do
+for f in lib.sh apply.sh restore.sh causentryd.sh causentry-loop.sh root-apps.sh enforce-denylist.sh status.sh doctor.sh uirpc.sh appcfg.sh cloak.sh hidden.sh; do
   [ -f "$MODDIR/bin/$f" ] && cp -f "$MODDIR/bin/$f" "$DIR/$f" 2>/dev/null
 done
 [ -f "$MODDIR/payload/Causentry.apk" ] && cp -f "$MODDIR/payload/Causentry.apk" "$DIR/Causentry.apk" 2>/dev/null
@@ -26,10 +26,10 @@ tr -d '\r' < "$DIR/causentryd.sh" > "$DIR/.causentryd.tmp" 2>/dev/null && mv -f 
 # --- protection layer (boot props + kernel hiding + denylist + root apps) ---
 sh "$DIR/apply.sh" boot >> "$LOG" 2>&1
 
-# --- watch daemon (restart-safe) ---
-if ! pgrep -f causentryd.sh >/dev/null 2>&1; then
-  setsid /system/bin/sh "$DIR/causentryd.sh" >/dev/null 2>&1 < /dev/null &
-  echo "$(date '+%m-%d %H:%M:%S') [service] daemon started" >> "$LOG"
+# --- watch daemon (supervised so a logcat hiccup cannot kill the bypass) ---
+if ! pgrep -f causentry-loop.sh >/dev/null 2>&1; then
+  setsid /system/bin/sh "$DIR/causentry-loop.sh" >/dev/null 2>&1 < /dev/null &
+  echo "$(date '+%m-%d %H:%M:%S') [service] daemon supervisor started" >> "$LOG"
 fi
 
 # --- control UI: loopback only, token protected ---

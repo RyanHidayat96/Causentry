@@ -686,40 +686,44 @@ async function applyForApp(){
   if ($("d-mock").checked)   feats.push("mock");
   if ($("d-isolate").checked) feats.push("isolate");
   $("btnApplyApp").disabled = true;
-  const ok = await Transport.send({action:"setapp", pkg:pkg, features:feats.join(",")});
+  const want = feats.slice().sort().join(",");
+  const r = await sendVerified({action:"setapp", pkg:pkg, features:feats.join(",")},
+      () => featuresOfEntry((S.cfg.apps || {})[pkg]) === want);
   $("btnApplyApp").disabled = false;
-  toast(ok ? t("applied") + ": " + appName(pkg) : t("saveWarn"), ok ? "ok" : "err");
-  if (ok){ showList(); setTimeout(refresh, 1800); }
+  reportResult(r, t("applied") + ": " + appName(pkg));
+  if (r.ok) showList();
 }
 async function removeApp(){
   const pkg = S.sel; if (!pkg) return;
   const yes = await confirmDialog(t("confirmRemoveT"), t("confirmRemoveB", {app:appName(pkg)}), t("yesRemove"));
   if (!yes) return;
-  const ok = await Transport.send({action:"delapp", pkg:pkg});
-  toast(ok ? t("removed") : t("saveWarn"), ok ? "ok" : "err");
-  showList(); setTimeout(refresh, 1800);
+  const r = await sendVerified({action:"delapp", pkg:pkg},
+      () => !((S.cfg.apps || {})[pkg]));
+  reportResult(r, t("removed"));
+  showList();
 }
 async function saveAdvanced(){
   const b = id => $(id).checked ? 1 : 0;
-  const ok = await Transport.send({action:"save",
+  const wantSusfs = !!b("f-susfs"), wantRoot = !!b("f-hideRootApps");
+  const r = await sendVerified({action:"save",
     targets: S.cfg.targets.join(","), denylist:(S.cfg.denylist || []).join(","), hardened: S.cfg.hardened.join(","),
     autoDevOff:1, hideMockLocation:1,
     alwaysHidden:b("f-alwaysHidden"), susfs:b("f-susfs"), hooks:0,
-    hideRootApps:b("f-hideRootApps"), uiApk:b("f-uiApk")});
-  toast(ok ? t("saved") : t("saveWarn"), ok ? "ok" : "err");
-  if (ok) setTimeout(refresh, 2200);
+    hideRootApps:b("f-hideRootApps"), uiApk:b("f-uiApk")},
+    () => { const c = S.snap && S.snap.config; return !!c && (!!c.hideRootApps === wantRoot) && (!!c.susfs === wantSusfs); });
+  reportResult(r, t("saved"));
 }
 async function saveDenylist(){
   const dl = $("denylist").value.split("\n").map(x => x.trim()).filter(Boolean);
   S.cfg.denylist = dl;
   const b = id => $(id).checked ? 1 : 0;
-  const ok = await Transport.send({action:"save",
+  const r = await sendVerified({action:"save",
     targets: S.cfg.targets.join(","), denylist: dl.join(","), hardened: S.cfg.hardened.join(","),
     autoDevOff:1, hideMockLocation:1,
     alwaysHidden:b("f-alwaysHidden"), susfs:b("f-susfs"), hooks:0,
-    hideRootApps:b("f-hideRootApps"), uiApk:b("f-uiApk")});
-  toast(ok ? t("saved") : t("saveWarn"), ok ? "ok" : "err");
-  if (ok) setTimeout(refresh, 2200);
+    hideRootApps:b("f-hideRootApps"), uiApk:b("f-uiApk")},
+    () => { const c = S.snap && S.snap.config; const have = (c && c.denylist) || []; return have.length === dl.length; });
+  reportResult(r, t("saved"));
 }
 async function restoreEverything(){
   const yes = await confirmDialog(t("confirmRestoreT"), t("confirmRestoreB"), t("yesRestore"));
@@ -777,6 +781,33 @@ Transport.status = async () => { try { return JSON.parse(B ? B.status() : "{}");
 Transport.apps   = async () => { try { return JSON.parse(B ? B.apps() : '{"apps":[]}'); } catch(e){ return {apps:[]}; } };
 Transport.labels = async () => { try { return JSON.parse(B ? B.labels() : "{}"); } catch(e){ return {}; } };
 Transport.send   = async o => { try { return !!(B && JSON.parse(B.command(JSON.stringify(o))).ok); } catch(e){ return false; } };
+
+/* Send a command and wait until the daemon has really applied it. Writing the command
+   file only means "queued" - if the daemon is down the user would otherwise see a fake
+   success. verify() is re-checked against the refreshed snapshot until it passes. */
+async function sendVerified(o, verify, tries){
+  const sent = await Transport.send(o);
+  if (!sent) return { ok:false, why:"send" };
+  const n = tries || 18;
+  for (let i = 0; i < n; i++){
+    await new Promise(r => setTimeout(r, 500));
+    try { await refresh(); } catch(e){}
+    if (verify && verify()) return { ok:true };
+    if (S.snap && S.snap.daemon === false) return { ok:false, why:"daemon" };
+  }
+  return { ok:false, why:"timeout" };
+}
+function featuresOfEntry(e){
+  if (!e) return "";
+  const got = [];
+  if (e.devOff) got.push("devOff");
+  if (e.mock) got.push("mock");
+  if (e.isolate !== false) got.push("isolate");
+  return got.sort().join(",");
+}
+function reportResult(r, okMsg){
+  toast(r.ok ? okMsg : (r.why === "daemon" ? t("daemonDown") : t("saveWarn")), r.ok ? "ok" : "err");
+}
 Transport.icon   = async pkg => { try { return B ? B.icon(pkg) : ""; } catch(e){ return ""; } };
 
 /* ---------- refresh loop ---------- */

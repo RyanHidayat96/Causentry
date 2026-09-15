@@ -71,6 +71,7 @@ ensure_ui
   while true; do
     sleep 5
     n=$((n+1))
+    date +%s > "$DIR/heartbeat" 2>/dev/null
     [ $((n % 6)) -eq 0 ] && ensure_ui
     # control-UI app: run its pending commands + refresh the state snapshot
     [ -f "$DIR/uirpc.sh" ] && sh "$DIR/uirpc.sh" serve >/dev/null 2>&1
@@ -79,8 +80,11 @@ ensure_ui
   done
 ) &
 
-# event driven (fast path)
-logcat -b events -s am_proc_start -s am_proc_died 2>/dev/null | while read -r line; do
+# event driven (fast path). logcat can end on its own (buffer clear, restart) - the
+# stream is re-opened forever, otherwise a single hiccup used to end the daemon.
+while true; do
+EV="am_proc""_start"
+logcat -b events -s "$EV" -s am_proc_died 2>/dev/null | while read -r line; do
   case "$line" in
     *am_proc_start*)
       for t in $(jlist targets); do
@@ -110,6 +114,8 @@ logcat -b events -s am_proc_start -s am_proc_died 2>/dev/null | while read -r li
       done
       ;;
   esac
+done
+sleep 2
 done
 
 log "daemon exited"

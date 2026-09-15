@@ -47,6 +47,12 @@ snapshot() {
   state=$(cat "$DIR/runtime.state" 2>/dev/null); [ -z "$state" ] && state=unknown
   dpid=$(cat "$DIR/daemon.pid" 2>/dev/null); dalive=false
   [ -n "$dpid" ] && [ -d "/proc/$dpid" ] && dalive=true
+  # heartbeat age: the watchdog stamps it every 5s, so a stale stamp means the
+  # bypass is not running even if a pid file still exists
+  hb=$(cat "$DIR/heartbeat" 2>/dev/null); [ -n "$hb" ] || hb=0
+  dage=$(( $(date +%s) - hb ))
+  [ "$dage" -ge 0 ] 2>/dev/null || dage=999999
+  if [ "$dage" -gt 20 ]; then dalive=false; fi
   rootapps=$(sh "$DIR/root-apps.sh" scan 2>/dev/null | tr '\n' ',')
   suggests=$(sh "$DIR/root-apps.sh" suggest 2>/dev/null | tr '\n' ',')
   {
