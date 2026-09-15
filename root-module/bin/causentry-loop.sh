@@ -1,12 +1,15 @@
 #!/system/bin/sh
 # Causentry - supervisor for the watch daemon.
 #
-# The daemon tails the activity event stream; if that stream ends (buffer cleared,
-# logcat restarted) or the process is killed, the bypass silently stops working and
-# the UI keeps showing a stale snapshot. This loop restarts it within ~10s and is
-# what boot (service.sh) and deploy-module.sh start.
+# The daemon tails the activity event stream and runs the bypass state machine; if the
+# stream ends, or the daemon hangs inside an evaluate() pass, the bypass silently stops
+# and the UI keeps showing a stale snapshot (the user sees "Apply" doing nothing).
+#
+# Liveness is therefore judged by the daemon's heartbeat file, not by a process match:
+# stale heartbeat -> kill whatever is left and start a fresh daemon.
 DIR=/data/adb/causentry
 LOCK=$DIR/loop.lock
+MAX_AGE=30
 
 if [ -f "$LOCK" ]; then
   old=$(cat "$LOCK" 2>/dev/null)
@@ -17,7 +20,14 @@ fi
 echo "$$" > "$LOCK"
 
 while true; do
-  if ! pgrep -f 'causentryd.sh' >/dev/null 2>&1; then
+  hb=$(cat "$DIR/heartbeat" 2>/dev/null || echo 0)
+  now=$(date +%s)
+  age=$(( now - hb ))
+  if [ "$age" -gt "$MAX_AGE" ]; then
+    pkill -f causentryd.sh 2>/dev/null
+    rm -f "$DIR/daemon.pid"
+    date +%s > "$DIR/heartbeat" 2>/dev/null
+    echo "$(date '+%m-%d %H:%M:%S') [supervisor] daemon stale (${age}s) - restarting" >> "$DIR/causentry.log"
     setsid /system/bin/sh "$DIR/causentryd.sh" >/dev/null 2>&1 < /dev/null &
   fi
   sleep 10
