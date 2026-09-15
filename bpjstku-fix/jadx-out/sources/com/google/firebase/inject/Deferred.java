@@ -1,0 +1,12 @@
+package com.google.firebase.inject;
+
+/* JADX INFO: loaded from: classes4.dex */
+public interface Deferred<T> {
+
+    /* JADX INFO: loaded from: classes6.dex */
+    public interface DeferredHandler<T> {
+        void handle(Provider<T> provider);
+    }
+
+    void whenAvailable(DeferredHandler<T> deferredHandler);
+}

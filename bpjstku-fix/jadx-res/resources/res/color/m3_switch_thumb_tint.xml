@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        state_enabled="false"
+        color="?attr/colorOnSurfaceInverse"/>
+    <item
+        state_checked="true"
+        color="?attr/colorPrimary"/>
+    <item color="?attr/colorOnSurface"/>
+</selector>

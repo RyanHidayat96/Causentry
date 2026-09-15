@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    orientation="1"
+    padding="16dp"
+    layout_width="-1"
+    layout_height="-1">
+    <com.kennyc.view.MultiStateView
+        id="@+id/msv"
+        layout_width="-1"
+        layout_height="-1"
+        NOT_FOUND_0x6="@layout/default_error_layout"
+        NOT_FOUND_0x7="@layout/default_error_layout"
+        NOT_FOUND_0x8="@layout/default_loading_layout">
+        <LinearLayout
+            orientation="1"
+            layout_width="395dp"
+            layout_height="-1">
+            <TextView
+                id="@+id/tv_about"
+                layout_width="-1"
+                layout_height="-2"
+                text="about"/>
+            <TextView
+                id="@+id/tv_email"
+                layout_width="-1"
+                layout_height="-2"
+                text="email"/>
+            <TextView
+                id="@+id/tv_phone"
+                layout_width="-1"
+                layout_height="-2"
+                text="phone"/>
+        </LinearLayout>
+    </com.kennyc.view.MultiStateView>
+</LinearLayout>

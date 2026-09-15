@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    orientation="1"
+    layout_width="-1"
+    layout_height="-1">
+    <androidx.appcompat.widget.AppCompatImageView
+        id="@+id/imgProgram"
+        layout_width="@dimen/dimen_35dp"
+        layout_height="@dimen/dimen_35dp"
+        layout_marginLeft="@dimen/dimen_0dp"
+        layout_marginTop="@dimen/dimen_10dp"
+        layout_marginRight="@dimen/dimen_0dp"
+        src="@drawable/ic_jaminan_jht"
+        layout_marginHorizontal="@dimen/dimen_0dp"
+        NOT_FOUND_0x17="16:9"
+        NOT_FOUND_0x18="0"
+        NOT_FOUND_0x19="0"
+        NOT_FOUND_0x1a="0"/>
+    <TextView
+        textSize="@dimen/text_size_10sp"
+        textColor="@color/colorDarkMint"
+        id="@+id/tvProgramItem"
+        background="@drawable/bg_round_darkmint10"
+        paddingLeft="@dimen/dimen_4dp"
+        paddingTop="@dimen/dimen_4dp"
+        paddingRight="@dimen/dimen_4dp"
+        paddingBottom="@dimen/dimen_4dp"
+        layout_width="-2"
+        layout_height="-2"
+        layout_marginTop="@dimen/dimen_2dp"
+        text="@string/label_jkk"
+        drawablePadding="@dimen/dimen_4dp"
+        lineSpacingExtra="@dimen/text_size_6sp"
+        layout_marginStart="@dimen/dimen_5dp"
+        layout_marginEnd="@dimen/dimen_20dp"
+        paddingHorizontal="@dimen/dimen_4dp"
+        paddingVertical="@dimen/dimen_4dp"
+        style="@style/BpjstkuTextViewDmSans.White"/>
+</LinearLayout>

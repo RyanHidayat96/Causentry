@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    background="@color/colorWhite"
+    focusable="true"
+    focusableInTouchMode="true"
+    layout_width="-1"
+    layout_height="-1">
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        id="@+id/srlPaymentHistory"
+        padding="@dimen/dimen_5dp"
+        layout_width="@dimen/dimen_0dp"
+        layout_height="@dimen/dimen_0dp"
+        NOT_FOUND_0xf="0"
+        NOT_FOUND_0x10="0"
+        NOT_FOUND_0x11="0"
+        NOT_FOUND_0x12="0">
+        <com.kennyc.view.MultiStateView
+            id="@+id/msvPaymentHistory"
+            layout_width="-1"
+            layout_height="-1"
+            NOT_FOUND_0x13="@layout/layout_default_empty"
+            NOT_FOUND_0x14="@layout/layout_default_error"
+            NOT_FOUND_0x15="@layout/default_loading_layout">
+            <androidx.core.widget.NestedScrollView
+                paddingTop="@dimen/dimen_16dp"
+                paddingBottom="@dimen/dimen_16dp"
+                layout_width="-1"
+                layout_height="-1"
+                paddingVertical="@dimen/dimen_16dp">
+                <androidx.cardview.widget.CardView
+                    id="@+id/cvPaymentHistory"
+                    layout_width="-1"
+                    layout_height="-1"
+                    layout_marginLeft="@dimen/dimen_16dp"
+                    layout_marginRight="@dimen/dimen_16dp"
+                    layout_marginHorizontal="@dimen/dimen_16dp"
+                    NOT_FOUND_0xd="@dimen/dimen_8dp"
+                    NOT_FOUND_0xe="@dimen/dimen_2dp">
+                    <androidx.recyclerview.widget.RecyclerView
+                        id="@+id/rvPaymentHistory"
+                        layout_width="-1"
+                        layout_height="-2"/>
+                </androidx.cardview.widget.CardView>
+            </androidx.core.widget.NestedScrollView>
+        </com.kennyc.view.MultiStateView>
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,0 +1,24 @@
+package androidx.camera.camera2.internal;
+
+import android.hardware.camera2.CameraCaptureSession;
+import androidx.camera.core.impl.CameraCaptureCallback;
+
+/* JADX INFO: loaded from: classes5.dex */
+final class CaptureCallbackContainer extends CameraCaptureCallback {
+    private final CameraCaptureSession.CaptureCallback mCaptureCallback;
+
+    private CaptureCallbackContainer(CameraCaptureSession.CaptureCallback captureCallback) {
+        if (captureCallback == null) {
+            throw new NullPointerException("captureCallback is null");
+        }
+        this.mCaptureCallback = captureCallback;
+    }
+
+    static CaptureCallbackContainer create(CameraCaptureSession.CaptureCallback captureCallback) {
+        return new CaptureCallbackContainer(captureCallback);
+    }
+
+    final CameraCaptureSession.CaptureCallback getCaptureCallback() {
+        return this.mCaptureCallback;
+    }
+}

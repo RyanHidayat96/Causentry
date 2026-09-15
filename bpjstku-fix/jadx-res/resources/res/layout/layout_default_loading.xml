@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    id="@+id/loading_layout"
+    layout_width="-1"
+    layout_height="-1">
+    <ProgressBar
+        layout_width="-1"
+        layout_height="-2"
+        layout_centerInParent="true"/>
+</RelativeLayout>

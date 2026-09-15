@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        state_enabled="false"
+        color="?attr/colorSurface"/>
+    <item
+        color="?attr/colorOnError"
+        NOT_FOUND_0x3="true"/>
+    <item
+        color="?attr/colorOnPrimary"
+        NOT_FOUND_0x4="true"/>
+    <item
+        state_checked="true"
+        color="?attr/colorOnPrimary"/>
+    <item
+        state_checked="false"
+        color="?attr/colorOnPrimary"/>
+</selector>

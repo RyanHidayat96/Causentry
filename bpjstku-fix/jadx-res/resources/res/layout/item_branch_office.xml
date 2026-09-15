@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    layout_width="-1"
+    layout_height="-2">
+    <androidx.appcompat.widget.AppCompatImageView
+        id="@+id/imgLocation"
+        layout_width="-2"
+        layout_height="-2"
+        layout_marginTop="@dimen/dimen_16dp"
+        src="@drawable/ic_location_grey"
+        NOT_FOUND_0xc="0"
+        NOT_FOUND_0xe="0"/>
+    <androidx.appcompat.widget.AppCompatTextView
+        textSize="@dimen/text_size_14sp"
+        id="@+id/tvNameLocationBranchOFfice"
+        layout_width="0dp"
+        layout_marginTop="@dimen/dimen_16dp"
+        text="@string/label_sample_regional_office"
+        layout_marginStart="@dimen/dimen_13dp"
+        NOT_FOUND_0xb="@+id/imgLocation"
+        NOT_FOUND_0xe="0"
+        style="@style/BpjstkuTextViewPoppins.Black.SemiBold"/>
+    <androidx.appcompat.widget.AppCompatTextView
+        textSize="@dimen/text_size_12sp"
+        id="@+id/tvDescLocationBranchOFfice"
+        layout_width="@dimen/dimen_0dp"
+        layout_marginTop="@dimen/dimen_8dp"
+        layout_marginBottom="@dimen/dimen_16dp"
+        text="@string/label_sample_location_desc_regional_office"
+        NOT_FOUND_0x9="0"
+        NOT_FOUND_0xa="0"
+        NOT_FOUND_0xc="@+id/tvNameLocationBranchOFfice"
+        NOT_FOUND_0xd="@+id/tvNameLocationBranchOFfice"
+        style="@style/BpjstkuTextViewDmSans.CoolGrey"/>
+</androidx.constraintlayout.widget.ConstraintLayout>

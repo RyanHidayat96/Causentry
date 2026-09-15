@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        state_enabled="false"
+        color="?attr/colorOnSurface"
+        alpha="@dimen/material_emphasis_disabled_background"/>
+    <item
+        state_selected="true"
+        color="@android:color/transparent"/>
+    <item
+        state_checked="true"
+        color="@android:color/transparent"/>
+    <item
+        state_focused="true"
+        color="?attr/colorOnSurface"/>
+    <item color="?attr/colorOutline"/>
+</selector>

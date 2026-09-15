@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    layout_width="-1"
+    layout_height="-1">
+    <ImageView
+        id="@+id/imgVocationalEligibilityResult"
+        layout_width="-2"
+        layout_height="-2"
+        layout_marginTop="@dimen/dimen_237dp"
+        src="@drawable/ic_failed"
+        NOT_FOUND_0xb="0"
+        NOT_FOUND_0xc="0"
+        NOT_FOUND_0xe="0"/>
+    <TextView
+        id="@+id/tvEligibilityResult"
+        layout_width="@dimen/dimen_0dp"
+        layout_height="-2"
+        layout_marginLeft="@dimen/dimen_42dp"
+        layout_marginTop="@dimen/dimen_20dp"
+        layout_marginRight="@dimen/dimen_42dp"
+        text="@string/label_vocational_not_eligible"
+        textAlignment="4"
+        layout_marginHorizontal="@dimen/dimen_42dp"
+        NOT_FOUND_0xb="0"
+        NOT_FOUND_0xc="0"
+        NOT_FOUND_0xd="@+id/imgVocationalEligibilityResult"
+        style="@style/BpjstkuTextViewDmSans.CharcoalGrey"/>
+    <Button
+        textColor="@color/colorPrimary"
+        id="@+id/btnBack"
+        layout_width="@dimen/dimen_0dp"
+        layout_height="-2"
+        layout_marginLeft="@dimen/dimen_44dp"
+        layout_marginTop="@dimen/dimen_16dp"
+        layout_marginRight="@dimen/dimen_44dp"
+        text="@string/action_back"
+        layout_marginHorizontal="@dimen/dimen_44dp"
+        NOT_FOUND_0xb="0"
+        NOT_FOUND_0xc="0"
+        NOT_FOUND_0xd="@+id/tvEligibilityResult"
+        style="@style/BpjstkuOutlinedButton"/>
+</androidx.constraintlayout.widget.ConstraintLayout>

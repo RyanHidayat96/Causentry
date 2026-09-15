@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:height="30dp"
+    android:width="32dp"
+    android:viewportWidth="32"
+    android:viewportHeight="30">
+    <path
+        android:fillColor="#4dbb6c"
+        android:pathData="M30.345,20.069v8.827H1.655V20.07H30.345z"/>
+    <path
+        android:fillColor="#dde0e3"
+        android:pathData="M2.207,13.448v15.448c0,0.61 -0.494,1.104 -1.104,1.104C0.494,30 0,29.506 0,28.896V13.448c0.002,-0.609 0.495,-1.101 1.103,-1.103 0.293,-0.002 0.574,0.116 0.778,0.325 0.21,0.205 0.327,0.485 0.326,0.778zM32,17.862v11.035c0,0.61 -0.494,1.103 -1.104,1.103 -0.609,0 -1.103,-0.494 -1.103,-1.103V17.862c0.002,-0.608 0.495,-1.101 1.103,-1.103 0.608,0.004 1.1,0.496 1.104,1.103z"/>
+    <path
+        android:fillColor="#eebc3b"
+        android:pathData="M11.034,18.69c0.002,0.366 -0.143,0.717 -0.402,0.976 -0.26,0.26 -0.61,0.404 -0.977,0.403H5.793c-0.493,0 -0.948,-0.263 -1.194,-0.69 -0.247,-0.426 -0.247,-0.952 0,-1.379 0.246,-0.427 0.701,-0.69 1.194,-0.69h3.862c0.762,0 1.38,0.618 1.38,1.38z"/>
+    <path
+        android:fillColor="#75dc92"
+        android:pathData="M29.793,20.069v6.069H9.93c-0.609,-0.002 -1.102,-0.495 -1.104,-1.104V20.07h20.966z"/>
+    <path
+        android:fillColor="#fff"
+        android:pathData="M23.172,22.828H11.034c-0.304,0 -0.551,-0.247 -0.551,-0.552 0,-0.304 0.247,-0.551 0.551,-0.551h12.138c0.305,0 0.552,0.247 0.552,0.551 0,0.305 -0.247,0.552 -0.552,0.552zM25.38,22.828c0.304,0 0.55,-0.247 0.55,-0.552 0,-0.304 -0.246,-0.551 -0.55,-0.551 -0.306,0 -0.553,0.247 -0.553,0.551 0,0.305 0.247,0.552 0.552,0.552z"/>
+    <path
+        android:fillColor="#f14444"
+        android:pathData="M16,8.5m-8,0a8,8 0,1 1,16 0a8,8 0,1 1,-16 0"
+        android:strokeColor="#fff"
+        android:strokeWidth="1"/>
+    <path
+        android:fillColor="#fff"
+        android:pathData="M15,5H17V12H15z"/>
+    <path
+        android:fillColor="#fff"
+        android:pathData="M12.5,9.5L12.5,7.5L19.5,7.5L19.5,9.5z"/>
+</vector>

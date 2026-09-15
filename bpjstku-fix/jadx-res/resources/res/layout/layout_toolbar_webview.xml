@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.appbar.MaterialToolbar xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    gravity="0x10"
+    id="@+id/toolbarWebview"
+    background="@android:color/transparent"
+    layout_width="-1"
+    layout_height="?attr/actionBarSize"
+    NOT_FOUND_0xf="@dimen/dimen_0dp"
+    NOT_FOUND_0x10="@dimen/dimen_0dp">
+    <TextView
+        textSize="@dimen/text_size_18sp"
+        gravity="0x800003"
+        id="@+id/tvToolbarClose"
+        layout_width="@dimen/dimen_24dp"
+        layout_height="-2"
+        layout_marginLeft="@dimen/dimen_20dp"
+        layout_marginRight="@dimen/dimen_20dp"
+        maxLines="1"
+        drawablePadding="@dimen/dimen_14dp"
+        layout_marginHorizontal="@dimen/dimen_20dp"
+        NOT_FOUND_0x11="0x7f0801ae"
+        style="@style/BpjstkuTextViewPoppins.CharcoalGrey.SemiBold"/>
+    <TextView
+        textSize="@dimen/text_size_18sp"
+        gravity="0x800003"
+        id="@+id/tvToolbarBack"
+        layout_width="@dimen/dimen_24dp"
+        layout_height="-2"
+        layout_marginLeft="@dimen/dimen_20dp"
+        layout_marginRight="@dimen/dimen_20dp"
+        maxLines="1"
+        drawablePadding="@dimen/dimen_14dp"
+        drawableStart="0x7f08017b"
+        layout_marginHorizontal="@dimen/dimen_20dp"
+        style="@style/BpjstkuTextViewPoppins.CharcoalGrey.SemiBold"/>
+    <TextView
+        textSize="@dimen/text_size_18sp"
+        ellipsize="3"
+        gravity="0x800003"
+        id="@+id/tvToolbarWebviewTitle"
+        layout_width="-1"
+        layout_height="-2"
+        text="BPJS Ketenagakerjaan"
+        maxLines="1"
+        layout_marginEnd="@dimen/dimen_20dp"
+        style="@style/BpjstkuTextViewPoppins.CharcoalGrey.SemiBold"/>
+</com.google.android.material.appbar.MaterialToolbar>

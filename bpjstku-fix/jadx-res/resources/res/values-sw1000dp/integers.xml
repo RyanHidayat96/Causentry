@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <integer name="vida_preview_height">480</integer>
+    <integer name="vida_preview_width">640</integer>
+</resources>

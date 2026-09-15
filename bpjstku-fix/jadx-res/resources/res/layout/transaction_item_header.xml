@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    orientation="0"
+    background="@color/white"
+    layout_width="-1"
+    layout_height="-2">
+    <com.midtrans.sdk.uikit.widgets.BoldTextView
+        textColor="@color/faint_gray"
+        padding="@dimen/eight_dp"
+        layout_width="0dp"
+        layout_height="-2"
+        text="@string/item_header"
+        layout_weight="5"/>
+    <com.midtrans.sdk.uikit.widgets.BoldTextView
+        textColor="@color/faint_gray"
+        gravity="right"
+        paddingTop="@dimen/eight_dp"
+        paddingBottom="@dimen/eight_dp"
+        layout_width="0dp"
+        layout_height="-2"
+        text="@string/quantity_header"
+        layout_weight="1"/>
+    <com.midtrans.sdk.uikit.widgets.BoldTextView
+        textColor="@color/faint_gray"
+        gravity="0x5"
+        padding="@dimen/eight_dp"
+        layout_width="0dp"
+        layout_height="-2"
+        text="@string/price_header"
+        layout_weight="3"/>
+</LinearLayout>

@@ -1,0 +1,53 @@
+package androidx.compose.ui.draw;
+
+import androidx.compose.ui.graphics.drawscope.DrawScope;
+import androidx.compose.ui.node.ModifierNodeElement;
+import androidx.compose.ui.platform.InspectorInfo;
+import kotlin.Metadata;
+import kotlin.Unit;
+import kotlin.jvm.functions.Function1;
+
+/* JADX INFO: loaded from: classes.dex */
+@Metadata(d1 = {"\u0000<\n\u0002\u0018\u0002\n\u0002\u0018\u0002\n\u0002\u0018\u0002\n\u0002\u0018\u0002\n\u0002\u0018\u0002\n\u0002\u0010\u0002\n\u0002\u0018\u0002\n\u0002\b\u0007\n\u0002\u0018\u0002\n\u0002\b\u0002\n\u0002\u0010\u0000\n\u0002\u0010\u000b\n\u0002\b\u0002\n\u0002\u0010\b\n\u0002\b\u0006\b\u0002\u0018\u00002\b\u0012\u0004\u0012\u00020\u00020\u0001B \u0012\u0017\u0010\u0007\u001a\u0013\u0012\u0004\u0012\u00020\u0004\u0012\u0004\u0012\u00020\u00050\u0003¢\u0006\u0002\b\u0006¢\u0006\u0004\b\b\u0010\tJ\u000f\u0010\n\u001a\u00020\u0002H\u0017¢\u0006\u0004\b\n\u0010\u000bJ\u0017\u0010\f\u001a\u00020\u00052\u0006\u0010\u0007\u001a\u00020\u0002H\u0016¢\u0006\u0004\b\f\u0010\rJ\u0013\u0010\u000f\u001a\u00020\u0005*\u00020\u000eH\u0016¢\u0006\u0004\b\u000f\u0010\u0010J\u001a\u0010\u0013\u001a\u00020\u00122\b\u0010\u0007\u001a\u0004\u0018\u00010\u0011H\u0096\u0002¢\u0006\u0004\b\u0013\u0010\u0014J\u000f\u0010\u0016\u001a\u00020\u0015H\u0016¢\u0006\u0004\b\u0016\u0010\u0017R+\u0010\u0018\u001a\u0013\u0012\u0004\u0012\u00020\u0004\u0012\u0004\u0012\u00020\u00050\u0003¢\u0006\u0002\b\u00068\u0007X\u0087\u0004¢\u0006\f\n\u0004\b\u0018\u0010\u0019\u001a\u0004\b\u001a\u0010\u001b"}, d2 = {"Landroidx/compose/ui/draw/DrawBehindElement;", "Landroidx/compose/ui/node/ModifierNodeElement;", "Landroidx/compose/ui/draw/DrawBackgroundModifier;", "Lkotlin/Function1;", "Landroidx/compose/ui/graphics/drawscope/DrawScope;", "", "Lkotlin/ExtensionFunctionType;", "p0", "<init>", "(Lkotlin/jvm/functions/Function1;)V", "create", "()Landroidx/compose/ui/draw/DrawBackgroundModifier;", "update", "(Landroidx/compose/ui/draw/DrawBackgroundModifier;)V", "Landroidx/compose/ui/platform/InspectorInfo;", "inspectableProperties", "(Landroidx/compose/ui/platform/InspectorInfo;)V", "", "", "equals", "(Ljava/lang/Object;)Z", "", "hashCode", "()I", "onDraw", "Lkotlin/jvm/functions/Function1;", "getOnDraw", "()Lkotlin/jvm/functions/Function1;"}, k = 1, mv = {2, 0, 0}, xi = 48)
+final class DrawBehindElement extends ModifierNodeElement<DrawBackgroundModifier> {
+    private final Function1<DrawScope, Unit> onDraw;
+
+    public final Function1<DrawScope, Unit> getOnDraw() {
+        return this.onDraw;
+    }
+
+    /* JADX WARN: Multi-variable type inference failed */
+    public DrawBehindElement(Function1<? super DrawScope, Unit> function1) {
+        this.onDraw = function1;
+    }
+
+    @Override // androidx.compose.ui.node.ModifierNodeElement
+    /* JADX INFO: renamed from: create */
+    public final DrawBackgroundModifier getNode() {
+        return new DrawBackgroundModifier(this.onDraw);
+    }
+
+    @Override // androidx.compose.ui.node.ModifierNodeElement
+    public final void update(DrawBackgroundModifier p0) {
+        p0.setOnDraw(this.onDraw);
+    }
+
+    @Override // androidx.compose.ui.node.ModifierNodeElement
+    public final void inspectableProperties(InspectorInfo inspectorInfo) {
+        inspectorInfo.setName("drawBehind");
+        inspectorInfo.getProperties().set("onDraw", this.onDraw);
+    }
+
+    @Override // androidx.compose.ui.node.ModifierNodeElement
+    public final boolean equals(Object p0) {
+        if (this == p0) {
+            return true;
+        }
+        return (p0 instanceof DrawBehindElement) && this.onDraw == ((DrawBehindElement) p0).onDraw;
+    }
+
+    @Override // androidx.compose.ui.node.ModifierNodeElement
+    public final int hashCode() {
+        return this.onDraw.hashCode();
+    }
+}

@@ -1,0 +1,5 @@
+package defpackage;
+
+/* JADX INFO: loaded from: classes5.dex */
+public interface MediaBrowserCompatMediaBrowserImplBase4 extends MediaBrowserCompatMediaBrowserImplBase1.TuitionPaymentFragmentspecialinlinedviewModeldefault1, MediaBrowserCompatMediaBrowserImplBase1.TuitionPaymentFragmentspecialinlinedviewModeldefault3 {
+}

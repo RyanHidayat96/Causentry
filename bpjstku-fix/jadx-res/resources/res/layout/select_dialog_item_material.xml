@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    textAppearance="?attr/textAppearanceListItemSmall"
+    textColor="?attr/textColorAlertDialogListItem"
+    ellipsize="4"
+    gravity="0x10"
+    id="@android:id/text1"
+    paddingLeft="?attr/listPreferredItemPaddingLeft"
+    paddingRight="?attr/listPreferredItemPaddingRight"
+    layout_width="-1"
+    layout_height="-2"
+    minHeight="?attr/listPreferredItemHeightSmall"/>

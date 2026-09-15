@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    orientation="1"
+    layout_width="-1"
+    layout_height="-2"
+    textDirection="5"
+    layoutDirection="3">
+    <LinearLayout
+        orientation="0"
+        id="@+id/places_autocomplete_search_bar_container"
+        background="?attr/colorPrimary"
+        layout_width="-1"
+        layout_height="-2"
+        minHeight="?attr/actionBarSize">
+        <include layout="@layout/places_autocomplete_impl_search_bar"/>
+    </LinearLayout>
+    <View
+        background="@drawable/places_autocomplete_toolbar_shadow"
+        layout_width="-1"
+        layout_height="4dp"/>
+    <View
+        id="@+id/places_autocomplete_search_bar_separator"
+        layout_width="0dp"
+        layout_height="0dp"/>
+    <androidx.recyclerview.widget.RecyclerView
+        id="@+id/places_autocomplete_list"
+        layout_width="-1"
+        layout_height="0dp"
+        cacheColorHint="@android:color/white"
+        layout_weight="1"
+        layout_marginStart="@dimen/places_autocomplete_search_bar_margin"/>
+    <include layout="@layout/places_autocomplete_impl_error"/>
+    <include layout="@layout/places_autocomplete_impl_powered_by_google"/>
+</LinearLayout>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    id="@+id/main"
+    layout_width="-1"
+    layout_height="-1">
+    <include
+        id="@+id/toolbar"
+        layout_width="-1"
+        layout_height="-2"
+        layout="@layout/ef_imagepicker_toolbar"/>
+    <FrameLayout
+        id="@+id/ef_imagepicker_fragment_placeholder"
+        layout_width="-1"
+        layout_height="-1"
+        layout_below="@+id/toolbar"/>
+</RelativeLayout>

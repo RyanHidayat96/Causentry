@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    orientation="1"
+    layout_width="-1"
+    layout_height="-2">
+    <TextView
+        textSize="@dimen/text_size_14sp"
+        id="@+id/tvRatingTitle"
+        layout_width="-2"
+        layout_height="-2"
+        layout_marginLeft="@dimen/dimen_20dp"
+        layout_marginTop="@dimen/dimen_16dp"
+        layout_marginRight="@dimen/dimen_20dp"
+        layout_marginBottom="@dimen/dimen_8dp"
+        text="@string/sample_rating"
+        layout_marginHorizontal="@dimen/dimen_20dp"
+        NOT_FOUND_0x10="0"
+        NOT_FOUND_0x11="0"
+        style="@style/BpjstkuTextViewDmSans.CharcoalGrey"/>
+    <androidx.appcompat.widget.AppCompatRatingBar
+        theme="@style/BpjstkuRatingBar"
+        id="@+id/rtbVocation"
+        layout_width="-2"
+        layout_height="-2"
+        numStars="5"
+        rating="3"
+        stepSize="1"
+        layout_marginStart="@dimen/dimen_20dp"/>
+</LinearLayout>

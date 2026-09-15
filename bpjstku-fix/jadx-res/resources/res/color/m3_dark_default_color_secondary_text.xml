@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        state_enabled="false"
+        color="@color/m3_sys_color_dark_on_surface"
+        alpha="@dimen/material_emphasis_disabled"/>
+    <item color="@color/m3_sys_color_dark_on_surface_variant"/>
+</selector>

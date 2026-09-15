@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt" drawable="@drawable/mtrl_ic_check_mark">
+    <target
+        name="@string/mtrl_checkbox_button_icon_path_group_name"
+        animation="@drawable/_mtrl_checkbox_button_icon_unchecked_checked__0_res_0x7f080044"/>
+    <target
+        name="@string/mtrl_checkbox_button_icon_path_group_name"
+        animation="@drawable/_mtrl_checkbox_button_icon_unchecked_checked__1_res_0x7f080045"/>
+    <target
+        name="@string/mtrl_checkbox_button_icon_path_name"
+        animation="@drawable/_mtrl_checkbox_button_icon_unchecked_checked__2_res_0x7f080046"/>
+</animated-vector>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    id="@+id/cvTreatmentNotification"
+    layout_width="-1"
+    layout_height="-2"
+    layout_marginLeft="@dimen/dimen_20dp"
+    layout_marginTop="@dimen/dimen_8dp"
+    layout_marginRight="@dimen/dimen_20dp"
+    layout_marginBottom="@dimen/dimen_8dp"
+    layout_marginHorizontal="@dimen/dimen_20dp"
+    layout_marginVertical="@dimen/dimen_8dp"
+    NOT_FOUND_0xe="@color/colorDarkMint"
+    NOT_FOUND_0xf="@dimen/dimen_8dp"
+    NOT_FOUND_0x10="@dimen/dimen_4dp">
+    <TextView
+        textSize="@dimen/text_size_14sp"
+        textColor="@color/colorWhite"
+        id="@+id/tvTreatmentMessage"
+        padding="@dimen/dimen_16dp"
+        layout_width="-1"
+        layout_height="-2"
+        fontFamily="@font/dmsans_reguler"
+        justificationMode="1"/>
+</androidx.cardview.widget.CardView>

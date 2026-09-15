@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" shape="0">
+    <corners
+        topLeftRadius="?attr/vida_bottom_sheet_dialog_round_corner_radius"
+        topRightRadius="?attr/vida_bottom_sheet_dialog_round_corner_radius"/>
+    <solid color="?attr/vida_tutorial_dialog_screen_background_color"/>
+</shape>

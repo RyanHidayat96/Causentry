@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        state_enabled="false"
+        color="?attr/colorOnSurface"
+        alpha="@dimen/m3_comp_outlined_text_field_disabled_label_text_opacity"/>
+    <item
+        state_focused="true"
+        color="?attr/colorPrimary"/>
+    <item color="?attr/colorOnSurfaceVariant"/>
+</selector>

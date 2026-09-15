@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Default injection scope; more apps are added from the Causentry UI. -->
+    <string-array name="xposed_scope">
+        <item>com.bpjstku</item>
+    </string-array>
+</resources>

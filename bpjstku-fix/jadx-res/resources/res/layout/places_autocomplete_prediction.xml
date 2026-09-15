@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    orientation="1"
+    layout_width="-1"
+    layout_height="@dimen/places_autocomplete_prediction_height">
+    <TextView
+        textSize="@dimen/places_autocomplete_prediction_primary_text"
+        textColor="@color/places_autocomplete_prediction_primary_text"
+        ellipsize="3"
+        gravity="0x50"
+        id="@+id/places_autocomplete_prediction_primary_text"
+        layout_width="-1"
+        layout_height="0dp"
+        lines="1"
+        singleLine="true"
+        layout_weight="1"/>
+    <TextView
+        textSize="@dimen/places_autocomplete_prediction_secondary_text"
+        textColor="@color/places_autocomplete_prediction_secondary_text"
+        ellipsize="3"
+        gravity="0x30"
+        id="@+id/places_autocomplete_prediction_secondary_text"
+        layout_width="-1"
+        layout_height="0dp"
+        lines="1"
+        singleLine="true"
+        layout_weight="1"/>
+</LinearLayout>

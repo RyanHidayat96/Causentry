@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    orientation="1"
+    layout_width="-1"
+    layout_height="-1">
+    <include
+        visibility="2"
+        layout="@layout/layout_midtrans_progress"/>
+    <include
+        layout_gravity="0x800053"
+        layout_width="-2"
+        layout_height="-2"
+        layout="@layout/layout_sandbox_badge"/>
+</FrameLayout>

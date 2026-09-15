@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    orientation="1"
+    background="@drawable/bg_bottom_sheet"
+    paddingLeft="@dimen/dimen_30dp"
+    paddingRight="@dimen/dimen_30dp"
+    layout_width="-1"
+    layout_height="-2"
+    paddingHorizontal="@dimen/dimen_30dp">
+    <View
+        layout_gravity="0x1"
+        id="@+id/viewTopLine"
+        background="@drawable/bg_rounded_page_grey_ten"
+        layout_width="@dimen/dimen_40dp"
+        layout_height="@dimen/dimen_4dp"
+        layout_marginTop="@dimen/dimen_15dp"/>
+    <androidx.appcompat.widget.AppCompatTextView
+        textSize="@dimen/text_size_18sp"
+        id="@+id/tvLocation"
+        layout_width="-2"
+        layout_marginTop="@dimen/dimen_22dp"
+        style="@style/BpjstkuTextViewPoppins.CharcoalGreyFour.SemiBold"/>
+    <androidx.recyclerview.widget.RecyclerView
+        id="@+id/rvPartnerFilter"
+        layout_width="-1"
+        layout_height="-2"
+        layout_marginTop="@dimen/dimen_22dp"
+        layout_marginBottom="@dimen/dimen_21dp"/>
+</LinearLayout>

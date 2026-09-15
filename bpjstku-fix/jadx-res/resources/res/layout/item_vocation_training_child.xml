@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    background="?attr/selectableItemBackground"
+    layout_width="-1"
+    layout_height="-2">
+    <TextView
+        textSize="@dimen/text_size_16sp"
+        id="@+id/tvTrainingName"
+        layout_width="-2"
+        layout_height="-2"
+        layout_marginTop="@dimen/dimen_16dp"
+        text="@string/sample_training_name"
+        layout_marginStart="@dimen/dimen_24dp"
+        NOT_FOUND_0xe="0"
+        NOT_FOUND_0x10="0"
+        style="@style/BpjstkuTextViewDmSans.CharcoalGrey"/>
+    <TextView
+        textSize="@dimen/text_size_12sp"
+        id="@+id/tvTrainingInformation"
+        layout_width="-2"
+        layout_height="-2"
+        layout_marginBottom="@dimen/dimen_16dp"
+        text="@string/sample_training_information"
+        NOT_FOUND_0xc="0"
+        NOT_FOUND_0xe="@+id/tvTrainingName"
+        NOT_FOUND_0xf="@+id/tvTrainingName"
+        style="@style/BpjstkuTextViewDmSans.CoolGrey"/>
+    <ImageView
+        id="@+id/imgArrowRight"
+        layout_width="-2"
+        layout_height="-2"
+        layout_marginTop="@dimen/dimen_15dp"
+        layout_marginBottom="@dimen/dimen_15dp"
+        src="0x7f080171"
+        layout_marginEnd="@dimen/dimen_15dp"
+        layout_marginVertical="@dimen/dimen_15dp"
+        NOT_FOUND_0xc="0"
+        NOT_FOUND_0xd="0"
+        NOT_FOUND_0x10="0"/>
+</androidx.constraintlayout.widget.ConstraintLayout>

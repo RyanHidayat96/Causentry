@@ -1,0 +1,13 @@
+[package]
+name = "causentryd"
+version = "0.1.0"
+edition = "2024"
+description = "Privileged diagnostic daemon for Causentry"
+license = "UNLICENSED"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "causentryd"
+path = "src/main.rs"

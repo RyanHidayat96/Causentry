@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        state_enabled="false"
+        color="?attr/colorOnSurface"
+        alpha="@dimen/material_emphasis_disabled"/>
+    <item
+        state_checkable="false"
+        color="?attr/colorOnContainer"/>
+    <item
+        state_checked="true"
+        color="?attr/colorOnSecondaryContainer"/>
+    <item color="?attr/colorOnSurface"/>
+</selector>

@@ -1,0 +1,16 @@
+package defpackage;
+
+import java.lang.reflect.Member;
+
+/* JADX INFO: loaded from: classes6.dex */
+public class getDenominator {
+    public static /* synthetic */ Member[] b = new Member[TuitionPaymentFragmentspecialinlinedviewModeldefault1()];
+
+    private static int TuitionPaymentFragmentspecialinlinedviewModeldefault1() {
+        return 1;
+    }
+
+    static {
+        lambdascheduleTask14.TuitionPaymentFragmentbindingInflater1();
+    }
+}

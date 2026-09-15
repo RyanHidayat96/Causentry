@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    orientation="1"
+    layout_width="-1"
+    layout_height="-2">
+    <androidx.appcompat.widget.AppCompatTextView
+        textSize="@dimen/text_size_16sp"
+        id="@+id/tvTuitionCompanyName"
+        layout_width="-2"
+        layout_height="-2"
+        layout_marginTop="@dimen/dimen_16dp"
+        layout_alignParentStart="true"
+        style="@style/BpjstkuTextViewDmSans.CharcoalGrey.Bold"/>
+    <androidx.recyclerview.widget.RecyclerView
+        id="@+id/rvListTuitionCompany"
+        layout_width="-1"
+        layout_height="-2"/>
+</LinearLayout>

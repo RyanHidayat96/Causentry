@@ -1,0 +1,27 @@
+.gradle/
+.idea/
+.kotlin/
+.vscode/
+*.iml
+
+# Android
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+android/app/schemas/
+
+# Rust
+daemon/target/
+Cargo.lock
+
+# Release/build outputs
+release/
+root-module/payload/Causentry.apk
+root-module/bin/causentryd
+
+# OS/editor
+Thumbs.db
+Desktop.ini
+*.swp
+*.tmp

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Causentry</string>
+    <string name="module_description">Causentry — universal detection bypass: protects apps that refuse to run because of developer options, root, fake GPS, debugger or hooking checks.</string>
+</resources>

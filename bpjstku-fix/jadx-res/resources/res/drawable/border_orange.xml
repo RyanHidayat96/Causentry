@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" shape="1">
+    <size
+        height="160dp"
+        width="@dimen/dimen_120dp"/>
+    <stroke
+        width="1dp"
+        color="#f5f514"
+        dashWidth="10px"
+        dashGap="10px"/>
+</shape>

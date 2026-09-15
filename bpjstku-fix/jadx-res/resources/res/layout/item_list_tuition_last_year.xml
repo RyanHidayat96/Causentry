@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    layout_width="-1"
+    layout_height="-2">
+    <androidx.appcompat.widget.AppCompatTextView
+        textSize="@dimen/text_size_16sp"
+        id="@+id/tvTitleTuitionInMonth"
+        layout_width="@dimen/dimen_0dp"
+        NOT_FOUND_0x5="0"
+        NOT_FOUND_0x7="@+id/tvValueSimulationOldDaySecurity"
+        NOT_FOUND_0x8="0"
+        NOT_FOUND_0x9="0"
+        style="@style/BpjstkuTextViewDmSans.CoolGrey"/>
+    <androidx.appcompat.widget.AppCompatTextView
+        textSize="@dimen/text_size_16sp"
+        id="@+id/tvTuitionValue"
+        layout_marginTop="@dimen/dimen_5dp"
+        NOT_FOUND_0x5="0"
+        NOT_FOUND_0x6="0"
+        NOT_FOUND_0x9="0"
+        style="@style/BpjstkuTextViewPoppins.CharcoalGrey.SemiBold"/>
+</androidx.constraintlayout.widget.ConstraintLayout>

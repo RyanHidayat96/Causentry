@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    orientation="0"
+    paddingBottom="?attr/placesSpacingLarge"
+    layout_width="-2"
+    layout_height="-2">
+    <ImageView
+        layout_width="@dimen/gmp_sys_measurement_icon_size_small"
+        layout_height="@dimen/gmp_sys_measurement_icon_size_small"
+        src="@drawable/gs_check_vd_24"
+        tint="?attr/placesColorOnSurface"
+        importantForAccessibility="2"
+        layout_marginEnd="?attr/placesSpacingExtraSmall"/>
+    <TextView
+        textAppearance="?attr/placesTextAppearanceBodySmall"
+        textColor="?attr/placesColorOnSurface"
+        id="@+id/feature_name"
+        paddingBottom="?attr/placesSpacingLarge"
+        layout_width="-2"
+        layout_height="-2"
+        layout_marginEnd="?attr/placesSpacingSmall"/>
+</LinearLayout>

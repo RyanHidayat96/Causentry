@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    layout_width="-1"
+    layout_height="-1">
+    <include
+        id="@+id/layout_toolbar"
+        layout="@layout/layout_toolbar_center"/>
+    <androidx.viewpager.widget.ViewPager
+        id="@+id/vpPaymentDetail"
+        layout_width="-1"
+        layout_height="@dimen/dimen_0dp"
+        NOT_FOUND_0x3="0"
+        NOT_FOUND_0x4="0"
+        NOT_FOUND_0x5="0"
+        NOT_FOUND_0x6="@+id/layout_toolbar">
+        <com.google.android.material.tabs.TabLayout
+            id="@+id/tabPaymentDetail"
+            layout_width="-1"
+            layout_height="-2"
+            NOT_FOUND_0x7="@color/colorWhite"
+            NOT_FOUND_0x8="@color/colorDarkMint"
+            NOT_FOUND_0x9="@color/colorDarkMint"
+            NOT_FOUND_0xa="@style/BpjstkuProgramDetailTabTextAppearance"
+            NOT_FOUND_0xb="@color/colorCoolGrey"/>
+    </androidx.viewpager.widget.ViewPager>
+</androidx.constraintlayout.widget.ConstraintLayout>

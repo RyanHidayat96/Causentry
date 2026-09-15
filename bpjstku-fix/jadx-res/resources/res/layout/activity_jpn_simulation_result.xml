@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    layout_width="-1"
+    layout_height="-1">
+    <include
+        id="@+id/layout_toolbar"
+        NOT_FOUND_0x4="0"
+        NOT_FOUND_0x5="0"
+        NOT_FOUND_0x7="0"
+        layout="@layout/layout_toolbar_center"/>
+    <com.kennyc.view.MultiStateView
+        id="@+id/msvContent"
+        layout_width="@dimen/dimen_0dp"
+        layout_height="@dimen/dimen_0dp"
+        NOT_FOUND_0x3="0"
+        NOT_FOUND_0x4="0"
+        NOT_FOUND_0x5="0"
+        NOT_FOUND_0x6="@+id/layout_toolbar"
+        NOT_FOUND_0x8="@layout/layout_default_empty"
+        NOT_FOUND_0x9="@layout/layout_default_error"
+        NOT_FOUND_0xa="@layout/layout_default_loading">
+        <androidx.viewpager.widget.ViewPager
+            id="@+id/vpJpnSimulationResult"
+            layout_width="-1"
+            layout_height="-2">
+            <com.google.android.material.tabs.TabLayout
+                id="@+id/tabJpnSimulationResult"
+                layout_width="-1"
+                layout_height="-2"
+                NOT_FOUND_0xb="@color/colorWhite"
+                NOT_FOUND_0xc="@color/colorDarkMint"
+                NOT_FOUND_0xd="@color/colorDarkMint"
+                NOT_FOUND_0xe="@style/BpjstkuProgramDetailTabTextAppearance"
+                NOT_FOUND_0xf="@color/colorCoolGrey"/>
+        </androidx.viewpager.widget.ViewPager>
+    </com.kennyc.view.MultiStateView>
+</androidx.constraintlayout.widget.ConstraintLayout>

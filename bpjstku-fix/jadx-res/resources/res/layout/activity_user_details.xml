@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    orientation="1"
+    background="@android:color/white"
+    layout_width="-1"
+    layout_height="-1">
+    <com.google.android.material.appbar.AppBarLayout
+        id="@+id/main_appbar"
+        fitsSystemWindows="true"
+        layout_width="-1"
+        layout_height="?attr/actionBarSize">
+        <androidx.appcompat.widget.Toolbar
+            id="@+id/toolbar"
+            background="@color/white"
+            paddingRight="@dimen/activity_horizontal_margin"
+            layout_width="-1"
+            layout_height="?attr/actionBarSize"
+            paddingEnd="@dimen/activity_horizontal_margin"
+            NOT_FOUND_0xd="0x3"
+            style="@style/ThemeOverlay.AppCompat.ActionBar">
+            <ImageView
+                id="@+id/merchant_logo"
+                layout_width="-2"
+                layout_height="-2"/>
+            <com.midtrans.sdk.uikit.widgets.DefaultTextView
+                textSize="@dimen/tool_bar_title_size"
+                textColor="@color/dark_gray"
+                gravity="0x800005"
+                visibility="0"
+                layout_width="-1"
+                layout_height="-2"
+                text="@string/title_user_details"/>
+        </androidx.appcompat.widget.Toolbar>
+    </com.google.android.material.appbar.AppBarLayout>
+    <RelativeLayout
+        id="@+id/user_detail_container"
+        layout_width="-1"
+        layout_height="-1"/>
+</LinearLayout>

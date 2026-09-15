@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        state_enabled="false"
+        state_checked="false"
+        color="?attr/colorSurfaceContainerHighest"
+        alpha="@dimen/m3_comp_switch_disabled_unselected_icon_opacity"/>
+    <item
+        state_enabled="false"
+        state_checked="true"
+        color="?attr/colorOnSurface"
+        alpha="@dimen/m3_comp_switch_disabled_selected_icon_opacity"/>
+    <item
+        state_checked="true"
+        color="?attr/colorOnPrimaryContainer"/>
+    <item
+        state_checked="false"
+        color="?attr/colorSurfaceContainerHighest"
+        state_hovered="true"/>
+    <item
+        state_focused="true"
+        state_checked="false"
+        color="?attr/colorSurfaceContainerHighest"/>
+    <item
+        state_checked="false"
+        state_pressed="true"
+        color="?attr/colorSurfaceContainerHighest"/>
+    <item
+        state_checked="false"
+        color="?attr/colorSurfaceContainerHighest"/>
+</selector>

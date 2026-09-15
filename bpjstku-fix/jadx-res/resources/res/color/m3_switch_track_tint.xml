@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        state_enabled="false"
+        color="?attr/colorOnSurface"
+        alpha="@dimen/material_emphasis_disabled_background"/>
+    <item
+        state_checked="true"
+        color="?attr/colorPrimaryContainer"/>
+    <item color="?attr/colorOutline"/>
+</selector>

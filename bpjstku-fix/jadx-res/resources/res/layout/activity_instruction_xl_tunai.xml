@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    orientation="1"
+    background="@color/white"
+    layout_width="-1"
+    layout_height="-2">
+    <include layout="@layout/appbar_payment"/>
+    <include
+        layout_width="-1"
+        layout_height="-2"
+        layout="@layout/fragment_instruction_xl_tunai"/>
+</LinearLayout>

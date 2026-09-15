@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    gravity="right"
+    orientation="1"
+    layout_width="-1"
+    layout_height="-1">
+    <TextView
+        textAppearance="?attr/placesTextAppearanceBodyMedium"
+        textColor="?attr/placesColorOnSurfaceVariant"
+        id="@+id/fuel_type"
+        layout_width="-2"
+        layout_height="-2"/>
+    <TextView
+        textAppearance="?attr/placesTextAppearanceBodyMedium"
+        textColor="?attr/placesColorOnSurface"
+        id="@+id/fuel_price"
+        layout_width="-2"
+        layout_height="-2"/>
+</LinearLayout>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    orientation="1"
+    padding="@dimen/dimen_12dp"
+    layout_width="165dp"
+    layout_height="-1">
+    <ProgressBar
+        id="@+id/pbLoadMore"
+        layout_width="-2"
+        layout_height="-2"
+        layout_centerInParent="true"/>
+    <TextView
+        gravity="0x11"
+        id="@+id/tvLoadMoreError"
+        background="?attr/selectableItemBackground"
+        padding="@dimen/dimen_12dp"
+        layout_width="-1"
+        layout_height="-2"
+        text="@string/action_tap_to_retry"
+        layout_centerInParent="true"/>
+</RelativeLayout>

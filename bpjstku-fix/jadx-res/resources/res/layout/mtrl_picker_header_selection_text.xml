@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    gravity="0x800053"
+    id="@+id/mtrl_picker_header_selection_text"
+    paddingBottom="@dimen/mtrl_calendar_pre_l_text_clip_padding"
+    layout_width="-1"
+    layout_height="-2"
+    NOT_FOUND_0x5="1"
+    NOT_FOUND_0x6="@dimen/mtrl_calendar_selection_text_baseline_to_top"
+    NOT_FOUND_0x7="@dimen/mtrl_calendar_header_selection_line_height"
+    style="?attr/materialCalendarHeaderSelection"/>

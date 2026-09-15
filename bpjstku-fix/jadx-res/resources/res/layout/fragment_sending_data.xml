@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    orientation="1"
+    layout_width="-1"
+    layout_height="-2">
+    <androidx.constraintlayout.widget.ConstraintLayout
+        background="@drawable/bg_rounded_white"
+        padding="@dimen/dimen_20dp"
+        layout_width="-1"
+        layout_height="-2"
+        layout_margin="@dimen/dimen_16dp">
+        <ImageView
+            id="@+id/imgSuccess"
+            layout_width="@dimen/dimen_50dp"
+            layout_height="@dimen/dimen_50dp"
+            layout_marginTop="@dimen/dimen_44dp"
+            NOT_FOUND_0xd="0"
+            NOT_FOUND_0xe="0"
+            NOT_FOUND_0x10="0"/>
+        <TextView
+            textSize="@dimen/text_size_18sp"
+            id="@+id/tvResultTitle"
+            layout_width="@dimen/dimen_0dp"
+            layout_height="-2"
+            layout_marginTop="@dimen/dimen_22dp"
+            textAlignment="4"
+            NOT_FOUND_0xd="0"
+            NOT_FOUND_0xe="0"
+            NOT_FOUND_0xf="@+id/imgSuccess"
+            style="@style/BpjstkuTextViewPoppins.CharcoalGrey.SemiBold"/>
+        <TextView
+            id="@+id/tvInfoMessage"
+            layout_width="@dimen/dimen_0dp"
+            layout_height="-2"
+            layout_marginTop="@dimen/dimen_6dp"
+            layout_marginBottom="@dimen/dimen_39dp"
+            lineSpacingExtra="@dimen/text_size_6sp"
+            textAlignment="4"
+            NOT_FOUND_0xc="0"
+            NOT_FOUND_0xd="0"
+            NOT_FOUND_0xe="0"
+            NOT_FOUND_0xf="@+id/tvResultTitle"
+            NOT_FOUND_0x11="@dimen/dimen_10dp"
+            style="@style/BpjstkuTextViewDmSans.CoolGrey"/>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</FrameLayout>

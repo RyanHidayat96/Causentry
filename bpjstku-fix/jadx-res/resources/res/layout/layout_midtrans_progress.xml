@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    gravity="0x11"
+    orientation="1"
+    id="@+id/progress_container"
+    background="@color/white"
+    padding="@dimen/sixteen_dp"
+    paddingBottom="@dimen/sixteen_dp"
+    layout_width="-1"
+    layout_height="-1">
+    <ImageView
+        id="@+id/progress_bar_image"
+        layout_width="@dimen/sixty_four_dp"
+        layout_height="@dimen/sixty_four_dp"/>
+    <com.midtrans.sdk.uikit.widgets.DefaultTextView
+        textSize="@dimen/sixteen_sp"
+        id="@+id/progress_bar_message"
+        layout_width="-2"
+        layout_height="-2"
+        layout_marginTop="@dimen/eight_dp"
+        text="@string/loading"/>
+</LinearLayout>

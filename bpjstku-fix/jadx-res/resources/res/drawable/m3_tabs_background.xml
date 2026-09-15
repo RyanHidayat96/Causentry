@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape shape="0">
+            <solid color="?attr/colorSurface"/>
+        </shape>
+    </item>
+    <item gravity="0x50">
+        <shape>
+            <size height="@dimen/m3_comp_divider_thickness"/>
+            <solid color="?attr/colorOutlineVariant"/>
+        </shape>
+    </item>
+</layer-list>

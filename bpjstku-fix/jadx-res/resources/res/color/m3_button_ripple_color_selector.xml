@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        state_pressed="true"
+        color="?attr/colorOnContainer"
+        alpha="@dimen/m3_ripple_pressed_alpha"/>
+    <item
+        state_focused="true"
+        color="?attr/colorOnContainer"
+        alpha="@dimen/m3_ripple_focused_alpha"/>
+    <item
+        color="?attr/colorOnContainer"
+        alpha="@dimen/m3_ripple_hovered_alpha"
+        state_hovered="true"/>
+    <item
+        color="?attr/colorOnContainer"
+        alpha="@dimen/m3_ripple_default_alpha"/>
+</selector>

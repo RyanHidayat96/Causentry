@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    orientation="@integer/mtrl_calendar_header_orientation"
+    layout_width="-2"
+    layout_height="-1">
+    <include layout="@layout/mtrl_picker_header_dialog"/>
+    <LinearLayout
+        orientation="1"
+        id="@+id/mtrl_calendar_main_pane"
+        layout_width="-2"
+        layout_height="-1">
+        <androidx.fragment.app.FragmentContainerView
+            id="@+id/mtrl_calendar_frame"
+            paddingLeft="@dimen/mtrl_calendar_content_padding"
+            paddingRight="@dimen/mtrl_calendar_content_padding"
+            paddingBottom="@dimen/mtrl_calendar_bottom_padding"
+            layout_width="-1"
+            layout_height="0dp"
+            layout_weight="1"
+            paddingStart="@dimen/mtrl_calendar_content_padding"
+            paddingEnd="@dimen/mtrl_calendar_content_padding"/>
+        <include
+            layout_width="-1"
+            layout_height="@dimen/mtrl_calendar_action_height"
+            layout="@layout/mtrl_picker_actions"/>
+    </LinearLayout>
+</LinearLayout>

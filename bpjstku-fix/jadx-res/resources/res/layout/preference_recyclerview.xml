@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.recyclerview.widget.RecyclerView xmlns:android="http://schemas.android.com/apk/res/android"
+    id="@+id/recycler_view"
+    paddingTop="0dp"
+    paddingBottom="0dp"
+    clipToPadding="false"
+    layout_width="-1"
+    layout_height="-1"
+    style="?attr/preferenceFragmentListStyle"/>

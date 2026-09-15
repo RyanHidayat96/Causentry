@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    background="@android:color/white"
+    fitsSystemWindows="true"
+    layout_width="-1"
+    layout_height="-1">
+    <include layout="@layout/appbar_payment"/>
+    <LinearLayout
+        gravity="0x11"
+        orientation="1"
+        id="@+id/progress_container"
+        background="@color/white"
+        visibility="2"
+        layout_width="-1"
+        layout_height="-1">
+        <include layout="@layout/layout_midtrans_progress"/>
+    </LinearLayout>
+    <RelativeLayout
+        orientation="1"
+        layout_width="-1"
+        layout_height="-2"
+        NOT_FOUND_0xb="@string/appbar_scrolling_view_behavior">
+        <ScrollView
+            layout_width="-1"
+            layout_height="-2"
+            layout_above="@+id/container_item_details"
+            layout_alignParentTop="true">
+            <include layout="@layout/layout_mandiri_bill_status"/>
+        </ScrollView>
+        <View
+            id="@+id/background_dim"
+            background="@color/dim_background"
+            visibility="2"
+            layout_width="-1"
+            layout_height="-2"
+            layout_above="@+id/container_item_details"/>
+        <LinearLayout
+            orientation="1"
+            id="@+id/container_item_details"
+            layout_width="-1"
+            layout_height="-2"
+            layout_above="@+id/button_complete_payment">
+            <androidx.recyclerview.widget.RecyclerView
+                id="@+id/rv_transaction_detail"
+                visibility="2"
+                layout_width="-1"
+                layout_height="-2"/>
+            <View
+                background="@color/light_gray"
+                layout_width="-1"
+                layout_height="@dimen/two_dp"/>
+            <include layout="@layout/layout_total_amount"/>
+        </LinearLayout>
+        <View
+            background="@color/light_gray"
+            layout_width="-1"
+            layout_height="@dimen/two_dp"
+            layout_above="@+id/button_complete_payment"/>
+        <include
+            id="@+id/button_complete_payment"
+            layout="@layout/layout_primary_button"/>
+    </RelativeLayout>
+    <include
+        layout_gravity="0x800053"
+        layout_width="-2"
+        layout_height="-2"
+        layout="@layout/layout_sandbox_badge"/>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

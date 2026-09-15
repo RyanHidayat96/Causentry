@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    orientation="0"
+    id="@+id/month_navigation_bar"
+    paddingTop="@dimen/mtrl_calendar_navigation_top_padding"
+    paddingBottom="@dimen/mtrl_calendar_navigation_bottom_padding"
+    layout_width="-1"
+    layout_height="-2">
+    <FrameLayout
+        layout_width="0dp"
+        layout_height="-1"
+        layout_weight="1">
+        <com.google.android.material.button.MaterialButton
+            gravity="0x800013"
+            layout_gravity="0x800003"
+            id="@+id/month_navigation_fragment_toggle"
+            layout_width="-2"
+            layout_height="@dimen/mtrl_calendar_navigation_height"
+            insetTop="0dp"
+            insetBottom="0dp"
+            NOT_FOUND_0xc="@drawable/material_ic_menu_arrow_down_black_24dp"
+            NOT_FOUND_0xd="0x4"
+            NOT_FOUND_0xe="4dp"
+            style="?attr/materialCalendarYearNavigationButton"/>
+    </FrameLayout>
+    <com.google.android.material.button.MaterialButton
+        gravity="0x11"
+        id="@+id/month_navigation_previous"
+        layout_width="@dimen/mtrl_min_touch_target_size"
+        layout_height="@dimen/mtrl_calendar_navigation_height"
+        insetTop="0dp"
+        insetBottom="0dp"
+        contentDescription="@string/mtrl_picker_a11y_prev_month"
+        NOT_FOUND_0xc="@drawable/material_ic_keyboard_arrow_previous_black_24dp"
+        style="?attr/materialCalendarMonthNavigationButton"/>
+    <com.google.android.material.button.MaterialButton
+        gravity="0x11"
+        id="@+id/month_navigation_next"
+        layout_width="@dimen/mtrl_min_touch_target_size"
+        layout_height="@dimen/mtrl_calendar_navigation_height"
+        insetTop="0dp"
+        insetBottom="0dp"
+        contentDescription="@string/mtrl_picker_a11y_next_month"
+        NOT_FOUND_0xc="@drawable/material_ic_keyboard_arrow_next_black_24dp"
+        style="?attr/materialCalendarMonthNavigationButton"/>
+</LinearLayout>

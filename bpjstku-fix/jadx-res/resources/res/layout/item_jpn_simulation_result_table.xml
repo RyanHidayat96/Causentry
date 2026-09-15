@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    gravity="0x10"
+    paddingLeft="@dimen/dimen_20dp"
+    paddingTop="@dimen/dimen_12dp"
+    paddingRight="@dimen/dimen_20dp"
+    paddingBottom="@dimen/dimen_12dp"
+    layout_width="-1"
+    layout_height="-2"
+    paddingHorizontal="@dimen/dimen_20dp"
+    paddingVertical="@dimen/dimen_12dp">
+    <TextView
+        id="@+id/tvLabel"
+        layout_width="@dimen/dimen_0dp"
+        layout_height="-2"
+        layout_weight="0.5"
+        layout_marginEnd="@dimen/dimen_8dp"
+        style="@style/BpjstkuTextViewDmSans.CoolGrey"/>
+    <TextView
+        id="@+id/tvValue"
+        layout_width="@dimen/dimen_0dp"
+        layout_height="-2"
+        layout_weight="0.5"
+        style="@style/BpjstkuTextViewDmSans.CharcoalGrey"/>
+</LinearLayout>

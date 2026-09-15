@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.appbar.MaterialToolbar xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    gravity="0x10"
+    id="@+id/toolbar"
+    background="@android:color/transparent"
+    layout_width="-1"
+    layout_height="?attr/actionBarSize"
+    NOT_FOUND_0x5="@dimen/dimen_0dp"
+    NOT_FOUND_0x6="0x7f08017b"
+    NOT_FOUND_0x7="@color/colorCharcoalGrey"/>

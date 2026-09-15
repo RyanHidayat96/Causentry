@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    layout_width="-1"
+    layout_height="-1">
+    <include
+        id="@+id/layout_toolbar"
+        layout_width="-1"
+        layout_height="-2"
+        layout_alignParentTop="true"
+        layout="@layout/layout_toolbar"/>
+    <include
+        id="@+id/layout_progress"
+        layout_width="-1"
+        layout_height="-2"
+        layout_below="@+id/layout_toolbar"
+        layout="@layout/layout_registration_progress"/>
+    <FrameLayout
+        id="@+id/containerFragment"
+        layout_width="-1"
+        layout_height="-1"
+        layout_below="@+id/layout_progress"/>
+</RelativeLayout>

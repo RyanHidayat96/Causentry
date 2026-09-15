@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    orientation="1"
+    id="@+id/rootView"
+    layout_width="-1"
+    layout_height="-1">
+    <include
+        id="@+id/layout_toolbar_center"
+        layout_width="-1"
+        layout_height="-2"
+        NOT_FOUND_0xa="0"
+        NOT_FOUND_0xb="0"
+        NOT_FOUND_0xc="0"
+        layout="@layout/layout_toolbar_center"/>
+    <androidx.recyclerview.widget.RecyclerView
+        id="@+id/rvVideo"
+        layout_width="-1"
+        layout_height="-1"
+        layout_marginLeft="@dimen/dimen_20dp"
+        layout_marginTop="@dimen/dimen_16dp"
+        layout_marginRight="@dimen/dimen_20dp"
+        layout_marginBottom="@dimen/dimen_16dp"
+        layout_marginHorizontal="@dimen/dimen_20dp"
+        layout_marginVertical="@dimen/dimen_16dp"/>
+</LinearLayout>

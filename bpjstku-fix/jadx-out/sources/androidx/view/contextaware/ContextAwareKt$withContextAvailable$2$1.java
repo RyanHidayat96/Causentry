@@ -1,0 +1,28 @@
+package androidx.view.contextaware;
+
+import kotlin.Metadata;
+import kotlin.Unit;
+import kotlin.jvm.functions.Function1;
+
+/* JADX INFO: loaded from: classes5.dex */
+@Metadata(k = 3, mv = {2, 1, 0}, xi = 176)
+public final class ContextAwareKt$withContextAvailable$2$1 implements Function1<Throwable, Unit> {
+    final /* synthetic */ ContextAwareKt$withContextAvailable$2$listener$1 $listener;
+    final /* synthetic */ ContextAware $this_withContextAvailable;
+
+    @Override // kotlin.jvm.functions.Function1
+    public final /* bridge */ /* synthetic */ Unit invoke(Throwable th) {
+        invoke2(th);
+        return Unit.INSTANCE;
+    }
+
+    /* JADX INFO: renamed from: invoke, reason: avoid collision after fix types in other method */
+    public final void invoke2(Throwable th) {
+        this.$this_withContextAvailable.removeOnContextAvailableListener(this.$listener);
+    }
+
+    public ContextAwareKt$withContextAvailable$2$1(ContextAware contextAware, ContextAwareKt$withContextAvailable$2$listener$1 contextAwareKt$withContextAvailable$2$listener$1) {
+        this.$this_withContextAvailable = contextAware;
+        this.$listener = contextAwareKt$withContextAvailable$2$listener$1;
+    }
+}

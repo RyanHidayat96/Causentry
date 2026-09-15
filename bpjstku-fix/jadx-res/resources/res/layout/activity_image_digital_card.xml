@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    background="@color/colorPaleGrey"
+    layout_width="-1"
+    layout_height="-1">
+    <com.github.chrisbanes.photoview.PhotoView
+        id="@+id/imgDigitalCardDetail"
+        layout_width="-1"
+        layout_height="-1"
+        layout_marginLeft="@dimen/dimen_20dp"
+        layout_marginRight="@dimen/dimen_20dp"
+        layout_centerInParent="true"
+        layout_marginHorizontal="@dimen/dimen_20dp"/>
+    <com.google.android.material.button.MaterialButton
+        id="@+id/btnSaveDigitalCard"
+        paddingTop="@dimen/dimen_14dp"
+        paddingBottom="@dimen/dimen_14dp"
+        layout_width="-1"
+        layout_height="-2"
+        layout_marginLeft="@dimen/dimen_20dp"
+        layout_marginTop="@dimen/dimen_35dp"
+        layout_marginRight="@dimen/dimen_20dp"
+        layout_marginBottom="@dimen/dimen_32dp"
+        text="@string/action_save"
+        layout_alignParentBottom="true"
+        layout_marginHorizontal="@dimen/dimen_20dp"
+        paddingVertical="@dimen/dimen_14dp"
+        style="@style/BpjstkuButton.WhiteText"/>
+</RelativeLayout>

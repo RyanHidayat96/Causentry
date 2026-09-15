@@ -1,0 +1,106 @@
+package com.bpjstku.data.vocation.model.request;
+
+import com.google.firebase.analytics.FirebaseAnalytics;
+import com.google.gson.annotations.SerializedName;
+import kotlin.Metadata;
+import kotlin.jvm.internal.Intrinsics;
+
+/* JADX INFO: loaded from: classes6.dex */
+@Metadata(d1 = {"\u0000 \n\u0002\u0018\u0002\n\u0002\u0010\u0000\n\u0002\u0010\u000e\n\u0002\b\u000b\n\u0002\u0010\u000b\n\u0002\b\u0002\n\u0002\u0010\b\n\u0002\b\n\b\u0087\b\u0018\u00002\u00020\u0001B\u001f\u0012\u0006\u0010\u0003\u001a\u00020\u0002\u0012\u0006\u0010\u0004\u001a\u00020\u0002\u0012\u0006\u0010\u0005\u001a\u00020\u0002¢\u0006\u0004\b\u0006\u0010\u0007J\u0010\u0010\b\u001a\u00020\u0002HÇ\u0003¢\u0006\u0004\b\b\u0010\tJ\u0010\u0010\n\u001a\u00020\u0002HÇ\u0003¢\u0006\u0004\b\n\u0010\tJ\u0010\u0010\u000b\u001a\u00020\u0002HÇ\u0003¢\u0006\u0004\b\u000b\u0010\tJ.\u0010\f\u001a\u00020\u00002\b\b\u0002\u0010\u0003\u001a\u00020\u00022\b\b\u0002\u0010\u0004\u001a\u00020\u00022\b\b\u0002\u0010\u0005\u001a\u00020\u0002HÇ\u0001¢\u0006\u0004\b\f\u0010\rJ\u001a\u0010\u000f\u001a\u00020\u000e2\b\u0010\u0003\u001a\u0004\u0018\u00010\u0001HÖ\u0003¢\u0006\u0004\b\u000f\u0010\u0010J\u0010\u0010\u0012\u001a\u00020\u0011HÖ\u0001¢\u0006\u0004\b\u0012\u0010\u0013J\u0010\u0010\u0014\u001a\u00020\u0002H×\u0001¢\u0006\u0004\b\u0014\u0010\tR\u001a\u0010\u0015\u001a\u00020\u00028\u0007X\u0087\u0004¢\u0006\f\n\u0004\b\u0015\u0010\u0016\u001a\u0004\b\u0017\u0010\tR\u001a\u0010\u0018\u001a\u00020\u00028\u0007X\u0087\u0004¢\u0006\f\n\u0004\b\u0018\u0010\u0016\u001a\u0004\b\u0019\u0010\tR\u001a\u0010\u001a\u001a\u00020\u00028\u0007X\u0087\u0004¢\u0006\f\n\u0004\b\u001a\u0010\u0016\u001a\u0004\b\u001b\u0010\t"}, d2 = {"Lcom/bpjstku/data/vocation/model/request/DataSurveyRequest;", "", "", "p0", "p1", "p2", "<init>", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", "component1", "()Ljava/lang/String;", "component2", "component3", "copy", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/bpjstku/data/vocation/model/request/DataSurveyRequest;", "", "equals", "(Ljava/lang/Object;)Z", "", "hashCode", "()I", "toString", "remarks", "Ljava/lang/String;", "getRemarks", "surveyCode", "getSurveyCode", FirebaseAnalytics.Param.SCORE, "getScore"}, k = 1, mv = {2, 1, 0}, xi = 48)
+public final /* data */ class DataSurveyRequest {
+    public static final int $stable = 0;
+
+    @SerializedName("keterangan")
+    private final String remarks;
+
+    @SerializedName("nilai")
+    private final String score;
+
+    @SerializedName("kodeSurvey")
+    private final String surveyCode;
+
+    public DataSurveyRequest(String str, String str2, String str3) {
+        Intrinsics.checkNotNullParameter(str, "");
+        Intrinsics.checkNotNullParameter(str2, "");
+        Intrinsics.checkNotNullParameter(str3, "");
+        this.remarks = str;
+        this.surveyCode = str2;
+        this.score = str3;
+    }
+
+    public final String getRemarks() {
+        return this.remarks;
+    }
+
+    public final String getSurveyCode() {
+        return this.surveyCode;
+    }
+
+    public final String getScore() {
+        return this.score;
+    }
+
+    public static /* synthetic */ DataSurveyRequest copy$default(DataSurveyRequest dataSurveyRequest, String str, String str2, String str3, int i, Object obj) {
+        if ((i & 1) != 0) {
+            str = dataSurveyRequest.remarks;
+        }
+        if ((i & 2) != 0) {
+            str2 = dataSurveyRequest.surveyCode;
+        }
+        if ((i & 4) != 0) {
+            str3 = dataSurveyRequest.score;
+        }
+        return dataSurveyRequest.copy(str, str2, str3);
+    }
+
+    /* JADX INFO: renamed from: component1, reason: from getter */
+    public final String getRemarks() {
+        return this.remarks;
+    }
+
+    /* JADX INFO: renamed from: component2, reason: from getter */
+    public final String getSurveyCode() {
+        return this.surveyCode;
+    }
+
+    /* JADX INFO: renamed from: component3, reason: from getter */
+    public final String getScore() {
+        return this.score;
+    }
+
+    public final DataSurveyRequest copy(String p0, String p1, String p2) {
+        Intrinsics.checkNotNullParameter(p0, "");
+        Intrinsics.checkNotNullParameter(p1, "");
+        Intrinsics.checkNotNullParameter(p2, "");
+        return new DataSurveyRequest(p0, p1, p2);
+    }
+
+    public final boolean equals(Object p0) {
+        if (this == p0) {
+            return true;
+        }
+        if (!(p0 instanceof DataSurveyRequest)) {
+            return false;
+        }
+        DataSurveyRequest dataSurveyRequest = (DataSurveyRequest) p0;
+        return Intrinsics.areEqual(this.remarks, dataSurveyRequest.remarks) && Intrinsics.areEqual(this.surveyCode, dataSurveyRequest.surveyCode) && Intrinsics.areEqual(this.score, dataSurveyRequest.score);
+    }
+
+    public final int hashCode() {
+        return (((this.remarks.hashCode() * 31) + this.surveyCode.hashCode()) * 31) + this.score.hashCode();
+    }
+
+    public final String toString() {
+        String str = this.remarks;
+        String str2 = this.surveyCode;
+        String str3 = this.score;
+        StringBuilder sb = new StringBuilder("DataSurveyRequest(remarks=");
+        sb.append(str);
+        sb.append(", surveyCode=");
+        sb.append(str2);
+        sb.append(", score=");
+        sb.append(str3);
+        sb.append(")");
+        return sb.toString();
+    }
+}

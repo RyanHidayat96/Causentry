@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    orientation="0"
+    layout_width="-1"
+    layout_height="-2">
+    <com.midtrans.sdk.uikit.widgets.DefaultTextView
+        textColor="@color/black"
+        ellipsize="3"
+        id="@+id/item_name"
+        padding="@dimen/eight_dp"
+        layout_width="0dp"
+        layout_height="-2"
+        singleLine="true"
+        layout_weight="5"/>
+    <com.midtrans.sdk.uikit.widgets.DefaultTextView
+        textColor="@color/black"
+        ellipsize="3"
+        gravity="right"
+        id="@+id/item_quantity"
+        paddingTop="@dimen/eight_dp"
+        paddingBottom="@dimen/eight_dp"
+        layout_width="0dp"
+        layout_height="-2"
+        layout_weight="1"/>
+    <com.midtrans.sdk.uikit.widgets.BoldTextView
+        textColor="@color/black"
+        ellipsize="3"
+        gravity="0x5"
+        id="@+id/item_price"
+        padding="@dimen/eight_dp"
+        layout_width="0dp"
+        layout_height="-2"
+        singleLine="true"
+        layout_weight="3"/>
+</LinearLayout>

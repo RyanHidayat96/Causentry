@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        state_checked="true"
+        state_pressed="true"
+        color="?attr/colorOnSurface"
+        alpha="@dimen/m3_ripple_selectable_pressed_alpha"/>
+    <item
+        state_focused="true"
+        state_checked="true"
+        color="?attr/colorPrimary"
+        alpha="@dimen/m3_ripple_focused_alpha"/>
+    <item
+        state_checked="true"
+        color="?attr/colorPrimary"
+        alpha="@dimen/m3_ripple_hovered_alpha"
+        state_hovered="true"/>
+    <item
+        state_checked="true"
+        color="?attr/colorPrimary"
+        alpha="@dimen/m3_ripple_default_alpha"/>
+    <item
+        state_pressed="true"
+        color="?attr/colorPrimary"
+        alpha="@dimen/m3_ripple_selectable_pressed_alpha"/>
+    <item
+        state_focused="true"
+        color="?attr/colorOnSurface"
+        alpha="@dimen/m3_ripple_focused_alpha"/>
+    <item
+        color="?attr/colorOnSurface"
+        alpha="@dimen/m3_ripple_hovered_alpha"
+        state_hovered="true"/>
+    <item
+        color="?attr/colorOnSurface"
+        alpha="@dimen/m3_ripple_default_alpha"/>
+</selector>

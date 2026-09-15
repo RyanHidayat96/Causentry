@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    orientation="1"
+    layout_width="-1"
+    layout_height="-2">
+    <TextView
+        id="@+id/tvBranchOfficeRegionalName"
+        background="@color/colorPaleGreyFour"
+        paddingTop="@dimen/dimen_6dp"
+        paddingBottom="@dimen/dimen_6dp"
+        layout_width="-1"
+        layout_height="-2"
+        paddingStart="@dimen/dimen_30dp"
+        paddingEnd="@dimen/dimen_8dp"
+        paddingVertical="@dimen/dimen_6dp"
+        style="@style/BpjstkuTextViewDmSans.Black.Bold"/>
+    <androidx.recyclerview.widget.RecyclerView
+        id="@+id/rvBranchOffice"
+        paddingLeft="@dimen/dimen_30dp"
+        paddingRight="@dimen/dimen_30dp"
+        layout_width="-1"
+        layout_height="-2"
+        paddingHorizontal="@dimen/dimen_30dp"/>
+</LinearLayout>

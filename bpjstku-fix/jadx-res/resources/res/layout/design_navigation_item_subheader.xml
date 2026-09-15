@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    textAppearance="@style/TextAppearance.AppCompat.Body2"
+    textColor="?android:attr/textColorSecondary"
+    gravity="0x800013"
+    paddingLeft="?attr/listPreferredItemPaddingLeft"
+    paddingRight="?attr/listPreferredItemPaddingRight"
+    layout_width="-1"
+    layout_height="?attr/listPreferredItemHeightSmall"
+    maxLines="1"/>

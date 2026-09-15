@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    paddingLeft="@dimen/sixteen_dp"
+    paddingTop="@dimen/eight_dp"
+    paddingRight="@dimen/sixteen_dp"
+    paddingBottom="@dimen/eight_dp"
+    layout_width="-1"
+    layout_height="-2">
+    <com.midtrans.sdk.uikit.widgets.DefaultTextView
+        textSize="@dimen/small_text_size"
+        textColor="@color/white"
+        id="@+id/item_price"
+        layout_width="-2"
+        layout_height="-2"
+        layout_alignParentRight="true"
+        layout_centerVertical="true"
+        layout_alignParentEnd="true"/>
+    <com.midtrans.sdk.uikit.widgets.DefaultTextView
+        textSize="@dimen/small_text_size"
+        textColor="@color/white"
+        id="@+id/item_name"
+        layout_width="-2"
+        layout_height="-2"
+        layout_alignParentLeft="true"
+        layout_centerVertical="true"
+        layout_alignParentStart="true"/>
+</RelativeLayout>

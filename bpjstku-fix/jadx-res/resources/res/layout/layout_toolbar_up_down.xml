@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.appbar.MaterialToolbar xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    id="@+id/toolbar"
+    background="@drawable/bg_half_rounded_white"
+    layout_width="-1"
+    layout_height="?attr/actionBarSize"
+    NOT_FOUND_0x8="@dimen/dimen_0dp"
+    NOT_FOUND_0x9="@dimen/dimen_0dp">
+    <TextView
+        textSize="@dimen/text_size_14sp"
+        id="@+id/tvToolbarTitle"
+        layout_width="-2"
+        layout_height="-2"
+        text="Direktori Kantor Cabang"
+        layout_marginEnd="@dimen/dimen_32dp"
+        style="@style/BpjstkuTextViewPoppins.CharcoalGrey.Bold"/>
+    <ImageButton
+        layout_width="-2"
+        layout_height="-2"
+        src="@drawable/ic_arrow_down"/>
+</com.google.android.material.appbar.MaterialToolbar>

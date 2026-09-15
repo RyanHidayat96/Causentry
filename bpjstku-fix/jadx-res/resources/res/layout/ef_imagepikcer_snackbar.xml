@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    layout_width="-1"
+    layout_height="@dimen/ef_height_snackbar">
+    <TextView
+        textColor="@color/ef_white"
+        id="@+id/ef_snackbar_txt_bottom_caption"
+        layout_width="-2"
+        layout_height="-2"
+        maxLines="2"
+        layout_toLeftOf="@+id/ef_snackbar_btn_action"
+        layout_centerVertical="true"
+        layout_toStartOf="@+id/ef_snackbar_btn_action"/>
+    <Button
+        textColor="?attr/colorAccent"
+        id="@+id/ef_snackbar_btn_action"
+        background="?attr/selectableItemBackground"
+        layout_width="-2"
+        layout_height="-2"
+        layout_alignParentRight="true"
+        layout_centerVertical="true"
+        layout_alignParentEnd="true"/>
+</merge>

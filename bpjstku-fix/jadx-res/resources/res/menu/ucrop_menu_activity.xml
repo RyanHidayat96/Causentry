@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        icon="0x7f0803e4"
+        id="@+id/menu_crop"
+        title="@string/ucrop_menu_crop"
+        NOT_FOUND_0x4="0x1"/>
+    <item
+        icon="@drawable/ucrop_vector_loader_animated"
+        enabled="false"
+        id="@+id/menu_loader"
+        title=""
+        NOT_FOUND_0x4="0x1"/>
+</menu>

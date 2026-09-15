@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    gravity="0x11"
+    layout_width="@dimen/material_clock_display_padding"
+    layout_height="@dimen/material_clock_display_height"
+    importantForAccessibility="2"
+    style="?attr/materialDisplayDividerStyle"/>
