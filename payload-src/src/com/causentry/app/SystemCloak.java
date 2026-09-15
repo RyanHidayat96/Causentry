@@ -49,7 +49,7 @@ public final class SystemCloak {
                     if (method == null || arg == null) return;
                     if (!method.startsWith("GET")) return;         // never touch writes
                     if (!Hide.SETTINGS_KEYS.contains(arg)) return;
-                    if (!isProtectedUid(Binder.getCallingUid())) return;
+                    if (!CloakCfg.isTarget(Binder.getCallingUid())) return;
 
                     Bundle b = new Bundle();
                     b.putString(Settings.NameValueTable.VALUE, "0");

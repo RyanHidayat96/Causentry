@@ -51,5 +51,12 @@ done
 printf ']}' >> "$T"
 
 cp -f "$T" "$OUT" 2>/dev/null && chmod 644 "$OUT" 2>/dev/null
+
+# same file for the processes that cannot read /data/system:
+#   SettingsProvider (system_app) -> /data/local/tmp + the sdcard media dir
+for d in /data/local/tmp/causentry /sdcard/Android/media/com.causentry.app /data/media/0/Android/media/com.causentry.app; do
+  mkdir -p "$d" 2>/dev/null
+  cp -f "$T" "$d/cloak.json" 2>/dev/null && chmod 644 "$d/cloak.json" 2>/dev/null
+done
 [ "$T" = "$DIR/.cloak.tmp" ] && mv -f "$T" "$DIR/cloak.json.tmp" 2>/dev/null
-echo "cloak.json: $(wc -c < "$OUT" 2>/dev/null) bytes -> $OUT"
+echo "cloak.json: $(wc -c < "$OUT" 2>/dev/null) bytes -> $OUT (+3 mirrors)"

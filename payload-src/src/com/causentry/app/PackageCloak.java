@@ -2,9 +2,6 @@ package com.causentry.app;
 
 import android.os.Binder;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -36,23 +33,33 @@ import de.robv.android.xposed.XposedHelpers;
  */
 public final class PackageCloak {
 
-    private static final String CONFIG = "/data/system/causentry/cloak.json";
-    private static final long RELOAD_MS = 5000;
-
     private static final String[] CANDIDATES = {
             "com.android.server.pm.IPackageManagerBase",                    // Android 15/16
             "com.android.server.pm.PackageManagerService$IPackageManagerImpl",
             "com.android.server.pm.PackageManagerService",
     };
 
-    private static long loadedAt = 0;
-    private static long lastMtime = -1;
-    private static final Set<Integer> TARGET_UIDS = new HashSet<>();
-    private static final Set<String> TARGETS = new HashSet<>();
-    private static final Set<String> HIDDEN = new HashSet<>();
-
     private PackageCloak() {
     }
+
+    /** queries that take a package name: cloaked -> NameNotFoundException */
+    private static final String[] NAME_METHODS = {
+            "getPackageInfo", "getPackageInfoVersioned", "getApplicationInfo", "getApplicationInfoAsUser",
+            "getActivityInfo", "getServiceInfo", "getReceiverInfo", "getProviderInfo",
+    };
+
+    /** queries that return a list: cloaked entries are dropped */
+    private static final String[] LIST_METHODS = {
+            "getInstalledPackages", "getInstalledPackagesAsUser", "getInstalledApplications",
+            "getInstalledApplicationsAsUser", "getPackagesHoldingPermissions", "getPreferredActivities",
+            "queryIntentActivities", "queryIntentServices", "queryBroadcastReceivers",
+            "queryIntentContentProviders", "queryContentProviders",
+    };
+
+    /** resolve-style queries: cloaked component -> nothing resolves */
+    private static final String[] RESOLVE_METHODS = {
+            "resolveIntent", "resolveService", "resolveContentProvider", "findPersistentPreferredActivity",
+    };
 
     public static void install(ClassLoader cl) {
         try {
@@ -66,21 +73,23 @@ public final class PackageCloak {
                     continue;
                 }
                 int n = 0;
-                n += XposedBridge.hookAllMethods(c, "getPackageInfo", new NotFound()).size();
-                n += XposedBridge.hookAllMethods(c, "getApplicationInfo", new NotFound()).size();
+                NotFound notFound = new NotFound();
+                ListFilter listFilter = new ListFilter();
+                NullWhenCloaked nullFilter = new NullWhenCloaked();
+                for (String m : NAME_METHODS) n += XposedBridge.hookAllMethods(c, m, notFound).size();
+                for (String m : LIST_METHODS) n += XposedBridge.hookAllMethods(c, m, listFilter).size();
+                for (String m : RESOLVE_METHODS) n += XposedBridge.hookAllMethods(c, m, nullFilter).size();
                 n += XposedBridge.hookAllMethods(c, "getPackageUid", new CloakUid()).size();
-                n += XposedBridge.hookAllMethods(c, "getInstalledPackages", new ListFilter()).size();
-                n += XposedBridge.hookAllMethods(c, "getInstalledApplications", new ListFilter()).size();
-                n += XposedBridge.hookAllMethods(c, "queryIntentActivities", new ListFilter()).size();
                 n += XposedBridge.hookAllMethods(c, "getPackagesForUid", new ArrayFilter()).size();
+                n += XposedBridge.hookAllMethods(c, "getApplicationEnabledSetting", new CloakEnabled()).size();
                 if (n > 0) {
                     hooked += n;
                     XposedBridge.log("Causentry cloak: hooked " + n + " methods on " + name);
                 }
             }
-            refresh();
+            CloakCfg.refresh();
             XposedBridge.log("Causentry cloak installed in system_server: methods=" + hooked
-                    + " targets=" + TARGETS + " hidden=" + HIDDEN.size());
+                    + " targets=" + CloakCfg.TARGETS + " hidden=" + CloakCfg.HIDDEN.size());
         } catch (Throwable t) {
             XposedBridge.log("Causentry cloak failed: " + t);
         }
@@ -116,6 +125,37 @@ public final class PackageCloak {
                 String pkg = firstString(param.args);
                 if (pkg != null && isCloaked(pkg) && isTarget(Binder.getCallingUid())) {
                     param.setResult(-1);
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /** a cloaked package also reports as disabled ("installed but not usable") */
+    private static final class CloakEnabled extends XC_MethodHook {
+        @Override
+        protected void beforeHookedMethod(MethodHookParam param) {
+            try {
+                String pkg = firstString(param.args);
+                if (pkg != null && isCloaked(pkg) && isTarget(Binder.getCallingUid())) {
+                    param.setResult(2);   // COMPONENT_ENABLED_STATE_DISABLED
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /** resolve* / findPersistent* : a cloaked component must not resolve */
+    private static final class NullWhenCloaked extends XC_MethodHook {
+        @Override
+        protected void afterHookedMethod(MethodHookParam param) {
+            try {
+                if (!isTarget(Binder.getCallingUid())) return;
+                String name = nameOf(param.getResult());
+                if (name != null && isCloaked(name)) {
+                    XposedBridge.log("Causentry cloak: " + methodName(param) + " leaked " + name
+                            + " -> null for caller=" + Binder.getCallingUid());
+                    param.setResult(null);
                 }
             } catch (Throwable ignored) {
             }
@@ -161,7 +201,13 @@ public final class PackageCloak {
                 if (in == null) return;
                 List<Object> out = new ArrayList<>(in.size());
                 for (Object o : in) {
-                    if (!isCloaked(nameOf(o))) out.add(o);
+                    String name = nameOf(o);
+                    if (!isCloaked(name)) {
+                        out.add(o);
+                    } else {
+                        XposedBridge.log("Causentry cloak: " + methodName(param) + " leaked " + name
+                                + " -> filtered for caller=" + Binder.getCallingUid());
+                    }
                 }
                 if (out.size() == in.size()) return;
                 if (!parceled) {
@@ -213,66 +259,10 @@ public final class PackageCloak {
     }
 
     private static boolean isTarget(int uid) {
-        refresh();
-        return TARGET_UIDS.contains(uid);
+        return CloakCfg.isTarget(uid);
     }
 
     private static boolean isCloaked(String pkg) {
-        refresh();
-        return pkg != null && HIDDEN.contains(pkg);
-    }
-
-    /** reload at most every RELOAD_MS, and only when the file changed */
-    private static synchronized void refresh() {
-        long now = System.currentTimeMillis();
-        if (now - loadedAt < RELOAD_MS) return;
-        loadedAt = now;
-        try {
-            File f = new File(CONFIG);
-            long mt = f.lastModified();
-            if (mt == lastMtime) return;
-            lastMtime = mt;
-            BufferedReader r = new BufferedReader(new FileReader(f));
-            StringBuilder sb = new StringBuilder();
-            try {
-                String line;
-                while ((line = r.readLine()) != null) sb.append(line);
-            } finally {
-                r.close();
-            }
-            String json = sb.toString();
-            TARGET_UIDS.clear();
-            TARGETS.clear();
-            HIDDEN.clear();
-            readInts(json, "\"targetUids\"", TARGET_UIDS);
-            readStrings(json, "\"targets\"", TARGETS);
-            readStrings(json, "\"hidden\"", HIDDEN);
-        } catch (Throwable ignored) {
-            // keep the last good set
-        }
-    }
-
-    private static void readInts(String json, String key, Set<Integer> into) {
-        int i = json.indexOf(key);
-        if (i < 0) return;
-        int open = json.indexOf('[', i), close = json.indexOf(']', open);
-        if (open < 0 || close < 0) return;
-        for (String part : json.substring(open + 1, close).split(",")) {
-            try {
-                into.add(Integer.parseInt(part.trim()));
-            } catch (Throwable ignored) {
-            }
-        }
-    }
-
-    private static void readStrings(String json, String key, Set<String> into) {
-        int i = json.indexOf(key);
-        if (i < 0) return;
-        int open = json.indexOf('[', i), close = json.indexOf(']', open);
-        if (open < 0 || close < 0) return;
-        for (String part : json.substring(open + 1, close).split(",")) {
-            String s = part.trim().replace("\"", "");
-            if (!s.isEmpty()) into.add(s);
-        }
+        return CloakCfg.isCloaked(pkg);
     }
 }
