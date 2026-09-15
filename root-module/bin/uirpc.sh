@@ -56,8 +56,8 @@ snapshot() {
   rootapps=$(sh "$DIR/root-apps.sh" scan 2>/dev/null | tr '\n' ',')
   suggests=$(sh "$DIR/root-apps.sh" suggest 2>/dev/null | tr '\n' ',')
   {
-    printf '{"state":"%s","daemon":%s,"global":"%s","secure":"%s","mock":"%s",' \
-      "$(jstr "$state")" "$dalive" \
+    printf '{"state":"%s","daemon":%s,"ts":%s,"age":%s,"global":"%s","secure":"%s","mock":"%s",' \
+      "$(jstr "$state")" "$dalive" "$(date +%s)" "$dage" \
       "$(settings get global development_settings_enabled 2>/dev/null)" \
       "$(settings get secure development_settings_enabled 2>/dev/null)" \
       "$(settings get secure mock_location 2>/dev/null)"

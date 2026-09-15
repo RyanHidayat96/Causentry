@@ -116,6 +116,20 @@ public class UiActivity extends Activity {   // cache-busting on update
                     web.evaluateJavascript(
                             "window.CausentryOpenApp && window.CausentryOpenApp('" + app + "')", null);
                 }
+                // headless automation: --ez apply true drives the real Apply handler,
+                // optionally with a feature forced on/off first (audit / smoke test)
+                if (getIntent() != null && getIntent().getBooleanExtra("apply", false)) {
+                    String feat = getIntent().getStringExtra("feature");
+                    boolean on = getIntent().getBooleanExtra("on", true);
+                    if (feat != null && !feat.isEmpty()) {
+                        web.evaluateJavascript("window.CausentrySetFeature('" + feat + "', " + on + ")", null);
+                    }
+                    web.postDelayed(new Runnable() {
+                        public void run() {
+                            web.evaluateJavascript("window.CausentryClickApply && window.CausentryClickApply()", null);
+                        }
+                    }, 1500);
+                }
             }
         });
         web.addJavascriptInterface(new UiBridge(this), "Causentry");

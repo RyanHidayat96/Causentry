@@ -74,7 +74,8 @@ ensure_ui
     date +%s > "$DIR/heartbeat" 2>/dev/null
     [ $((n % 6)) -eq 0 ] && ensure_ui
     # control-UI app: run its pending commands + refresh the state snapshot
-    [ -f "$DIR/uirpc.sh" ] && sh "$DIR/uirpc.sh" serve >/dev/null 2>&1
+    [ -f "$DIR/uirpc.sh" ] && sh "$DIR/uirpc.sh" serve >/dev/null 2>&1; rc=$?
+    echo "$(date '+%m-%d %H:%M:%S') tick=$n uirpc=$rc" >> "$DIR/.watchdog.log"
     [ $((n % 6)) -eq 0 ] && sh "$DIR/uirpc.sh" apps >/dev/null 2>&1
     evaluate
   done

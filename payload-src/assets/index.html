@@ -608,6 +608,10 @@ function renderList(){
 /* ---------- render: detail ---------- */
 // deep link for the native shell (am start --es app <pkg>) and for automation
 window.CausentryOpenApp = function(pkg){ try { showDetail(pkg); } catch (e) {} };
+// automation hooks: they exercise exactly the same handlers the buttons call
+window.CausentrySetFeature = function(id, on){ try { const el = $(id); if (el) el.checked = !!on; } catch (e) {} };
+window.CausentryClickApply = function(){ try { $("btnApplyApp").click(); } catch (e) {} };
+window.CausentryClickRemove = function(){ try { $("btnRemoveApp").click(); } catch (e) {} };
 
 function renderDetail(pkg){
   const feats = (S.cfg.apps || {})[pkg] || null;
@@ -638,7 +642,17 @@ function applySnapshot(s){
   S.snap = s || {};
   const st = (s && s.state) || "unknown";
   const pill = $("statePill");
-  const daemon = !!(s && s.daemon);
+  // the snapshot is written by the daemon: an old timestamp means the daemon is gone,
+  // whatever the file still claims
+  const snapAge = (s && s.ts) ? (Date.now() / 1000 - s.ts) : 1e9;
+  const daemon = !!(s && s.daemon) && snapAge < 15;
+  S.snap.daemon = daemon;
+  S.snap.age = Math.round(snapAge);
+  // reuse whatever view is on screen: freeze the action buttons when the daemon is gone
+  const ba = $("btnApplyApp"), br = $("btnRemoveApp"), dnote = $("d-note");
+  if (ba) ba.disabled = !daemon;
+  if (br) br.disabled = !daemon;
+  if (dnote) dnote.textContent = !daemon ? t("daemonDown") : "";
   pill.textContent = !daemon ? t("ok_stopped").toUpperCase()
         : (st === "active" ? t("ok_cloakActive").toUpperCase() : t("ok_cloakIdle").toUpperCase());
   pill.className = "pill " + (!daemon ? "err" : (st === "active" ? "on" : "off"));
@@ -811,7 +825,8 @@ function featuresOfEntry(e){
   return got.sort().join(",");
 }
 function reportResult(r, okMsg){
-  toast(r.ok ? okMsg : (r.why === "daemon" ? t("daemonDown") : t("saveWarn")), r.ok ? "ok" : "err");
+  const bad = (r.why === "daemon" || r.why === "timeout") ? t("daemonDown") : t("saveWarn");
+  toast(r.ok ? okMsg : bad, r.ok ? "ok" : "err");
 }
 Transport.icon   = async pkg => { try { return B ? B.icon(pkg) : ""; } catch(e){ return ""; } };
 
