@@ -117,7 +117,13 @@ New-Item -ItemType Directory -Force -Path $Release | Out-Null
 
 # ---------------- 1..7 payload APK ----------------
 if (-not $NoApk) {
-  if (Test-Path $Build) { Remove-Item -Recurse -Force $Build }
+  # clean per entry: a foreign file (e.g. a ROM dump being inspected) may be locked,
+  # and that must not break the build
+  if (Test-Path $Build) {
+    Get-ChildItem -Force $Build | ForEach-Object {
+      try { Remove-Item -Recurse -Force $_.FullName -ErrorAction Stop } catch { Write-Host "   (skip locked: $($_.Name))" }
+    }
+  }
   foreach ($d in "stubs", "classes", "dex", "gen", "apk") {
     New-Item -ItemType Directory -Force -Path (Join-Path $Build $d) | Out-Null
   }
