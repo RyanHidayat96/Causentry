@@ -1,4 +1,5 @@
 #include <android/log.h>
+#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -6,15 +7,16 @@
 
 #include "zygisk.hpp"
 
-// Causentry — Zygisk backend (no LSPosed needed).
+// Causentry - Zygisk backend (no LSPosed needed).
 //
 // The system-side hooks (package cloaking, app-ops cloaking, settings cloaking and the
 // app-zygote denial) have to live inside system_server. LSPosed/Vector can host them, but
 // this native module is the dependency-free path: Zygisk loads the shared object into
 // system_server and LSPlant performs the Java method hooks from C++.
 //
-// Stage 1 (this file): prove the injection path - the module detects system_server, reads
-// the daemon-written config and reports what it sees. Stage 2 adds the LSPlant hooks.
+// Stage 1 (this file): prove the injection path. The module enters system_server
+// through the server-specialize callbacks, reads the daemon-written config and
+// reports what it sees. Stage 2 adds the LSPlant hooks.
 
 #define LOG_TAG "CausentryZygisk"
 
@@ -55,15 +57,30 @@ public:
     }
 
     void preAppSpecialize(zygisk::AppSpecializeArgs *args) override {
-        // keep the JNIEnv for stage 2 (LSPlant needs it while the process is still forking)
         const char *nice = args->nice_name ? env->GetStringUTFChars(args->nice_name, nullptr) : nullptr;
         process_name = nice ? nice : "";
         if (nice) env->ReleaseStringUTFChars(args->nice_name, nice);
-        is_system_server = process_name == "system_server";
-        logi("preAppSpecialize: process=%s system_server=%d", process_name.c_str(), is_system_server);
+        is_system_server = false;
+        if (api != nullptr) api->setOption(zygisk::DLCLOSE_MODULE_LIBRARY);
+        logi("preAppSpecialize: process=%s system_server=0", process_name.c_str());
     }
 
     void postAppSpecialize(const zygisk::AppSpecializeArgs *) override {
+        // App-process hooks are intentionally not implemented in this backend.
+    }
+
+    void preServerSpecialize(zygisk::ServerSpecializeArgs *) override {
+        process_name = "system_server";
+        is_system_server = true;
+        logi("preServerSpecialize: process=system_server");
+    }
+
+    void postServerSpecialize(const zygisk::ServerSpecializeArgs *) override {
+        reportSystemServer();
+    }
+
+private:
+    void reportSystemServer() {
         if (!is_system_server) return;
         std::string cfg = readConfig();
         logi("injected into system_server (config %zu bytes, targets json present: %s)",
@@ -71,7 +88,6 @@ public:
         // stage 2: LSPlant hooks - package cloaking, app-ops, settings, app-zygote denial
     }
 
-private:
     zygisk::Api *api = nullptr;
     JNIEnv *env = nullptr;
     std::string process_name;

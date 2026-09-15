@@ -1,5 +1,8 @@
 # Root Module Common
 
-Shared shell helpers will live here after provider lifecycle work begins.
+This directory is reserved for shared module assets that are not executable shell entry
+points. Active runtime helpers currently live in `root-module/bin/lib.sh`.
 
-STEP 1 intentionally contains no provider detection, no APK bootstrap, no daemon startup, and no SELinux policy.
+Provider-specific behavior should stay behind small shell helpers or future Rust
+adapters so Magisk, KernelSU, KernelSU-Next, and APatch differences do not leak across
+the rest of the module.

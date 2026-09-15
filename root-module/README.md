@@ -4,8 +4,9 @@ Universal detection bypass for apps that refuse to run, show a block dialog, or
 force-close because of developer options, mock location / fake-GPS apps, root
 tooling, or anti-injection (PairIP / RASP) protection.
 
-Nothing is ever injected into a protected app: hardened apps crash on injection, so
-every bypass here is **system / kernel side**.
+Protected apps are never injected by default. Hardened apps can crash when foreign
+code is loaded into their process, so the default path is **system / kernel side**
+shell hardening. Optional hook backends are explicit and must be verified per device.
 
 ## Files
 
@@ -19,7 +20,7 @@ every bypass here is **system / kernel side**.
 | `config.default.json` | default configuration |
 | `bin/*.sh` | lib, apply, restore, watch daemon, root-apps, denylist, status, doctor |
 | `webroot/` | control UI (`index.html`) + token-protected CGI API |
-| `payload/Causentry.apk` | optional in-process hook app (only for apps that are *not* PairIP-hardened) |
+| `payload/Causentry.apk` | control UI and optional hook app (only for apps that are *not* PairIP-hardened) |
 
 Runtime state lives in `/data/adb/causentry/` (config, log, hidden package list,
 UI token). Nothing is written inside protected apps.
@@ -57,6 +58,8 @@ CLI equivalent: `APP_PKG_NEW=com.x APP_FEATS_NEW=devOff,mock sh bin/appcfg.sh se
 | `susfs` | kernel-level path hiding when SUSFS is available |
 | `hideRootApps` | hide Magisk Manager & friends for the user |
 | `hooks` | install/scope the optional in-process payload (non-hardened apps only) |
+| `hideMode` | `hide` by default; `cloak` falls back to `hide` unless `systemCloak` is true |
+| `systemCloak` | enables non-destructive package cloaking only when a verified backend is installed |
 
 ## Control UI (the app) — design rules
 
@@ -86,7 +89,7 @@ launcher app (disable with `"uiApk": false`). The app:
 * therefore needs **no root prompt, no LSPosed, no web server and no network**.
 
 `127.0.0.1:8899` (busybox httpd) still exists for the browser and for automation
-(`wwwroot/cgi-bin/api.sh`), and the daemon restarts it if it dies - but nothing depends
+(`webroot/cgi-bin/api.sh`), and the daemon restarts it if it dies - but nothing depends
 on it: if busybox is missing the app keeps working.
 
 ## Legacy: browser access
@@ -103,10 +106,16 @@ The module Action button opens it. From the UI you pick which apps are protected
 which features are on, see which root apps are visible to the system, and restore
 everything with one tap.
 
+`cgi-bin/token.sh` intentionally never returns the token. Read the token over `adb`
+or use the module Action flow instead.
+
 ## Notes / current limitations
 
 - `pm uninstall --user 0` is reversible for **system** apps; for **user-installed**
   apps Android deletes the APK too, so Restore cannot bring those back.
-- The watch daemon is implemented in shell (`bin/causentryd.sh`). CODEX.md wants
-  complex logic in the Rust `daemon/` crate; porting it is part of the roadmap, and
-  the module keeps working in the meantime.
+- `hideMode=cloak` requires a working system-side backend. Without `systemCloak=true`,
+  Causentry falls back to the safer `pm hide` path.
+- The native Zygisk backend under `zygisk-src/` is stage-1 only and is excluded from
+  release zips unless `CAUSENTRY_INCLUDE_EXPERIMENTAL_ZYGISK=1` is set.
+- The watch daemon is currently implemented in shell (`bin/causentryd.sh`). Porting
+  long-lived privileged logic into the Rust `daemon/` crate remains a roadmap item.

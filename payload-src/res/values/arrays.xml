@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Default injection scope; more apps are added from the Causentry UI. -->
+    <!-- Default scope is system-side only. Hardened target apps must not be injected by default. -->
     <string-array name="xposed_scope">
-        <item>com.bpjstku</item>
+        <item>android</item>
+        <item>com.android.providers.settings</item>
     </string-array>
 </resources>

@@ -1,9 +1,21 @@
 # Architecture
 
-Causentry is split into three major artifacts:
+Causentry currently ships as a universal root module plus a small Android control UI.
 
-- Android APK: Kotlin, Jetpack Compose, Material 3, Hilt, Room, DataStore.
-- `causentryd`: Rust daemon for privileged diagnostics.
-- Universal root module: module wrapper for Magisk, KernelSU family, KernelSU Next, and APatch.
+- `root-module/`: Magisk/KernelSU-compatible module layout. Boot logic stages
+  runtime files, starts the shell daemon, applies configured protections, and serves
+  the optional localhost UI.
+- `root-module/bin/causentryd.sh`: foreground watcher. It toggles developer-options
+  and mock-location state only while protected apps are active, refreshes app/status
+  snapshots for the UI, and processes file-backed commands.
+- `payload-src/`: Java WebView APK. It bundles the same HTML UI and communicates with
+  the daemon through private app files, so the APK does not need root, network access,
+  or a JavaScript HTTP bridge.
+- `root-module/webroot/`: legacy localhost browser UI and CGI API protected by a
+  per-install token.
+- `zygisk-src/`: experimental native stage-1 backend. It proves system_server injection
+  and is excluded from release zips unless explicitly requested.
 
-This STEP 1 foundation creates directories and build entrypoints only. Collectors, IPC, provider detection, diagnosis, and packaging are future steps.
+Long-lived privileged logic may move into the Rust `daemon/` crate later. Until then,
+the production path is the shell module runtime, with optional hook backends treated as
+device-specific integrations.

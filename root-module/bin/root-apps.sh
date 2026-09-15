@@ -36,7 +36,11 @@ extras() {
   { jlist root_packages; [ -f "$DIR/root_extra.txt" ] && cat "$DIR/root_extra.txt"; } \
     | while IFS= read -r p; do valid_package_name "$p" && echo "$p"; done
 }
-installed() { valid_package_name "$1" && pm list packages --user 0 2>/dev/null | grep -q "^package:${1}$"; }
+installed() {
+  valid_package_name "$1" || return 1
+  pkg_re=$(ere_escape "$1")
+  pm list packages --user 0 2>/dev/null | grep -q "^package:${pkg_re}$"
+}
 never_hide() { [ "$1" = "com.causentry.app" ] && return 0; return 1; }
 
 case "$1" in

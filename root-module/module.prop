@@ -3,5 +3,4 @@ name=Causentry
 version=v1.1.0
 versionCode=110
 author=exery
-description=Universal detection bypass (developer options, mock location / fake-GPS, root apps, root paths, PairIP/RASP). System and kernel side only - nothing is injected into protected apps. Self-contained, no other modules required.
-updateJson=
+description=Universal detection hardening for developer options, mock location/fake GPS, root indicators, root paths, and PairIP/RASP targets. Default mode is system/kernel-side shell hardening; optional hook backends must be enabled explicitly.

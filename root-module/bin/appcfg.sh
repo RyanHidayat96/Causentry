@@ -62,7 +62,7 @@ emit() {   # emit <targets> <denylist> <hardened> <appentries>
   printf ',"uiApk":%s' "$( [ "$(jbool uiApk)" = 1 ] && echo true || echo false )"
   printf ',"systemCloak":%s' "$( [ "$(jbool systemCloak)" = 1 ] && echo true || echo false )"
   # keys this script does not edit must survive a rewrite
-  M=$(jstr hideMode); [ -n "$M" ] || M=cloak
+  M=$(jstr hideMode); [ -n "$M" ] || M=hide
   printf ',"hideMode":"%s"' "$M"
   printf ',"cloakPackages":['
   f=1; for p in $(jlist cloakPackages); do valid_package_name "$p" || continue; [ $f -eq 1 ] || printf ','; f=0; json_string "$p"; done

@@ -166,14 +166,32 @@ public class UiBridge {
         if ("setapp".equals(action)) {
             String[] parts = obj.optString("features", "").split(",");
             for (String p : parts) {
-                if (p.isEmpty()) continue;
-                if (!"devOff".equals(p) && !"mock".equals(p) && !"isolate".equals(p)) return false;
+                String feature = p.trim();
+                if (feature.isEmpty()) continue;
+                if (!"devOff".equals(feature) && !"mock".equals(feature)
+                        && !"isolate".equals(feature)) return false;
             }
+        }
+        if ("save".equals(action)) {
+            return csvPackages(obj.optString("targets", ""))
+                    && csvPackages(obj.optString("hardened", ""))
+                    && csvPackages(obj.optString("denylist", ""))
+                    && csvPackages(obj.optString("root_packages", ""));
         }
         return true;
     }
 
     private static boolean isPackageName(String s) {
         return s != null && s.matches("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+");
+    }
+
+    private static boolean csvPackages(String csv) {
+        if (csv == null || csv.trim().isEmpty()) return true;
+        String[] parts = csv.split(",");
+        for (String p : parts) {
+            String pkg = p.trim();
+            if (!pkg.isEmpty() && !isPackageName(pkg)) return false;
+        }
+        return true;
     }
 }

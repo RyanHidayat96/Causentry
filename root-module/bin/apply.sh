@@ -21,8 +21,8 @@ if [ -n "$RESETPROP" ]; then
   log "boot props applied"
 fi
 
-# 1) denylisted packages. Default mode is CLOAK: nothing is uninstalled or hidden -
-#    the system_server hook makes protected apps unable to see them (see cloak.sh).
+# 1) denylisted packages. Default mode is pm hide. Non-destructive system_server
+#    cloaking is available only when a verified backend is explicitly enabled.
 RAW_MODE=$(hide_mode)
 MODE=$(effective_hide_mode)
 if [ "$RAW_MODE" != "$MODE" ]; then
@@ -30,7 +30,9 @@ if [ "$RAW_MODE" != "$MODE" ]; then
 fi
 if [ "$MODE" = "uninstall" ]; then
   for pkg in $(jlist denylist); do
-    if pm list packages --user 0 2>/dev/null | grep -q "^package:${pkg}$"; then
+    valid_package_name "$pkg" || continue
+    pkg_re=$(ere_escape "$pkg")
+    if pm list packages --user 0 2>/dev/null | grep -q "^package:${pkg_re}$"; then
       if pm uninstall --user 0 "$pkg" >/dev/null 2>&1; then
         grep -qx "$pkg" "$DIR/hidden_packages" 2>/dev/null || echo "$pkg" >> "$DIR/hidden_packages"
         log "uninstalled for user 0: $pkg"
@@ -39,6 +41,7 @@ if [ "$MODE" = "uninstall" ]; then
   done
 elif [ "$MODE" = "hide" ]; then
   for pkg in $(jlist denylist); do
+    valid_package_name "$pkg" || continue
     pm hide --user 0 "$pkg" >/dev/null 2>&1 && log "hidden (pm hide): $pkg"
   done
 elif [ "$MODE" = "cloak" ]; then

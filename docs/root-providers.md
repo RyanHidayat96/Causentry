@@ -1,11 +1,18 @@
 # Root Providers
 
-Targeted providers:
+Supported package layout:
 
-- Magisk
-- KernelSU
-- KernelSU Next
-- APatch
-- No-root limited mode
+- Magisk-compatible module directory and service/action scripts.
+- KernelSU and KernelSU-Next module managers.
+- APatch-compatible module installation when it honors the Magisk-style layout.
 
-Provider-specific behavior must be isolated behind adapters and verified against official documentation before implementation.
+Runtime behavior is intentionally conservative:
+
+- Module scripts avoid SELinux permissive mode.
+- Feature detection prefers local binaries (`ksud`, `magisk`, BusyBox/httpd, SUSFS
+  controls) instead of assuming one provider.
+- UI operation does not require the Android app to receive root.
+- Hook backends (`systemCloak`, native Zygisk stage-1) are opt-in and should be
+  verified on the target ROM/provider combination before being treated as production.
+
+No-root limited mode and provider-specific Rust adapters remain future work.

@@ -38,7 +38,18 @@ put() {  # put <tmpfile> <dest>
   return 0
 }
 
-flat() { printf '%s' "$1" | tr -d '"' | tr '\n' ' '; }
+json_jlist() {
+  key="$1"
+  printf '['
+  f=1
+  for t in $(jlist "$key"); do
+    valid_package_name "$t" || continue
+    [ $f -eq 1 ] || printf ','
+    f=0
+    json_string "$t"
+  done
+  printf ']'
+}
 
 snapshot() {
   [ -d "/data/data/$APP_PKG" ] || return 0
@@ -56,15 +67,16 @@ snapshot() {
   rootapps=$(sh "$DIR/root-apps.sh" scan 2>/dev/null | tr '\n' ',')
   suggests=$(sh "$DIR/root-apps.sh" suggest 2>/dev/null | tr '\n' ',')
   {
-    printf '{"state":"%s","daemon":%s,"ts":%s,"age":%s,"global":"%s","secure":"%s","mock":"%s",' \
-      "$(flat "$state")" "$dalive" "$(date +%s)" "$dage" \
-      "$(settings get global development_settings_enabled 2>/dev/null)" \
-      "$(settings get secure development_settings_enabled 2>/dev/null)" \
-      "$(settings get secure mock_location 2>/dev/null)"
-    printf '"susfs":"%s","vector":%s,' "$(susfs_variant)" "$(vector_cli >/dev/null 2>&1 && echo true || echo false)"
-    printf '"targets":['; f=1; for t in $(jlist targets); do [ $f -eq 1 ] || printf ','; f=0; printf '"%s"' "$t"; done; printf '],'
-    printf '"hardened":['; f=1; for t in $(jlist hardened); do [ $f -eq 1 ] || printf ','; f=0; printf '"%s"' "$t"; done; printf '],'
-    printf '"denylist":['; f=1; for t in $(jlist denylist); do [ $f -eq 1 ] || printf ','; f=0; printf '"%s"' "$t"; done; printf '],'
+    printf '{"state":'; json_string "$state"
+    printf ',"daemon":%s,"ts":%s,"age":%s' "$dalive" "$(date +%s)" "$dage"
+    printf ',"global":'; json_string "$(settings get global development_settings_enabled 2>/dev/null)"
+    printf ',"secure":'; json_string "$(settings get secure development_settings_enabled 2>/dev/null)"
+    printf ',"mock":'; json_string "$(settings get secure mock_location 2>/dev/null)"
+    printf ',"susfs":'; json_string "$(susfs_variant)"
+    printf ',"vector":%s,' "$(vector_cli >/dev/null 2>&1 && echo true || echo false)"
+    printf '"targets":'; json_jlist targets; printf ','
+    printf '"hardened":'; json_jlist hardened; printf ','
+    printf '"denylist":'; json_jlist denylist; printf ','
     printf '"autoDevOff":%s,"hideMockLocation":%s,"alwaysHidden":%s,"susfsOn":%s,"hooks":%s,"hideRootApps":%s,"uiApk":%s,' \
       "$( [ "$(jbool autoDevOff)" = 1 ] && echo true || echo false )" \
       "$( [ "$(jbool hideMockLocation)" = 1 ] && echo true || echo false )" \
@@ -90,11 +102,12 @@ apps_snapshot() {
     printf '{"apps":['
     f=1
     for pkg in $(pm list packages -3 2>/dev/null | sed 's/package://' | sort); do
+      valid_package_name "$pkg" || continue
       prot=false; is_target "$pkg" && prot=true
       hard=false; is_hardened "$pkg" && hard=true
       [ $f -eq 1 ] || printf ','
       f=0
-      printf '{"pkg":"%s","protected":%s,"hardened":%s}' "$pkg" "$prot" "$hard"
+      printf '{"pkg":'; json_string "$pkg"; printf ',"protected":%s,"hardened":%s}' "$prot" "$hard"
     done
     printf ']}'
   } > "$T"

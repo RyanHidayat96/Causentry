@@ -7,7 +7,8 @@ MODE=$(effective_hide_mode)
 for pkg in $(jlist denylist); do
   valid_package_name "$pkg" || continue
   if [ "$MODE" = "cloak" ]; then continue; fi
-  if pm list packages --user 0 2>/dev/null | grep -q "^package:${pkg}$"; then
+  pkg_re=$(ere_escape "$pkg")
+  if pm list packages --user 0 2>/dev/null | grep -q "^package:${pkg_re}$"; then
     if [ "$MODE" = "hide" ]; then
       pm hide --user 0 "$pkg" >/dev/null 2>&1 && echo "hidden: $pkg"
       continue

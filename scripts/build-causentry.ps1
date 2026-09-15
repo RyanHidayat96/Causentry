@@ -33,6 +33,7 @@ $Release   = Join-Path $Root "release"
 $Ks        = Join-Path $Root "causentry.keystore"
 $ApkOut    = Join-Path $Mod "payload\Causentry.apk"
 $PropPath  = Join-Path $Mod "module.prop"
+$IncludeExperimentalZygisk = $env:CAUSENTRY_INCLUDE_EXPERIMENTAL_ZYGISK -eq "1"
 
 function Say($m, $c = "Cyan") { Write-Host $m -ForegroundColor $c }
 function Die($m) { Write-Host "ERROR: $m" -ForegroundColor Red; exit 1 }
@@ -113,6 +114,11 @@ Say "   root    : $Root"
 Say "   java    : $Java"
 Say "   sdk     : $Sdk"
 Say "   version : v$Version"
+if ($IncludeExperimentalZygisk) {
+  Say "   zygisk  : including experimental native backend" "Yellow"
+} else {
+  Say "   zygisk  : excluded (set CAUSENTRY_INCLUDE_EXPERIMENTAL_ZYGISK=1 to include)" "DarkGray"
+}
 New-Item -ItemType Directory -Force -Path $Release | Out-Null
 
 # ---------------- 1..7 payload APK ----------------
@@ -218,7 +224,12 @@ $mode755 = [Convert]::ToInt32("755", 8) -shl 16
 $mode644 = [Convert]::ToInt32("644", 8) -shl 16
 $stamp = [DateTimeOffset]::new([DateTime]::new(2026, 9, 15, 12, 0, 0, [DateTimeKind]::Utc))
 
-$files = Get-ChildItem $Mod -Recurse -File | Where-Object { $_.FullName -notmatch "\\build\\|\\.git\\" -and $_.Name -ne ".gitkeep" -and $_.Extension -ne ".idsig" }
+$files = Get-ChildItem $Mod -Recurse -File | Where-Object {
+  $_.FullName -notmatch "\\build\\|\\.git\\" `
+    -and $_.Name -ne ".gitkeep" `
+    -and $_.Extension -ne ".idsig" `
+    -and ($IncludeExperimentalZygisk -or $_.FullName -notmatch "\\zygisk\\[^\\]+\.so$")
+}
 $zip = [System.IO.Compression.ZipFile]::Open($zipPath, [System.IO.Compression.ZipArchiveMode]::Create)
 try {
   foreach ($f in $files) {

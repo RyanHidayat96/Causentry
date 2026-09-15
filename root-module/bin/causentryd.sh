@@ -12,6 +12,7 @@ CONF=$DIR/config.json
 
 STATE=$DIR/runtime.state
 SAVED=$DIR/devsaved
+ACTIVE=$DIR/runtime.active
 WATCHDOG_PID=
 
 touch_heartbeat() { date +%s > "$DIR/heartbeat" 2>/dev/null; }
@@ -30,18 +31,30 @@ any_target_running() {
 }
 
 evaluate() {
-  if target_in_foreground; then
-    [ "$(cat "$STATE" 2>/dev/null)" = "active" ] || activate
+  fg=$(foreground_pkg)
+  if [ -n "$fg" ] && is_target "$fg"; then
+    want_dev=$(app_feat_or "$fg" devOff autoDevOff)
+    want_mock=$(app_feat_or "$fg" mock hideMockLocation)
+    if [ "$want_dev" != 1 ] && [ "$want_mock" != 1 ]; then
+      [ "$(cat "$STATE" 2>/dev/null)" = "active" ] && deactivate
+      return 0
+    fi
+    desired="$fg:$want_dev:$want_mock"
+    current=$(cat "$ACTIVE" 2>/dev/null)
+    if [ "$(cat "$STATE" 2>/dev/null)" != "active" ] || [ "$current" != "$desired" ]; then
+      [ "$(cat "$STATE" 2>/dev/null)" = "active" ] && deactivate
+      activate "$fg" "$want_dev" "$want_mock"
+    fi
   else
     [ "$(cat "$STATE" 2>/dev/null)" = "idle" ] || deactivate
   fi
 }
 
 activate() {
-  fg=$(foreground_pkg)
+  fg="${1:-$(foreground_pkg)}"
   [ -n "$fg" ] || return 0
-  want_dev=$(app_feat_or "$fg" devOff autoDevOff)
-  want_mock=$(app_feat_or "$fg" mock hideMockLocation)
+  want_dev="${2:-$(app_feat_or "$fg" devOff autoDevOff)}"
+  want_mock="${3:-$(app_feat_or "$fg" mock hideMockLocation)}"
   [ "$want_dev" = 1 ] || [ "$want_mock" = 1 ] || return 0
   if [ ! -f "$SAVED" ]; then
     wait_settings 15 || { log "cloak skipped: settings service not ready (flags not readable)"; return 0; }
@@ -56,11 +69,13 @@ activate() {
     settings put secure development_settings_enabled 0
   fi
   [ "$want_mock" = 1 ] && settings put secure mock_location 0
+  echo "$fg:$want_dev:$want_mock" > "$ACTIVE"
   echo active > "$STATE"
   log "cloak ON ($fg devOff=$want_dev mock=$want_mock)"
 }
 
 deactivate() {
+  rm -f "$ACTIVE"
   [ "$(jbool alwaysHidden)" = 1 ] && { echo idle > "$STATE"; return 0; }
   if [ -f "$SAVED" ]; then
     restore_dev_flags "$SAVED" && log "cloak OFF (flags restored)"
@@ -88,9 +103,12 @@ touch_heartbeat
     n=$((n+1))
     [ $((n % 6)) -eq 0 ] && ensure_ui
     # control-UI app: run its pending commands + refresh the state snapshot
-    [ -f "$DIR/uirpc.sh" ] && sh "$DIR/uirpc.sh" serve >/dev/null 2>&1; rc=$?
-    [ "$rc" -ne 0 ] && echo "$(date '+%m-%d %H:%M:%S') uirpc serve rc=$rc" >> "$DIR/.watchdog.log"
-    [ $((n % 6)) -eq 0 ] && sh "$DIR/uirpc.sh" apps >/dev/null 2>&1
+    if [ -f "$DIR/uirpc.sh" ]; then
+      sh "$DIR/uirpc.sh" serve >/dev/null 2>&1
+      rc=$?
+      [ "$rc" -ne 0 ] && echo "$(date '+%m-%d %H:%M:%S') uirpc serve rc=$rc" >> "$DIR/.watchdog.log"
+      [ $((n % 6)) -eq 0 ] && sh "$DIR/uirpc.sh" apps >/dev/null 2>&1
+    fi
     evaluate
     touch_heartbeat
   done

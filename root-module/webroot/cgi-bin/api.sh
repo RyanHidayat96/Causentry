@@ -32,18 +32,6 @@ json_jlist() {
   printf ']'
 }
 
-json_pkg_lines() {
-  printf '['
-  first=1
-  while IFS= read -r p; do
-    valid_package_name "$p" || continue
-    [ $first -eq 1 ] || printf ','
-    first=0
-    json_string "$p"
-  done
-  printf ']'
-}
-
 action="$(getp action)"
 [ -z "$action" ] && action=status
 

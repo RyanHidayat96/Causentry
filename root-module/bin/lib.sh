@@ -46,10 +46,10 @@ jstr() {
   sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" "$CONF" 2>/dev/null | head -1
 }
 
-# how to deal with detection packages: cloak (default) | hide | uninstall
+# how to deal with detection packages: hide (default) | cloak | uninstall
 hide_mode() {
   m=$(jstr hideMode)
-  case "$m" in cloak|hide|uninstall) echo "$m";; *) echo cloak;; esac
+  case "$m" in cloak|hide|uninstall) echo "$m";; *) echo hide;; esac
 }
 
 # "cloak" needs an installed system_server hook backend. The native Zygisk backend
