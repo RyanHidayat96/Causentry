@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<androidx.fragment.app.FragmentContainerView xmlns:android="http://schemas.android.com/apk/res/android"
-    name="com.google.android.gms.maps.SupportMapFragment"
-    id="@+id/mapBranchOffice"
-    layout_width="-1"
-    layout_height="-1"/>

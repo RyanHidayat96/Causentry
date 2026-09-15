@@ -25,3 +25,16 @@ Thumbs.db
 Desktop.ini
 *.swp
 *.tmp
+
+# Causentry build outputs / local toolchain (regenerate: scripts/build-causentry.ps1)
+causentry.keystore
+/tools/
+/build/
+
+# Test case folder (bpjstku-fix): app APKs, decompiled sources, evidence, local tools
+/bpjstku-fix/*.apk
+/bpjstku-fix/jadx-out/
+/bpjstku-fix/jadx-res/
+/bpjstku-fix/diag/
+/bpjstku-fix/tools/
+

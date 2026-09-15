@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android" shape="0">
-    <size
-        height="@dimen/m3_comp_sheet_bottom_docked_drag_handle_height"
-        width="@dimen/m3_comp_sheet_bottom_docked_drag_handle_width"/>
-    <corners radius="2dp"/>
-    <solid color="@color/m3_bottom_sheet_drag_handle_color"/>
-</shape>

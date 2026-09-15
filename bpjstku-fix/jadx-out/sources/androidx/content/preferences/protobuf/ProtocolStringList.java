@@ -1,8 +1,0 @@
-package androidx.content.preferences.protobuf;
-
-import java.util.List;
-
-/* JADX INFO: loaded from: classes6.dex */
-public interface ProtocolStringList extends List<String> {
-    List<ByteString> asByteStringList();
-}

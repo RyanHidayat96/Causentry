@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<androidx.appcompat.widget.AppCompatRadioButton xmlns:android="http://schemas.android.com/apk/res/android"
-    textSize="@dimen/text_size_16sp"
-    id="@+id/rbChoice"
-    layout_width="-1"
-    layout_height="-2"
-    layout_marginBottom="@dimen/dimen_4dp"
-    text="@string/label_termination"
-    style="@style/BpjstkuRadioButton.DmSansCharcoalGrey"/>

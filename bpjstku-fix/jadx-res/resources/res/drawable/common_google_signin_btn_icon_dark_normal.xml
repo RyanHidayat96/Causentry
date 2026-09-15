@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item drawable="0x7f080128"/>
-    <item>
-        <bitmap
-            gravity="0x11"
-            src="0x7f08014f"/>
-    </item>
-</layer-list>

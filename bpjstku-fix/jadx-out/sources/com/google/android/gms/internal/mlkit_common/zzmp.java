@@ -1,6 +1,0 @@
-package com.google.android.gms.internal.mlkit_common;
-
-/* JADX INFO: loaded from: classes3.dex */
-public interface zzmp {
-    void zza(zzmh zzmhVar);
-}

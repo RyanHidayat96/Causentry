@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<font-family xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
-    NOT_FOUND_0x0="com.google.android.gms.fonts"
-    NOT_FOUND_0x1="@array/com_google_android_gms_fonts_certs"
-    NOT_FOUND_0x2="com.google.android.gms"
-    NOT_FOUND_0x3="Google Sans:500"
-    NOT_FOUND_0x4="google-sans-medium"/>

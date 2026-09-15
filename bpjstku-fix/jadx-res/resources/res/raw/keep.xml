@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@id.vida.liveness:anim/vida_*, @id.vida.liveness:drawable/vida_*, @id.vida.liveness:drawable-hdpi/vida_*, @id.vida.liveness:drawable-mdpi/vida_*,
-    @id.vida.liveness:drawable-xhdpi/vida_*, @id.vida.liveness:drawable-xxhdpi/vida_*, @id.vida.liveness:drawable-xxxhdpi/vida_*,
-    @id.vida.liveness:layout/vida_*, @id.vida.liveness:layout-sw600dp/vida_*, @string/vida_*" />
