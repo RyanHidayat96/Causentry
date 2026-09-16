@@ -59,7 +59,7 @@ public final class AppOpsCloak {
                 if (!CloakCfg.callerIsTarget()) return;
                 if (!isMockOp(param.args)) return;
                 String pkg = packageArg(param.args);
-                if (pkg == null || !CloakCfg.isCloaked(pkg)) return;
+                if (pkg == null || !CloakCfg.isCloakedForCaller(pkg)) return;
                 int uid = Binder.getCallingUid();
                 XposedBridge.log("Causentry appops: " + param.method.getName() + "(" + pkg
                         + ") -> MODE_ERRORED for caller=" + uid);
@@ -86,7 +86,7 @@ public final class AppOpsCloak {
                         pkg = (String) XposedHelpers.callMethod(ops, "getPackageName");
                     } catch (Throwable ignored) {
                     }
-                    if (pkg != null && CloakCfg.isCloaked(pkg)) {
+                    if (pkg != null && CloakCfg.isCloakedForCaller(pkg)) {
                         dropped++;
                         XposedBridge.log("Causentry appops: dropped " + pkg + " from "
                                 + param.method.getName() + " for caller=" + Binder.getCallingUid());

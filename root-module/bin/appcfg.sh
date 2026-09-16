@@ -3,7 +3,7 @@ DIR=${CAUSENTRY_DIR:-/data/adb/causentry}
 . "$DIR/lib.sh"
 # Causentry - per-app configuration writer.
 #
-#   APP_PKG_NEW=com.x APP_FEATS_NEW=devOff,mock  appcfg.sh set
+#   APP_PKG_NEW=com.x APP_FEATS_NEW=devOff,mock APP_HIDE_TEMPLATE_NEW=default appcfg.sh set
 #   APP_PKG_NEW=com.x                            appcfg.sh del
 #   appcfg.sh show com.x
 #
@@ -11,8 +11,8 @@ DIR=${CAUSENTRY_DIR:-/data/adb/causentry}
 # object valid without fragile in-place edits.
 
 APP_ENTRIES_FILE=$DIR/.appentries
-all_app_entries() {   # one `"pkg":{"devOff":..,"mock":..}` entry per line
-  grep -oE '"[^"]+":\{"devOff":[^}]*\}' "$CONF" 2>/dev/null > "$APP_ENTRIES_FILE" || : > "$APP_ENTRIES_FILE"
+all_app_entries() {   # one `"pkg":{...}` entry per line
+  grep -oE '"[^"]+"[[:space:]]*:[[:space:]]*\{[^}]*"devOff"[^}]*\}' "$CONF" 2>/dev/null > "$APP_ENTRIES_FILE" || : > "$APP_ENTRIES_FILE"
   cat "$APP_ENTRIES_FILE"
 }
 
@@ -46,6 +46,8 @@ emit() {   # emit <targets> <denylist> <hardened> <appentries>
   printf '['
   f=1; for i in $2; do valid_package_name "$i" || continue; [ $f -eq 1 ] || printf ','; f=0; json_string "$i"; done
   printf ']'
+  printf ',"hideTemplates":'
+  emit_hide_templates_json
   printf ',"hardened":'
   printf '['
   f=1; for i in $3; do valid_package_name "$i" || continue; [ $f -eq 1 ] || printf ','; f=0; json_string "$i"; done
@@ -62,7 +64,7 @@ emit() {   # emit <targets> <denylist> <hardened> <appentries>
   printf ',"uiApk":%s' "$( [ "$(jbool uiApk)" = 1 ] && echo true || echo false )"
   printf ',"systemCloak":%s' "$( [ "$(jbool systemCloak)" = 1 ] && echo true || echo false )"
   # keys this script does not edit must survive a rewrite
-  M=$(jstr hideMode); [ -n "$M" ] || M=hide
+  M=$(jstr hideMode); [ -n "$M" ] || M=none
   printf ',"hideMode":"%s"' "$M"
   printf ',"cloakPackages":['
   f=1; for p in $(jlist cloakPackages); do valid_package_name "$p" || continue; [ $f -eq 1 ] || printf ','; f=0; json_string "$p"; done
@@ -72,13 +74,14 @@ emit() {   # emit <targets> <denylist> <hardened> <appentries>
 
 case "${1:-show}" in
   set)
-    pkg="$APP_PKG_NEW"; feats="${APP_FEATS_NEW:-devOff,mock}"
+    pkg="$APP_PKG_NEW"; feats="${APP_FEATS_NEW-devOff,mock}"; tpl="${APP_HIDE_TEMPLATE_NEW:-default}"
     valid_package_name "$pkg" || { echo "invalid package"; exit 1; }
+    valid_template_name "$tpl" || tpl=default
     d=false; m=false; i=true
     case ",$feats," in *",devOff,"*) d=true;; esac
     case ",$feats," in *",mock,"*)   m=true;; esac
     case ",$feats," in *",isolate,"*) i=true;; *) i=false;; esac
-    blk="$(json_string "$pkg"):{\"devOff\":$d,\"mock\":$m,\"isolate\":$i}"
+    blk="$(json_string "$pkg"):{\"devOff\":$d,\"mock\":$m,\"isolate\":$i,\"hideTemplate\":$(json_string "$tpl")}"
     T=$(uniq_list "$(jlist targets | tr '\n' ' ')")
     H=$(uniq_list "$(jlist hardened | tr '\n' ' ')")
     case " $T " in *" $pkg "*) ;; *) T="$T $pkg";; esac
@@ -96,8 +99,8 @@ case "${1:-show}" in
     printf '%s\n' "$blk" >> "$DIR/.appentries.new"
     emit "$T" "$(jlist denylist)" "$H" "$DIR/.appentries.new" > "$CONF.new"
     mv -f "$CONF.new" "$CONF"; chmod 644 "$CONF"
-    log "app config set: $pkg ($feats)"
-    echo "configured $pkg: $feats"
+    log "app config set: $pkg ($feats, hideTemplate=$tpl)"
+    echo "configured $pkg: $feats hideTemplate=$tpl"
     ;;
   del)
     pkg="$APP_PKG_NEW"

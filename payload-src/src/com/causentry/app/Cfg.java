@@ -21,7 +21,7 @@ import java.util.Set;
  *   2. /storage/emulated/0/Android/media/com.causentry.app/config.json
  *   3. /data/local/tmp/causentry/config.json
  *
- * If none is readable, built-in defaults apply (targets = DEFAULT_TARGETS).
+ * If none is readable, built-in defaults stay empty; the root UI owns app choices.
  */
 public final class Cfg {
 
@@ -36,11 +36,11 @@ public final class Cfg {
     };
 
     /** Apps protected out of the box. */
-    public static final Set<String> DEFAULT_TARGETS = setOf("com.bpjstku");
+    public static final Set<String> DEFAULT_TARGETS = setOf();
 
     public String mode = "targets";          // "targets" | "all"
     public Set<String> targets = new LinkedHashSet<>(DEFAULT_TARGETS);
-    public Set<String> hidePackages = new LinkedHashSet<>(Hide.PACKAGES);
+    public Set<String> hidePackages = new LinkedHashSet<>();
     public boolean cloakSettings = true;
     public boolean cloakPackages = true;
     public boolean cloakRoot = true;
@@ -84,9 +84,7 @@ public final class Cfg {
 
     public boolean isPackageHidden(String pkg) {
         if (pkg == null) return false;
-        if (hidePackages.contains(pkg)) return true;
-        String lower = pkg.toLowerCase();
-        return lower.contains("fakegps") || lower.contains("mocklocation");
+        return hidePackages.contains(pkg);
     }
 
     private static Cfg load() {

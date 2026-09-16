@@ -15,8 +15,35 @@ SAVED=$DIR/devsaved
 ACTIVE=$DIR/runtime.active
 EVAL_LOCK=$DIR/evaluate.lock
 WATCHDOG_PID=
+WATCHDOG_INTERVAL=${CAUSENTRY_WATCHDOG_INTERVAL:-5}
+UI_SERVE_INTERVAL=${CAUSENTRY_UI_SERVE_INTERVAL:-5}
+APP_SCAN_INTERVAL=${CAUSENTRY_APP_SCAN_INTERVAL:-120}
+ENSURE_UI_INTERVAL=${CAUSENTRY_ENSURE_UI_INTERVAL:-60}
 
 touch_heartbeat() { date +%s > "$DIR/heartbeat" 2>/dev/null; }
+
+# ---------------------------------------------------------------------------
+# Single-instance guard. A supervised daemon plus a boot start, or a restart that
+# races the old process, can stack many copies. Every copy then tails the same
+# logcat stream and toggles the same flags -> status flaps between active/stopped
+# and the UI feels laggy. Only one instance may own the loop; the rest exit.
+# ---------------------------------------------------------------------------
+canonical_name="causentryd.sh"
+is_our_daemon() {
+  pid="$1"
+  [ -n "$pid" ] || return 1
+  [ -d "/proc/$pid" ] || return 1
+  tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q "$canonical_name"
+}
+if [ -f "$DIR/daemon.pid" ]; then
+  old=$(cat "$DIR/daemon.pid" 2>/dev/null)
+  if is_our_daemon "$old" && [ "$old" != "$$" ]; then
+    log "daemon already running (pid $old) - exiting duplicate"
+    exit 0
+  fi
+fi
+echo "$$" > "$DIR/daemon.pid"
+chmod 600 "$DIR/daemon.pid" 2>/dev/null
 
 cleanup() {
   [ -n "$WATCHDOG_PID" ] && kill "$WATCHDOG_PID" 2>/dev/null
@@ -64,6 +91,19 @@ locked_evaluate() {
   return "$rc"
 }
 
+locked_activate() {
+  i=0
+  while ! mkdir "$EVAL_LOCK" 2>/dev/null; do
+    i=$((i+1))
+    [ "$i" -ge 30 ] && { log "activate skipped: lock busy"; return 0; }
+    sleep 0.1
+  done
+  activate "$@"
+  rc=$?
+  rmdir "$EVAL_LOCK" 2>/dev/null
+  return "$rc"
+}
+
 activate() {
   fg="${1:-$(foreground_pkg)}"
   [ -n "$fg" ] || return 0
@@ -101,8 +141,8 @@ deactivate() {
   echo idle > "$STATE"
 }
 
-echo "$$" > "$DIR/daemon.pid"
 log "daemon start (pid $$)"
+log "power profile: watchdog=${WATCHDOG_INTERVAL}s ui=${UI_SERVE_INTERVAL}s appScan=${APP_SCAN_INTERVAL}s"
 
 # initial sync with reality (foreground only)
 locked_evaluate
@@ -126,16 +166,16 @@ touch_heartbeat
     apps_pid=$!
   }
   while true; do
-    sleep 1
-    n=$((n+1))
+    sleep "$WATCHDOG_INTERVAL"
+    n=$((n+WATCHDOG_INTERVAL))
     touch_heartbeat
-    [ $((n % 30)) -eq 0 ] && ensure_ui
+    [ $((n % ENSURE_UI_INTERVAL)) -eq 0 ] && ensure_ui
     # control-UI app: run its pending commands + refresh the state snapshot
-    if [ -f "$DIR/uirpc.sh" ]; then
+    if [ -f "$DIR/uirpc.sh" ] && [ $((n % UI_SERVE_INTERVAL)) -eq 0 ]; then
       timeout 8 sh "$DIR/uirpc.sh" serve >/dev/null 2>&1
       rc=$?
       [ "$rc" -ne 0 ] && echo "$(date '+%m-%d %H:%M:%S') uirpc serve rc=$rc" >> "$DIR/.watchdog.log"
-      [ $((n % 30)) -eq 0 ] && refresh_apps_snapshot
+      [ $((n % APP_SCAN_INTERVAL)) -eq 0 ] && refresh_apps_snapshot
     fi
     locked_evaluate
     if [ -f "$DIR/.uirpc.changed" ]; then
@@ -159,7 +199,11 @@ logcat -b events -s "$EV" -s am_proc_died 2>/dev/null | while read -r line; do
         case "$line" in
           *",$t,"*|*",$t]"*)
             log "event: start $t"
-            # the app checks its environment within the first second: poll briefly
+            # Protected apps often check their environment before Activity focus is
+            # stable. Cloak immediately on process start, then let evaluate restore
+            # it if the process was only a background service.
+            locked_activate "$t" "$(app_feat_or "$t" devOff autoDevOff)" "$(app_feat_or "$t" mock hideMockLocation)"
+            # Poll briefly for foreground state and correct the active package.
             i=0
             while [ "$i" -lt 10 ]; do
               target_in_foreground && break

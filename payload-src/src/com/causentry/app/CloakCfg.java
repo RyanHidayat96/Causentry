@@ -18,12 +18,13 @@ import java.util.Set;
  *  1. The daemon writes the same small JSON to several paths because the processes we
  *     hook have different file access (system_server: /data/system; SettingsProvider:
  *     /data/local/tmp or the sdcard media dir). /data/adb is readable by neither.
- *  2. A protected app is not always "uid in the list": JMO runs its checks from an
- *     *isolated* process (`com.bpjstku:b:e.…`, uid ~90000) whose uid is generated at
+ *  2. A protected app is not always "uid in the list": some apps run checks from an
+ *     *isolated* process (`com.example.app:b:e.…`, uid ~90000) whose uid is generated at
  *     runtime. So a caller is a target when its uid matches, or when the caller's
  *     process command line starts with one of the target package names.
  *
- *   {"targetUids":[10400],"targets":["com.bpjstku"],"hidden":["ru.gavrikov.mocklocations"]}
+ *   {"targetUids":[10400],"targets":["com.bank"],"hidden":["com.fakegps"],
+ *    "hiddenByTarget":{"com.bank":["com.fakegps"]}}
  */
 public final class CloakCfg {
 
@@ -40,6 +41,7 @@ public final class CloakCfg {
     public static final Set<Integer> UIDS = new HashSet<>();
     public static final Set<String> TARGETS = new LinkedHashSet<>();
     public static final Set<String> HIDDEN = new LinkedHashSet<>();
+    public static final Map<String, Set<String>> HIDDEN_BY_TARGET = new HashMap<>();
     /** packages whose app-zygote service spawn is denied (per-app "isolate" toggle) */
     public static final Set<String> APPZYGOTE = new LinkedHashSet<>();
 
@@ -58,14 +60,7 @@ public final class CloakCfg {
             int uid = Binder.getCallingUid();
             refresh();
             if (UIDS.contains(uid)) return true;
-            int pid = Binder.getCallingPid();
-            if (pid <= 0 || pid == Process.myPid()) return false;
-            String pkg = packageOfPid(pid);
-            if (pkg == null) return false;
-            for (String t : TARGETS) {
-                if (pkg.equals(t) || pkg.startsWith(t + ":")) return true;
-            }
-            return false;
+            return callerTargetPackage() != null;
         } catch (Throwable t) {
             return false;
         }
@@ -79,6 +74,22 @@ public final class CloakCfg {
         }
         refresh();
         return UIDS.contains(uid);
+    }
+
+    /** target package name for this binder caller, when /proc exposes it */
+    public static String callerTargetPackage() {
+        try {
+            refresh();
+            int pid = Binder.getCallingPid();
+            if (pid <= 0 || pid == Process.myPid()) return null;
+            String pkg = packageOfPid(pid);
+            if (pkg == null) return null;
+            for (String t : TARGETS) {
+                if (pkg.equals(t) || pkg.startsWith(t + ":")) return t;
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
     }
 
     /** /proc/<pid>/cmdline -> base package name (isolated processes include the app prefix) */
@@ -121,6 +132,22 @@ public final class CloakCfg {
         return HIDDEN.contains(pkg);
     }
 
+    public static boolean isCloakedForCaller(String pkg) {
+        if (pkg == null) return false;
+        refresh();
+        String target = callerTargetPackage();
+        if (target != null) {
+            Set<String> scoped = HIDDEN_BY_TARGET.get(target);
+            return scoped != null ? scoped.contains(pkg) : HIDDEN.contains(pkg);
+        }
+        try {
+            if (!UIDS.contains(Binder.getCallingUid())) return false;
+        } catch (Throwable ignored) {
+            return false;
+        }
+        return HIDDEN.contains(pkg);
+    }
+
     public static synchronized void refresh() {
         long now = System.currentTimeMillis();
         if (now - loadedAt < RELOAD_MS) return;
@@ -153,9 +180,11 @@ public final class CloakCfg {
         Set<String> targets = new LinkedHashSet<>();
         Set<String> hidden = new LinkedHashSet<>();
         Set<String> appZygote = new LinkedHashSet<>();
+        Map<String, Set<String>> hiddenByTarget = new HashMap<>();
         readInts(json, "\"targetUids\"", uids);
         readStrings(json, "\"targets\"", targets);
         readStrings(json, "\"hidden\"", hidden);
+        readStringArrays(json, "\"hiddenByTarget\"", hiddenByTarget);
         readStrings(json, "\"appZygote\"", appZygote);
         if (hidden.isEmpty() && targets.isEmpty() && uids.isEmpty()) return;   // keep last good
         UIDS.clear();
@@ -164,6 +193,8 @@ public final class CloakCfg {
         TARGETS.addAll(targets);
         HIDDEN.clear();
         HIDDEN.addAll(hidden);
+        HIDDEN_BY_TARGET.clear();
+        HIDDEN_BY_TARGET.putAll(hiddenByTarget);
         APPZYGOTE.clear();
         APPZYGOTE.addAll(appZygote.isEmpty() ? targets : appZygote);
     }
@@ -186,7 +217,34 @@ public final class CloakCfg {
         if (i < 0) return;
         int open = json.indexOf('[', i), close = json.indexOf(']', open);
         if (open < 0 || close < 0) return;
-        for (String part : json.substring(open + 1, close).split(",")) {
+        readStringArrayBody(json.substring(open + 1, close), into);
+    }
+
+    private static void readStringArrays(String json, String key, Map<String, Set<String>> into) {
+        int i = json.indexOf(key);
+        if (i < 0) return;
+        int open = json.indexOf('{', i), close = json.indexOf('}', open);
+        if (open < 0 || close < 0) return;
+        String body = json.substring(open + 1, close);
+        int pos = 0;
+        while (pos < body.length()) {
+            int k1 = body.indexOf('"', pos);
+            if (k1 < 0) break;
+            int k2 = body.indexOf('"', k1 + 1);
+            if (k2 < 0) break;
+            String name = body.substring(k1 + 1, k2);
+            int arrOpen = body.indexOf('[', k2);
+            int arrClose = body.indexOf(']', arrOpen);
+            if (arrOpen < 0 || arrClose < 0) break;
+            Set<String> values = new LinkedHashSet<>();
+            readStringArrayBody(body.substring(arrOpen + 1, arrClose), values);
+            into.put(name, values);
+            pos = arrClose + 1;
+        }
+    }
+
+    private static void readStringArrayBody(String body, Set<String> into) {
+        for (String part : body.split(",")) {
             String s = part.trim().replace("\"", "");
             if (!s.isEmpty()) into.add(s);
         }

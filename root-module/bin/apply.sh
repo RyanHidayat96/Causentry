@@ -8,6 +8,28 @@ CONF=$DIR/config.json
 mode="${1:-manual}"
 log "apply: mode=$mode"
 
+wait_package_manager() {
+  i=0
+  max="${1:-30}"
+  while [ "$i" -lt "$max" ]; do
+    package_manager_ready && return 0
+    sleep 1
+    i=$((i+1))
+  done
+  return 1
+}
+
+install_control_apk() {
+  src="$1"
+  wait_package_manager 30 || return 1
+  tmp=/data/local/tmp/causentry/Causentry.apk
+  mkdir -p /data/local/tmp/causentry 2>/dev/null
+  cp -f "$src" "$tmp" 2>/dev/null || return 1
+  chmod 644 "$tmp" 2>/dev/null
+  chcon u:object_r:shell_data_file:s0 "$tmp" 2>/dev/null
+  pm install -r "$tmp"
+}
+
 # 0) boot properties that root/RASP checks read (safe subset)
 RESETPROP=$(find_resetprop)
 if [ -n "$RESETPROP" ]; then
@@ -21,39 +43,24 @@ if [ -n "$RESETPROP" ]; then
   log "boot props applied"
 fi
 
-# 1) denylisted packages. Default mode is pm hide. Non-destructive system_server
-#    cloaking is available only when a verified backend is explicitly enabled.
+# 1) hidden-app list. Causentry keeps this target-scoped: packages stay installed
+#    and visible to the user, while the system-side cloak config filters what
+#    protected target apps can see.
 RAW_MODE=$(hide_mode)
 MODE=$(effective_hide_mode)
 if [ "$RAW_MODE" != "$MODE" ]; then
   log "hideMode=$RAW_MODE requested but no verified system cloak backend is enabled; using $MODE fallback"
 fi
-if [ "$MODE" = "uninstall" ]; then
-  for pkg in $(jlist denylist); do
-    valid_package_name "$pkg" || continue
-    pkg_re=$(ere_escape "$pkg")
-    if pm list packages --user 0 2>/dev/null | grep -q "^package:${pkg_re}$"; then
-      if pm uninstall --user 0 "$pkg" >/dev/null 2>&1; then
-        grep -qx "$pkg" "$DIR/hidden_packages" 2>/dev/null || echo "$pkg" >> "$DIR/hidden_packages"
-        log "uninstalled for user 0: $pkg"
-      fi
-    fi
-  done
-elif [ "$MODE" = "hide" ]; then
-  for pkg in $(jlist denylist); do
-    valid_package_name "$pkg" || continue
-    pm hide --user 0 "$pkg" >/dev/null 2>&1 && log "hidden (pm hide): $pkg"
-  done
-elif [ "$MODE" = "cloak" ]; then
+if [ "$MODE" = "cloak" ]; then
   log "hideMode=cloak: detection packages stay installed (filtered in system_server)"
+else
+  log "hidden-app list is target-scoped; physical package hiding skipped"
 fi
 
-# 1b) root-indicator apps (Magisk manager, root tooling ...) are hidden for the user.
-#     Measured cause of force-close on Zimperium/PairIP apps: a visible root tool.
-if [ "$(jbool hideRootApps)" = 1 ] && [ -x "$DIR/root-apps.sh" ]; then
-  sh "$DIR/root-apps.sh" hide >> "$LOG" 2>&1
-  log "root apps scan+hide done"
-fi
+# 1b) root tools are no longer a separate physical-hide path. Add Magisk,
+#     KernelSU, fake-GPS tools, etc. to the same hidden-app list when a target
+#     should not be able to enumerate them.
+log "root app physical hiding deprecated; use hidden-app list"
 
 # 2) mock location is handled by the foreground state machine in causentryd.sh.
 #    apply.sh may run at boot or from the UI, so changing it here would make a
@@ -73,12 +80,14 @@ fi
 # 3b) control-UI app: payload/Causentry.apk doubles as a launcher (WebView over the
 #     loopback UI). Installed only when uiApk is enabled and not already present.
 if [ "$(jbool uiApk)" = 1 ] && [ -f "$DIR/Causentry.apk" ]; then
-  if ! pm list packages 2>/dev/null | grep -q "^package:com.causentry.app$"; then
-    if pm install -r "$DIR/Causentry.apk" >> "$LOG" 2>&1; then
+  if wait_package_manager 30 && ! package_installed com.causentry.app; then
+    if install_control_apk "$DIR/Causentry.apk" >> "$LOG" 2>&1; then
       log "control-UI app installed (com.causentry.app)"
     else
       log "control-UI app install failed"
     fi
+  elif ! wait_package_manager 1; then
+    log "control-UI app install skipped: package manager not ready"
   fi
   # hand the UI token to the app privately (no root prompt needed inside the app)
   if [ -s "$DIR/ui.token" ] && [ -d /data/data/com.causentry.app ]; then
@@ -98,8 +107,8 @@ if [ "$(jbool hooks)" = 1 ]; then
   VCLI=$(vector_cli)
   APK="$DIR/Causentry.apk"
   if [ -x "$VCLI" ] && [ -f "$APK" ]; then
-    if ! pm list packages 2>/dev/null | grep -q "^package:com.causentry.app$"; then
-      pm install -r "$APK" >/dev/null 2>&1 && log "Causentry.apk installed"
+    if ! package_installed com.causentry.app; then
+      install_control_apk "$APK" >/dev/null 2>&1 && log "Causentry.apk installed"
     fi
     "$VCLI" modules enable com.causentry.app >/dev/null 2>&1
     # runtime config for the hook engine (readable by app processes)

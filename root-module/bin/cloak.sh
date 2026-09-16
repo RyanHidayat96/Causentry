@@ -11,14 +11,22 @@ OUT_DIR=/data/system/causentry
 OUT=$OUT_DIR/cloak.json
 
 hidden_list() {
-  { for p in $(jlist denylist) $(jlist cloakPackages); do echo "$p"; done
-    sh "$DIR/root-apps.sh" list 2>/dev/null
-  } | while IFS= read -r p; do valid_package_name "$p" && echo "$p"; done
+  for p in $(jlist denylist) $(jlist cloakPackages); do
+    valid_package_name "$p" && echo "$p"
+  done
+}
+
+target_hidden_list() {
+  t="$1"
+  tpl=$(app_hide_template "$t")
+  for p in $(hide_template_list "$tpl") $(jlist cloakPackages); do
+    valid_package_name "$p" && echo "$p"
+  done
 }
 
 uid_of() {
   valid_package_name "$1" || return 1
-  cmd package list packages -U --user 0 2>/dev/null | while IFS= read -r line; do
+  printf '%s\n' "$PKG_UIDS" | while IFS= read -r line; do
     case "$line" in
       "package:$1 uid:"*) echo "${line##* uid:}"; break;;
     esac
@@ -29,6 +37,7 @@ mkdir -p "$OUT_DIR" 2>/dev/null
 chmod 755 "$OUT_DIR" 2>/dev/null
 
 T="$(mktemp 2>/dev/null || echo "$DIR/.cloak.tmp")"
+PKG_UIDS=$(cmd package list packages -U --user 0 2>/dev/null)
 printf '{"targetUids":[' > "$T"
 first=1
 for t in $(jlist targets); do
@@ -55,7 +64,25 @@ for p in $(hidden_list | sort -u); do
   first=0
   json_string "$p" >> "$T"
 done
-printf '],"appZygote":[' >> "$T"
+printf '],"hiddenByTarget":{' >> "$T"
+first=1
+for t in $(jlist targets); do
+  valid_package_name "$t" || continue
+  [ $first -eq 1 ] || printf ',' >> "$T"
+  first=0
+  json_string "$t" >> "$T"
+  printf ':[' >> "$T"
+  inner=1
+  for p in $(target_hidden_list "$t" | sort -u); do
+    valid_package_name "$p" || continue
+    [ $inner -eq 1 ] || printf ',' >> "$T"
+    inner=0
+    json_string "$p" >> "$T"
+  done
+printf ']' >> "$T"
+done
+printf '}' >> "$T"
+printf ',"appZygote":[' >> "$T"
 first=1
 for t in $(jlist targets); do
   valid_package_name "$t" || continue

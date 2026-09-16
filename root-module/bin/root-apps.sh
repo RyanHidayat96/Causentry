@@ -1,19 +1,12 @@
 #!/system/bin/sh
 DIR=/data/adb/causentry
 . "$DIR/lib.sh"
-# Causentry — root-indicator apps: the thing protected apps actually scan for.
-#
-# Measured on this device (com.bpjstku / JMO, Zimperium + PairIP protected):
-#   * Magisk Manager installed (13:01)  -> app force-closed 3/3 right after start
-#   * Magisk Manager hidden for user 0  -> app launched clean 3/3 (reached OnBoarding)
-#   * camera permission was NOT the cause (granted -> still crashed)
-# So a visible root tool is a hard kill trigger; it has to be invisible while
-# protected apps run.
-#
-# Hiding uses `pm uninstall --user 0` -> fully reversible (Restore button, or
-# `pm install-existing --user 0 <pkg>`), app data is preserved.
+# Causentry - root-indicator app candidates. Protected apps often enumerate
+# installed packages to find Magisk, KernelSU, Xposed, fake-GPS tools, etc.
+# This helper only supplies candidate lists. Actual hiding is target-scoped via
+# cloak.json; it must not uninstall, disable, or globally hide user apps.
 
-# --- auto-hidden: root managers / patchers / injectors (hard kill triggers)
+# --- common root managers / patchers / injectors
 DB="com.topjohnwu.magisk com.topjohnwu.magisk.debug com.topjohnwu.magisk.canary
 eu.chainfire.supersu eu.chainfire.supersu.pro com.noshufou.android.su
 com.noshufou.android.su.elite com.koushikdutta.superuser com.thirdparty.superuser
@@ -25,8 +18,8 @@ de.robv.android.xposed.installer org.lsposed.manager com.solohsu.android.edxp.ma
 org.meowcat.edxposed.manager com.chelpus.lackypatch com.dimonvideo.luckypatcher
 com.forpix.valet com.keramidas.TitaniumBackup"
 
-# --- spotted on this device but NOT auto-hidden (they were present while the
-#     protected app still launched fine). The UI lists them so you can opt in.
+# --- spotted on this device but not auto-selected. The UI lists them so the
+#     user can opt in by adding them to the hidden-app list.
 SUGGEST="io.github.a13e300.ksuwebui io.github.lsposed.disableflagsecure
 bin.mt.plus bin.mt.termex eu.thedarken.sdm eu.thedarken.sdm.unlocker
 com.coderstory.toolkit org.adaway io.github.xiaotong6666.fusehide com.daiesp
@@ -36,46 +29,33 @@ extras() {
   { jlist root_packages; [ -f "$DIR/root_extra.txt" ] && cat "$DIR/root_extra.txt"; } \
     | while IFS= read -r p; do valid_package_name "$p" && echo "$p"; done
 }
+
 PKG_CACHE=
 load_packages() {
   [ -n "$PKG_CACHE" ] && return 0
   PKG_CACHE=$(pm list packages --user 0 2>/dev/null | sed 's/^package://')
 }
+
 installed() {
   valid_package_name "$1" || return 1
   load_packages
   printf '%s\n' "$PKG_CACHE" | grep -Fxq "$1"
 }
-never_hide() { [ "$1" = "com.causentry.app" ] && return 0; return 1; }
 
 case "$1" in
-  list)    printf '%s\n' $DB; extras ;;
-  suggest) for p in $SUGGEST; do installed "$p" && echo "$p"; done ;;
-  scan)    for p in $DB $(extras); do installed "$p" && echo "$p"; done ;;
+  list)
+    printf '%s\n' $DB
+    extras
+    ;;
+  suggest)
+    for p in $SUGGEST; do installed "$p" && echo "$p"; done
+    ;;
+  scan)
+    for p in $DB $(extras); do installed "$p" && echo "$p"; done
+    ;;
   hide)
-    n=0
-    MODE=$(effective_hide_mode)
-    for p in $DB $(extras); do
-      never_hide "$p" && continue
-      if installed "$p"; then
-        if [ "$MODE" = "cloak" ]; then
-          # cloak mode: leave the app alone, the system_server filter hides it from
-          # protected apps only (that is the whole point)
-          echo "cloaked (not touched): $p"; n=$((n+1)); continue
-        fi
-        if [ "$MODE" = "hide" ]; then
-          pm hide --user 0 "$p" >/dev/null 2>&1 && { echo "hidden: $p"; n=$((n+1)); }
-          continue
-        fi
-        if pm uninstall --user 0 "$p" >/dev/null 2>&1; then
-          grep -qx "$p" "$DIR/hidden_packages" 2>/dev/null || echo "$p" >> "$DIR/hidden_packages"
-          log "root app hidden: $p"
-          echo "hidden: $p"; n=$((n+1))
-        fi
-      fi
-    done
-    [ "$n" = 0 ] && echo "no root app visible to the user"
-    echo "root-apps hidden: $n"
+    echo "root app physical hiding is disabled; add packages to the hidden-app list instead"
+    echo "root-apps hidden: 0"
     ;;
   *)
     echo "usage: root-apps.sh list|suggest|scan|hide"

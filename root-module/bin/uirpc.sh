@@ -112,6 +112,7 @@ apps_snapshot() {
   T=$(mktemp 2>/dev/null || echo "$DIR/.apps.tmp")
   targets_cache="${NL}$(jlist targets)${NL}"
   hardened_cache="${NL}$(jlist hardened)${NL}"
+  hidden_cache="${NL}$(jlist denylist)${NL}"
   {
     printf '{"apps":['
     f=1
@@ -119,9 +120,10 @@ apps_snapshot() {
       valid_package_name "$pkg" || continue
       prot=false; list_has_line "$targets_cache" "$pkg" && prot=true
       hard=false; list_has_line "$hardened_cache" "$pkg" && hard=true
+      hidden=false; list_has_line "$hidden_cache" "$pkg" && hidden=true
       [ $f -eq 1 ] || printf ','
       f=0
-      printf '{"pkg":'; json_string "$pkg"; printf ',"protected":%s,"hardened":%s}' "$prot" "$hard"
+      printf '{"pkg":'; json_string "$pkg"; printf ',"protected":%s,"hardened":%s,"hidden":%s}' "$prot" "$hard" "$hidden"
     done
     printf ']}'
   } > "$T"
@@ -147,12 +149,13 @@ process_cmds() {
     case "$act" in
       save)
         targets=$(getf targets); denylist=$(getf denylist); hardened=$(getf hardened)
+        templateName=$(getf templateName); templatePackages=$(getf templatePackages)
         ad=$(getf autoDevOff); hm=$(getf hideMockLocation); ah=$(getf alwaysHidden)
-        sf=$(getf susfs); hk=$(getf hooks); hr=$(getf hideRootApps); ui=$(getf uiApk)
+        sf=$(getf susfs); hk=$(getf hooks); hr=0; ui=$(getf uiApk)
         tojson_arr() { printf '['; fl=1; for i in $(echo "$1" | tr ',' ' '); do valid_package_name "$i" || continue; [ $fl -eq 1 ] || printf ','; fl=0; json_string "$i"; done; printf ']'; }
         bj() { bool_json "$1"; }
         APPS_T="$DIR/.uirpc-appentries"
-        grep -oE '"[^"]+":\{"devOff":[^}]*\}' "$DIR/config.json" 2>/dev/null > "$APPS_T" || : > "$APPS_T"
+        grep -oE '"[^"]+"[[:space:]]*:[[:space:]]*\{[^}]*"devOff"[^}]*\}' "$DIR/config.json" 2>/dev/null > "$APPS_T" || : > "$APPS_T"
         emit_saved_entries() {
           f=1
           while IFS= read -r e; do
@@ -165,6 +168,7 @@ process_cmds() {
         {
           printf '{"targets":'; tojson_arr "$targets"
           printf ',"denylist":'; tojson_arr "$denylist"
+          printf ',"hideTemplates":'; emit_hide_templates_json "$templateName" "$templatePackages"
           printf ',"hardened":'; tojson_arr "$hardened"
           printf ',"apps":{'; emit_saved_entries; printf '}'
           printf ',"autoDevOff":'; bj "$ad"; printf ',"hideMockLocation":'; bj "$hm"
@@ -184,13 +188,11 @@ process_cmds() {
         ;;
       apply)   sh "$DIR/apply.sh" app >> "$LOG" 2>&1; mark_changed ;;
       restore) sh "$DIR/restore.sh" >> "$LOG" 2>&1; root_cache_invalidate; mark_changed ;;
-      roothide) sh "$DIR/root-apps.sh" hide >> "$LOG" 2>&1; root_cache_invalidate; mark_changed ;;
+      roothide) log "ignored deprecated roothide command; use hidden-app list"; mark_changed ;;
       hideone)
         pkg=$(getf pkg)
         if valid_package_name "$pkg"; then
-          grep -qx "$pkg" "$DIR/root_extra.txt" 2>/dev/null || echo "$pkg" >> "$DIR/root_extra.txt"
-          sh "$DIR/root-apps.sh" hide >> "$LOG" 2>&1
-          root_cache_invalidate
+          log "ignored deprecated hideone command for $pkg; use hidden-app list"
           mark_changed
         fi
         ;;
@@ -201,10 +203,10 @@ process_cmds() {
         log "ignored deprecated savecfg command" ;;
       setapp)
         # {"action":"setapp","pkg":"x","features":"devOff,mock"} -> enable + set features
-        pkg=$(getf pkg); feats=$(getf features)
+        pkg=$(getf pkg); feats=$(getf features); template=$(getf template)
         if valid_package_name "$pkg"; then
-          APP_PKG_NEW="$pkg" APP_FEATS_NEW="$feats" sh "$DIR/appcfg.sh" set >> "$LOG" 2>&1
-          sh "$DIR/apply.sh" app >> "$LOG" 2>&1
+          APP_PKG_NEW="$pkg" APP_FEATS_NEW="$feats" APP_HIDE_TEMPLATE_NEW="$template" sh "$DIR/appcfg.sh" set >> "$LOG" 2>&1
+          per_app_refresh "$pkg" app >> "$LOG" 2>&1
           mark_changed
         fi
         ;;
@@ -212,7 +214,7 @@ process_cmds() {
         pkg=$(getf pkg)
         if valid_package_name "$pkg"; then
           APP_PKG_NEW="$pkg" sh "$DIR/appcfg.sh" del >> "$LOG" 2>&1
-          sh "$DIR/apply.sh" app >> "$LOG" 2>&1
+          per_app_refresh "$pkg" app >> "$LOG" 2>&1
           mark_changed
         fi
         ;;

@@ -23,14 +23,46 @@ tr -d '\r' < "$DIR/causentryd.sh" > "$DIR/.causentryd.tmp" 2>/dev/null && mv -f 
 [ -f "$DIR/lib.sh" ] && . "$DIR/lib.sh"
 [ -s "$DIR/ui.token" ] || { head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$DIR/ui.token"; chmod 600 "$DIR/ui.token"; }
 
+stop_old_daemons() {
+  # Service may be called by boot, module Action, or manual update. Always collapse
+  # older supervisors first; stacked shell loops poll system services and burn power.
+  kill_cmdline "$DIR/causentry-loop.sh" term
+  kill_cmdline "$DIR/causentryd.sh" term
+  sleep 1
+  kill_cmdline "$DIR/causentry-loop.sh" kill
+  kill_cmdline "$DIR/causentryd.sh" kill
+  rm -f "$DIR/daemon.pid" "$DIR/runtime.active" 2>/dev/null
+  rm -rf "$DIR/loop.lock" "$DIR/evaluate.lock" 2>/dev/null
+}
+
+kill_cmdline() {
+  needle="$1"
+  mode="$2"
+  for proc in /proc/[0-9]*; do
+    [ -d "$proc" ] || continue
+    p=${proc##*/}
+    [ "$p" = "$$" ] && continue
+    cmd=$(tr '\0' ' ' < "$proc/cmdline" 2>/dev/null)
+    case "$cmd" in
+      *"$needle"*)
+        if [ "$mode" = kill ]; then
+          kill -9 "$p" 2>/dev/null
+        else
+          kill "$p" 2>/dev/null
+        fi
+        ;;
+    esac
+  done
+}
+
+stop_old_daemons
+
 # --- protection layer (boot props + kernel hiding + denylist + root apps) ---
 sh "$DIR/apply.sh" boot >> "$LOG" 2>&1
 
 # --- watch daemon (supervised so a logcat hiccup cannot kill the bypass) ---
-if ! pgrep -f causentry-loop.sh >/dev/null 2>&1; then
-  setsid /system/bin/sh "$DIR/causentry-loop.sh" >/dev/null 2>&1 < /dev/null &
-  echo "$(date '+%m-%d %H:%M:%S') [service] daemon supervisor started" >> "$LOG"
-fi
+setsid /system/bin/sh "$DIR/causentry-loop.sh" >/dev/null 2>&1 < /dev/null &
+echo "$(date '+%m-%d %H:%M:%S') [service] daemon supervisor restarted" >> "$LOG"
 
 # --- control UI: loopback only, token protected ---
 if ensure_ui; then

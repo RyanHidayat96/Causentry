@@ -74,7 +74,6 @@ public final class CausentryModule implements IXposedHookLoadPackage {
             if (cfg.cloakFramework) cloakFramework(cl);
             if (cfg.spoofProps) spoofProps(cl);
             if (cfg.spoofBuild) spoofBuild();
-            bestEffortTargets(cl);
             Log.i(Cfg.TAG, "cloak active for " + lp.packageName);
         } catch (Throwable t) {
             Log.e(Cfg.TAG, "cloak failed: " + t);
@@ -421,26 +420,6 @@ public final class CausentryModule implements IXposedHookLoadPackage {
             XposedHelpers.setStaticBooleanField(Build.class, "DEBUGGABLE", false);
         } catch (Throwable t) {
             XposedBridge.log(t);
-        }
-    }
-
-    /* ------------------------------------------------------------------ */
-    /* Best-effort hooks for known in-app detectors                        */
-    /* ------------------------------------------------------------------ */
-
-    private void bestEffortTargets(ClassLoader cl) {
-        // JMO (com.bpjstku) obfuscated helpers — silently skipped if version changed.
-        tryHookReplacement(cl, "getCollectionUri", "TuitionPaymentFragmentbindingInflater1", Boolean.FALSE);
-        tryHookReplacement(cl, "AndroidImageReaderProxyExternalSyntheticLambda1",
-                "TuitionPaymentFragmentspecialinlinedviewModeldefault3", Boolean.FALSE);
-    }
-
-    private void tryHookReplacement(ClassLoader cl, String cls, String method, Object value) {
-        try {
-            Class<?> c = XposedHelpers.findClassIfExists(cls, cl);
-            if (c == null) return;
-            XposedBridge.hookAllMethods(c, method, XC_MethodReplacement.returnConstant(value));
-        } catch (Throwable ignored) {
         }
     }
 

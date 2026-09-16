@@ -22,7 +22,7 @@ shell hardening. Optional hook backends are explicit and must be verified per de
 | `webroot/` | control UI (`index.html`) + token-protected CGI API |
 | `payload/Causentry.apk` | control UI and optional hook app (only for apps that are *not* PairIP-hardened) |
 
-Runtime state lives in `/data/adb/causentry/` (config, log, hidden package list,
+Runtime state lives in `/data/adb/causentry/` (config, log, legacy restore list,
 UI token). Nothing is written inside protected apps.
 
 ## Per-app bypass (the main flow)
@@ -30,18 +30,18 @@ UI token). Nothing is written inside protected apps.
 Pick an app in the control UI, choose its bypass, press **Apply for this app**:
 
 ```json
-"targets": ["com.bpjstku"],
-"apps": { "com.bpjstku": { "devOff": true, "mock": true } }
+"targets": ["com.example.target"],
+"apps": { "com.example.target": { "devOff": true, "mock": true, "hideTemplate": "default" } }
 ```
 
 * `devOff` - hide the developer-options flag only while that app runs
-* `mock`   - force `mock_location=0` (and hide fake-GPS packages) while it runs
+* `mock`   - force `mock_location=0` and apply the target-scoped hidden-app template while it runs
 * apps without an entry fall back to the global toggles (`autoDevOff`, `hideMockLocation`)
 
 The daemon resolves the running app's own feature set on every activation, and restores
 the real flags as soon as no protected app is in the foreground.
 
-CLI equivalent: `APP_PKG_NEW=com.x APP_FEATS_NEW=devOff,mock sh bin/appcfg.sh set`
+CLI equivalent: `APP_PKG_NEW=com.x APP_FEATS_NEW=devOff,mock APP_HIDE_TEMPLATE_NEW=default sh bin/appcfg.sh set`
 (`del` removes it again, `show` prints the current mapping).
 
 ## Configuration (`/data/adb/causentry/config.json`)
@@ -50,16 +50,17 @@ CLI equivalent: `APP_PKG_NEW=com.x APP_FEATS_NEW=devOff,mock sh bin/appcfg.sh se
 |---|---|
 | `targets` | protected apps; the watch daemon hides detection state while they run |
 | `hardened` | apps with PairIP/RASP: never injected, handled system side |
-| `denylist` | packages hidden for the user (fake-GPS tools, ...) |
-| `root_packages` | extra root-indicator packages to hide |
+| `denylist` | compatibility alias for `hideTemplates.default`; empty by default |
+| `hideTemplates` | named package lists hidden from target apps; each protected app chooses one template |
+| `root_packages` | extra root-indicator candidates shown for quick add |
 | `autoDevOff` | hide the developer-options flag while a target runs |
-| `hideMockLocation` | force `mock_location=0` and hide fake-GPS apps |
+| `hideMockLocation` | force `mock_location=0`; package hiding follows the app's `hideTemplate` |
 | `alwaysHidden` | keep flags hidden permanently (dev menu stays hidden too) |
 | `susfs` | kernel-level path hiding when SUSFS is available |
-| `hideRootApps` | hide Magisk Manager & friends for the user |
+| `hideRootApps` | deprecated compatibility flag; UI/save forces it off |
 | `hooks` | install/scope the optional in-process payload (non-hardened apps only) |
-| `hideMode` | `hide` by default; `cloak` falls back to `hide` unless `systemCloak` is true |
-| `systemCloak` | enables non-destructive package cloaking only when a verified backend is installed |
+| `hideMode` | `none` by default; normal apply never disables/uninstalls user apps |
+| `systemCloak` | enables target-scoped package cloaking only when a verified backend is installed |
 
 ## Control UI (the app) — design rules
 
@@ -70,8 +71,8 @@ The page shipped inside the APK follows the Android accessibility + Material lis
 | Touch targets >= 48dp, >= 8dp apart | every row/button/switch hit area is at least 48x48 CSS px (`--tap`) |
 | List items: leading slot + 2 lines + trailing | monogram circle + app name + package + state chips + chevron |
 | One primary action per screen | sticky bottom bar with **Apply for this app** (destructive action next to it, behind a confirm dialog) |
-| Progressive disclosure | Apps is the only expanded card; Advanced / Detection packages / Root apps / Actions collapse and show a summary in the header |
-| Destructive actions ask first | Remove protection and Restore everything both open a confirmation dialog |
+| Progressive disclosure | Apps is the only expanded card; Advanced / Hidden-app list / Actions collapse and show a summary in the header |
+| Destructive actions ask first | Restore everything opens a confirmation dialog |
 | Never a dead end | loading skeletons, "no match" empty state and a "daemon not running" error state with the fix |
 | Feedback | toast for every queued action (queued / applied / failed) |
 | Contrast | WCAG AA verified for every muted label (measured, not guessed) |
@@ -102,19 +103,19 @@ on it: if busybox is missing the app keeps working.
 http://127.0.0.1:8899/index.html?t=<contents of /data/adb/causentry/ui.token>
 ```
 
-The module Action button opens it. From the UI you pick which apps are protected and
-which features are on, see which root apps are visible to the system, and restore
-everything with one tap.
+The module Action button opens it. From the UI you pick which apps are protected,
+which features are on, which packages targets should not be able to enumerate, and
+restore everything with one tap.
 
 `cgi-bin/token.sh` intentionally never returns the token. Read the token over `adb`
 or use the module Action flow instead.
 
 ## Notes / current limitations
 
-- `pm uninstall --user 0` is reversible for **system** apps; for **user-installed**
-  apps Android deletes the APK too, so Restore cannot bring those back.
-- `hideMode=cloak` requires a working system-side backend. Without `systemCloak=true`,
-  Causentry falls back to the safer `pm hide` path.
+- Physical package hiding is deprecated. The normal path keeps Magisk, fake-GPS apps,
+  and other selected packages installed and visible to the user.
+- Target-scoped package invisibility requires a working system-side cloak backend.
+  Without it, Causentry saves the list and avoids destructive fallback.
 - The native Zygisk backend under `zygisk-src/` is stage-1 only and is excluded from
   release zips unless `CAUSENTRY_INCLUDE_EXPERIMENTAL_ZYGISK=1` is set.
 - The watch daemon is currently implemented in shell (`bin/causentryd.sh`). Porting

@@ -27,7 +27,7 @@ import de.robv.android.xposed.XposedHelpers;
  *
  * Config comes from /data/system/causentry/cloak.json, written by the root daemon
  * (/data/adb is not readable by system_server and is hidden by SUSFS):
- *   {"targetUids":[10400],"targets":["com.bpjstku"],"hidden":["ru.gavrikov.mocklocations"]}
+ *   {"targetUids":[10400],"targets":["com.bank"],"hiddenByTarget":{"com.bank":["com.fakegps"]}}
  */
 public final class PackageCloak {
 
@@ -105,12 +105,9 @@ public final class PackageCloak {
                 String pkg = firstString(param.args);
                 if (pkg == null || !isCloaked(pkg)) return;
                 int uid = Binder.getCallingUid();
-                boolean target = isTarget(uid);
-                if (target) {
-                    XposedBridge.log("Causentry cloak: " + methodName(param) + "(" + pkg
-                            + ") caller=" + uid + " -> NameNotFound");
-                    param.setThrowable(new android.content.pm.PackageManager.NameNotFoundException(pkg));
-                }
+                XposedBridge.log("Causentry cloak: " + methodName(param) + "(" + pkg
+                        + ") caller=" + uid + " -> NameNotFound");
+                param.setThrowable(new android.content.pm.PackageManager.NameNotFoundException(pkg));
             } catch (Throwable ignored) {
             }
         }
@@ -261,6 +258,6 @@ public final class PackageCloak {
     }
 
     private static boolean isCloaked(String pkg) {
-        return CloakCfg.isCloaked(pkg);
+        return CloakCfg.isCloakedForCaller(pkg);
     }
 }

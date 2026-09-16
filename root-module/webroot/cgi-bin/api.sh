@@ -7,6 +7,8 @@ CONF=$DIR/config.json
 TOKEN_FILE=$DIR/ui.token
 QS="${QUERY_STRING:-}"
 ARG1="$1"
+NL='
+'
 
 getp() {
   echo "$QS" | tr '&' '\n' | sed -nE "s/^$1=//p" | head -1 | sed 's/%2C/,/g; s/%20/_/g'
@@ -47,7 +49,7 @@ case "$action" in
     vector=false
     vector_cli >/dev/null 2>&1 && vector=true
     uiapk=false
-    pm list packages 2>/dev/null | grep -q "^package:com.causentry.app$" && uiapk=true
+    package_installed com.causentry.app && uiapk=true
     rootlist=$(root_apps_cached | tr '\n' ',')
     rootsuggest=$(root_suggest_cached | tr '\n' ',')
     hb=$(cat "$DIR/heartbeat" 2>/dev/null); [ -n "$hb" ] || hb=0
@@ -94,20 +96,18 @@ case "$action" in
     pkg="$(getp pkg)"
     printf 'Content-Type: application/json\r\n\r\n'
     if valid_package_name "$pkg"; then
-      grep -qx "$pkg" "$DIR/root_extra.txt" 2>/dev/null || echo "$pkg" >> "$DIR/root_extra.txt"
-      out=$(sh "$DIR/root-apps.sh" hide 2>&1)
-      root_cache_invalidate
+      out="deprecated: add packages to the hidden-app list and save; physical hiding is disabled"
       printf '{"ok":true,"out":'; json_string "$out"; printf '}'
     else
       printf '{"ok":false}'
     fi
     ;;
   setapp)
-    pkg="$(getp pkg)"; feats="$(getp features)"
+    pkg="$(getp pkg)"; feats="$(getp features)"; template="$(getp template)"
     printf 'Content-Type: application/json\r\n\r\n'
     if valid_package_name "$pkg"; then
-      APP_PKG_NEW="$pkg" APP_FEATS_NEW="$feats" sh "$DIR/appcfg.sh" set >/dev/null 2>&1
-      sh "$DIR/apply.sh" ui >/dev/null 2>&1
+      APP_PKG_NEW="$pkg" APP_FEATS_NEW="$feats" APP_HIDE_TEMPLATE_NEW="$template" sh "$DIR/appcfg.sh" set >/dev/null 2>&1
+      per_app_refresh "$pkg" ui >/dev/null 2>&1
       date +%s > "$DIR/.uirpc.changed" 2>/dev/null
       printf '{"ok":true}'
     else
@@ -119,7 +119,7 @@ case "$action" in
     printf 'Content-Type: application/json\r\n\r\n'
     if valid_package_name "$pkg"; then
       APP_PKG_NEW="$pkg" sh "$DIR/appcfg.sh" del >/dev/null 2>&1
-      sh "$DIR/apply.sh" ui >/dev/null 2>&1
+      per_app_refresh "$pkg" ui >/dev/null 2>&1
       date +%s > "$DIR/.uirpc.changed" 2>/dev/null
       printf '{"ok":true}'
     else
@@ -144,8 +144,7 @@ case "$action" in
     ;;
   roothide)
     printf 'Content-Type: application/json\r\n\r\n'
-    out=$(sh "$DIR/root-apps.sh" hide 2>&1)
-    root_cache_invalidate
+    out="deprecated: root-app physical hiding is disabled; use hidden-app list"
     date +%s > "$DIR/.uirpc.changed" 2>/dev/null
     printf '{"ok":true,"out":'; json_string "$out"; printf '}'
     ;;
@@ -153,13 +152,16 @@ case "$action" in
     printf 'Content-Type: application/json\r\n\r\n'
     printf '{"apps":['
     first=1
+    hidden_cache="${NL}$(jlist denylist)${NL}"
     for pkg in $(pm list packages -3 2>/dev/null | sed 's/package://' | sort); do
       valid_package_name "$pkg" || continue
       prot=false; is_target "$pkg" && prot=true
       hard=false; is_hardened "$pkg" && hard=true
+      hidden=false
+      case "$hidden_cache" in *"$NL$pkg$NL"*) hidden=true ;; esac
       [ $first -eq 1 ] || printf ','
       first=0
-      printf '{"pkg":'; json_string "$pkg"; printf ',"protected":%s,"hardened":%s}' "$prot" "$hard"
+      printf '{"pkg":'; json_string "$pkg"; printf ',"protected":%s,"hardened":%s,"hidden":%s}' "$prot" "$hard" "$hidden"
     done
     printf ']}'
     ;;
@@ -173,12 +175,14 @@ case "$action" in
     targets="$(getp targets)"
     denylist="$(getp denylist)"
     hardened="$(getp hardened)"
+    templateName="$(getp templateName)"
+    templatePackages="$(getp templatePackages)"
     autoDevOff="$(getp autoDevOff)"; [ "$autoDevOff" = 1 ] || autoDevOff=0
     hideMockLocation="$(getp hideMockLocation)"; [ "$hideMockLocation" = 1 ] || hideMockLocation=0
     alwaysHidden="$(getp alwaysHidden)"; [ "$alwaysHidden" = 1 ] || alwaysHidden=0
     susfsF="$(getp susfs)"; [ "$susfsF" = 1 ] || susfsF=0
     hooks="$(getp hooks)"; [ "$hooks" = 1 ] || hooks=0
-    hideRootApps="$(getp hideRootApps)"; [ "$hideRootApps" = 1 ] || hideRootApps=0
+    hideRootApps=0
     uiApk="$(getp uiApk)"; [ "$uiApk" = 1 ] || uiApk=0
 
     tojson_arr() {
@@ -202,11 +206,12 @@ case "$action" in
       done < "$1"
     }
     APPS_T="$DIR/.api-appentries"
-    grep -oE '"[^"]+":\{"devOff":[^}]*\}' "$CONF" 2>/dev/null > "$APPS_T" || : > "$APPS_T"
+    grep -oE '"[^"]+"[[:space:]]*:[[:space:]]*\{[^}]*"devOff"[^}]*\}' "$CONF" 2>/dev/null > "$APPS_T" || : > "$APPS_T"
 
     {
       printf '{"targets":';          tojson_arr "$targets"
       printf ',"denylist":';         tojson_arr "$denylist"
+      printf ',"hideTemplates":';    emit_hide_templates_json "$templateName" "$templatePackages"
       printf ',"hardened":';         tojson_arr "$hardened"
       printf ',"apps":{';            emit_app_entries "$APPS_T"; printf '}'
       printf ',"autoDevOff":';       bool_json "$autoDevOff"

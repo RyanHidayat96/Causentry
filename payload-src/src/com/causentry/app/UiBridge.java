@@ -42,7 +42,7 @@ public class UiBridge {
         return read("apps.json");
     }
 
-    /** installed app labels: {"com.bpjstku":"JMO", ...} */
+    /** installed app labels: {"com.example.app":"Example", ...} */
     @JavascriptInterface
     public String labels() {
         JSONObject outJson = new JSONObject();
@@ -96,7 +96,7 @@ public class UiBridge {
     @JavascriptInterface
     public String command(String json) {
         try {
-            if (json == null || json.length() > 8192) {
+            if (json == null || json.length() > 32768) {
                 return "{\"ok\":false,\"error\":\"invalid command\"}";
             }
             JSONObject obj = new JSONObject(json);
@@ -171,11 +171,16 @@ public class UiBridge {
                 if (!"devOff".equals(feature) && !"mock".equals(feature)
                         && !"isolate".equals(feature)) return false;
             }
+            String template = obj.optString("template", "");
+            if (!template.isEmpty() && !isTemplateName(template)) return false;
         }
         if ("save".equals(action)) {
+            String template = obj.optString("templateName", "");
+            if (!template.isEmpty() && !isTemplateName(template)) return false;
             return csvPackages(obj.optString("targets", ""))
                     && csvPackages(obj.optString("hardened", ""))
                     && csvPackages(obj.optString("denylist", ""))
+                    && csvPackages(obj.optString("templatePackages", ""))
                     && csvPackages(obj.optString("root_packages", ""));
         }
         return true;
@@ -193,5 +198,9 @@ public class UiBridge {
             if (!pkg.isEmpty() && !isPackageName(pkg)) return false;
         }
         return true;
+    }
+
+    private static boolean isTemplateName(String s) {
+        return s != null && s.matches("[A-Za-z0-9_.-]{1,48}");
     }
 }

@@ -13,6 +13,21 @@ valid_package_name() {
   return 1
 }
 
+valid_template_name() {
+  case "$1" in "") return 1;; esac
+  case "$1" in *[!A-Za-z0-9_.-]*) return 1;; esac
+  return 0
+}
+
+package_manager_ready() {
+  pm path android >/dev/null 2>&1 || cmd package path android >/dev/null 2>&1
+}
+
+package_installed() {
+  valid_package_name "$1" || return 1
+  pm path "$1" >/dev/null 2>&1 || cmd package path "$1" >/dev/null 2>&1
+}
+
 json_escape() {
   printf '%s' "$1" | tr '\r\n' '  ' | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
@@ -35,6 +50,79 @@ jlist() {
     | head -1 | tr ',' '\n' | sed 's/[", ]//g' | grep -v '^$'
 }
 
+csv_package_json_array() {
+  printf '['
+  f=1
+  for i in $(printf '%s' "$1" | tr ',' ' '); do
+    valid_package_name "$i" || continue
+    [ $f -eq 1 ] || printf ','
+    f=0
+    json_string "$i"
+  done
+  printf ']'
+}
+
+list_package_json_array() {
+  printf '['
+  f=1
+  for i in $1; do
+    valid_package_name "$i" || continue
+    [ $f -eq 1 ] || printf ','
+    f=0
+    json_string "$i"
+  done
+  printf ']'
+}
+
+hide_template_pairs() {
+  sed -nE 's/.*"hideTemplates"[[:space:]]*:[[:space:]]*\{([^}]*)\}.*/\1/p' "$CONF" 2>/dev/null \
+    | head -1 | grep -oE '"[A-Za-z0-9_.-]+"[[:space:]]*:[[:space:]]*\[[^]]*\]' 2>/dev/null
+}
+
+hide_template_list() {
+  name="$1"
+  valid_template_name "$name" || return 0
+  esc=$(ere_escape "$name")
+  out=$(sed -nE "s/.*\"hideTemplates\"[[:space:]]*:[[:space:]]*\{.*\"$esc\"[[:space:]]*:[[:space:]]*\[([^]]*)\].*/\1/p" "$CONF" 2>/dev/null \
+    | head -1 | tr ',' '\n' | sed 's/[", ]//g' | grep -v '^$')
+  if [ -n "$out" ]; then
+    printf '%s\n' "$out"
+  elif [ "$name" = "default" ]; then
+    jlist denylist
+  fi
+}
+
+emit_hide_templates_json() {  # emit_hide_templates_json [replace-name] [replace-csv]
+  replace="$1"
+  replace_csv="$2"
+  valid_template_name "$replace" || replace=""
+  tmp="$DIR/.hidetemplates.$$"
+  hide_template_pairs > "$tmp" 2>/dev/null || : > "$tmp"
+  printf '{'
+  f=1
+  if [ "$replace" = "default" ]; then
+    json_string default; printf ':'; csv_package_json_array "$replace_csv"; f=0
+  elif ! grep -q '^"default":' "$tmp" 2>/dev/null; then
+    json_string default; printf ':'; list_package_json_array "$(jlist denylist | tr '\n' ' ')"; f=0
+  fi
+  while IFS= read -r pair; do
+    [ -n "$pair" ] || continue
+    name=$(printf '%s' "$pair" | sed -nE 's/^"([^"]+)":.*/\1/p')
+    valid_template_name "$name" || continue
+    [ -n "$replace" ] && [ "$name" = "$replace" ] && continue
+    [ $f -eq 1 ] || printf ','
+    f=0
+    printf '%s' "$pair"
+  done < "$tmp"
+  if [ -n "$replace" ] && [ "$replace" != "default" ]; then
+    [ $f -eq 1 ] || printf ','
+    f=0
+    json_string "$replace"; printf ':'; csv_package_json_array "$replace_csv"
+  fi
+  printf '}'
+  rm -f "$tmp"
+}
+
 # boolean field: jbool autoDevOff -> 1/0
 jbool() {
   v=$(sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*(true|false).*/\1/p" "$CONF" 2>/dev/null | head -1)
@@ -46,21 +134,21 @@ jstr() {
   sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" "$CONF" 2>/dev/null | head -1
 }
 
-# how to deal with detection packages: hide (default) | cloak | uninstall
+# how to deal with detection packages: none (default) | hide | cloak | uninstall
 hide_mode() {
   m=$(jstr hideMode)
-  case "$m" in cloak|hide|uninstall) echo "$m";; *) echo hide;; esac
+  case "$m" in none|cloak|hide|uninstall) echo "$m";; *) echo none;; esac
 }
 
 # "cloak" needs an installed system_server hook backend. The native Zygisk backend
-# in this repo is still experimental, so production builds must fall back to pm hide
-# unless a maintainer explicitly enables a verified backend in config.json.
+# in this repo is still experimental, so production builds must not fall back to
+# destructive pm hide unless a maintainer explicitly enables a verified backend.
 cloak_backend_ready() { [ "$(jbool systemCloak)" = 1 ]; }
 
 effective_hide_mode() {
   m=$(hide_mode)
   if [ "$m" = "cloak" ] && ! cloak_backend_ready; then
-    echo hide
+    echo none
   else
     echo "$m"
   fi
@@ -160,7 +248,7 @@ root_cache_valid() {
   case "$ts" in ""|*[!0-9]*) ts=0;; esac
   age=$((now - ts))
   [ "$age" -ge 0 ] 2>/dev/null || return 1
-  [ "$age" -lt "${CAUSENTRY_ROOT_CACHE_TTL:-30}" ] \
+  [ "$age" -lt "${CAUSENTRY_ROOT_CACHE_TTL:-120}" ] \
     && [ -f "$DIR/.rootapps.cache" ] \
     && [ -f "$DIR/.rootsuggest.cache" ]
 }
@@ -194,6 +282,27 @@ root_cache_invalidate() {
   rm -f "$DIR/.rootapps.cache" "$DIR/.rootsuggest.cache" "$DIR/.rootapps.cache.ts"
 }
 
+# A per-app toggle only changes config targets/features. Re-running the full apply
+# path here makes the UI feel stuck because it also re-hides every detection
+# package and reapplies boot/global settings. Keep this hot path narrow, but still
+# refresh cloak metadata and restart the target process so the next launch observes
+# the new policy from its first checks.
+per_app_refresh() {
+  pkg="$1"
+  mode="${2:-app}"
+  log "per-app refresh: mode=$mode pkg=${pkg:-?}"
+  if [ "$(jbool hooks)" = 1 ]; then
+    sh "$DIR/apply.sh" "$mode"
+  elif cloak_backend_ready; then
+    [ -x "$DIR/cloak.sh" ] && sh "$DIR/cloak.sh"
+  else
+    log "per-app refresh: cloak metadata skipped (backend disabled)"
+  fi
+  if valid_package_name "$pkg"; then
+    am force-stop "$pkg" >/dev/null 2>&1 && log "force-stopped target after config change: $pkg"
+  fi
+}
+
 # the settings service is not up yet at the very first boot stage
 settings_ready() { [ -n "$(settings get global development_settings_enabled 2>/dev/null)" ]; }
 wait_settings() {
@@ -222,6 +331,18 @@ app_feat() {    # app_feat <pkg> <key> -> 1/0/'' ('' = not configured per app)
     *"\"$2\":false"*) echo 0 ;;
     *) echo "" ;;
   esac
+}
+
+app_str() {     # app_str <pkg> <key> -> raw string value or ''
+  blk=$(app_block "$1")
+  [ -n "$blk" ] || { echo ""; return 0; }
+  printf '%s' "$blk" | sed -nE "s/.*\"$2\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" | head -1
+}
+
+app_hide_template() {
+  v=$(app_str "$1" hideTemplate)
+  valid_template_name "$v" && { echo "$v"; return 0; }
+  echo default
 }
 
 app_feat_or() { # app_feat_or <pkg> <key> <global-key>

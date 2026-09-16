@@ -94,6 +94,9 @@ textarea{min-height:120px;font:var(--fs-13)/1.5 ui-monospace,Menlo,monospace}
 .search-wrap .clear{position:absolute;right:0;top:0;width:44px;height:100%;
   display:none;place-items:center;color:var(--muted);font-size:var(--fs-17)}
 .search-wrap.has-text .clear{display:grid}
+.manual-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--gap);margin-top:var(--sp-3)}
+.manual-add .btn{padding:0 var(--sp-3)}
+@media (max-width:420px){.manual-add{grid-template-columns:1fr}}
 
 /* ---------- list rows (M3 list: leading + 2 lines + trailing, >=48dp) ---------- */
 .list{display:flex;flex-direction:column}
@@ -258,11 +261,6 @@ pre{background:var(--surface-2);border:1px solid var(--line);border-radius:var(-
           <div class="d" data-i18n="susfsD">Device-wide: hides /data/adb, mounts and boot props from every app</div></div>
           <label class="switch"><input type="checkbox" id="f-susfs" role="switch" aria-label="Kernel path hiding"><span class="slider"></span></label>
       </div>
-        <div class="switch-row" data-toggle="f-hideRootApps" role="switch" tabindex="0">
-          <div class="body"><div class="n" data-i18n="hideRoot">Hide root apps</div>
-          <div class="d" data-i18n="hideRootD">Device-wide: Magisk and root tooling become invisible to apps</div></div>
-          <label class="switch"><input type="checkbox" id="f-hideRootApps" role="switch" aria-label="Hide root apps"><span class="slider"></span></label>
-      </div>
         <div class="switch-row" data-toggle="f-uiApk" role="switch" tabindex="0">
           <div class="body"><div class="n" data-i18n="uiApk">Install control-UI app</div>
           <div class="d" data-i18n="uiApkD">Launcher icon for this page</div></div>
@@ -277,20 +275,26 @@ pre{background:var(--surface-2);border:1px solid var(--line);border-radius:var(-
         <div class="actions"><button class="btn primary" id="btnSaveAdv" style="grid-column:1/-1" data-i18n="saveDevice">Save device settings</button></div>
 
         <div class="subsection">
-          <div class="section-label" data-i18n="detectionPkgs">Detection packages</div>
-          <textarea id="denylist" spellcheck="false" aria-label="Detection packages"></textarea>
-          <div class="hint" data-i18n="denyHint">One package per line (fake-GPS tools, root tooling). They are disabled for the user so protected apps cannot see them; reversible.</div>
-          <div class="actions"><button class="btn primary" id="btnSaveDeny" style="grid-column:1/-1" data-i18n="saveHide">Save &amp; hide them</button></div>
-        </div>
-
-        <div class="subsection">
           <div class="section-title">
-            <div class="section-label" data-i18n="rootApps">Root apps</div>
+            <div class="section-label" data-i18n="hiddenApps">Apps hidden from target apps</div>
             <span class="chip" id="rootCount">&ndash;</span>
           </div>
-          <div id="roots" class="list"></div>
-          <div id="rootsuggest" class="list"></div>
-          <div class="hint" data-i18n="rootHint">Hiding uses pm uninstall --user 0: system apps come back with Restore, user-installed apps must be reinstalled.</div>
+          <div class="manual-add">
+            <input id="hideTpl" type="text" data-i18n-ph="hideTemplatePh" placeholder="default" autocomplete="off" value="default">
+            <button class="btn" id="btnHideTplDefault" data-i18n="defaultTemplate">Default</button>
+          </div>
+          <div class="search-wrap" id="hiddenSearchWrap">
+            <input id="hideQ" type="text" data-i18n-ph="hideSearchPh" placeholder="Search app to hide from targets" autocomplete="off">
+            <button class="clear" id="hideQClear" aria-label="Clear hidden-app search">&times;</button>
+          </div>
+          <div id="hiddenPicker" class="list"></div>
+          <div class="empty" id="hiddenEmpty" hidden></div>
+          <div class="manual-add">
+            <input id="hideManual" type="text" data-i18n-ph="manualPackagePh" placeholder="com.example.app" autocomplete="off">
+            <button class="btn" id="btnAddManual" data-i18n="addManual">Add package</button>
+          </div>
+          <div class="hint" data-i18n="denyHint">Root tools, fake-GPS tools, and packages picked here stay installed and visible to you; protected target apps see them as missing when target-scoped cloak is active.</div>
+          <div class="actions"><button class="btn primary" id="btnSaveDeny" style="grid-column:1/-1" data-i18n="saveHide">Save hidden apps</button></div>
         </div>
       </div>
     </div>
@@ -339,12 +343,17 @@ pre{background:var(--surface-2);border:1px solid var(--line);border-radius:var(-
         <div class="d" data-i18n="fIsolateD">Stops services that run from a privileged per-app zygote (PairIP/RASP tamper checks)</div></div>
         <label class="switch"><input type="checkbox" id="d-isolate" role="switch" aria-label="Block app-zygote self-checks"><span class="slider"></span></label>
       </div>
+      <div class="section-label" data-i18n="hideTemplate">Hidden-app template</div>
+      <div class="manual-add">
+        <input id="d-hideTemplate" type="text" data-i18n-ph="hideTemplatePh" placeholder="default" autocomplete="off">
+      </div>
+      <div class="hint" id="d-templateCount"></div>
 
       <div class="section-label" data-i18n="deviceWide">Device-wide (shared by every app)</div>
       <div class="row">
         <div class="lead">&#9733;</div>
-        <div class="body"><div class="n" data-i18n="rootHidden">Root apps hidden</div>
-        <div class="d" data-i18n="rootHiddenD">Magisk &amp; friends are invisible to apps</div></div>
+        <div class="body"><div class="n" data-i18n="hiddenAppsDetail">Hidden-app list</div>
+        <div class="d" data-i18n="hiddenAppsDetailD">Selected packages are hidden only from protected target apps</div></div>
         <div class="trail"><span class="chip" id="d-rootapps">&ndash;</span></div>
       </div>
       <div class="row">
@@ -395,19 +404,26 @@ const STRINGS = {
     defaultsForApps:"Default behavior",
     alwaysHidden:"Always hidden", alwaysHiddenD:"Keep the developer-option flag hidden even with nothing running",
     susfs:"Kernel path hiding (SUSFS)", susfsD:"Device-wide: hides /data/adb, mounts and boot props from every app",
-    hideRoot:"Hide root apps", hideRootD:"Device-wide: Magisk and root tooling become invisible to apps",
     uiApk:"Install control-UI app", uiApkD:"Launcher icon for this page",
     saveDevice:"Save device settings", language:"Language", langAuto:"Auto (phone)",
-    detectionPkgs:"Detection packages", denyHint:"Advanced list for fake-GPS and root-tool detectors. The defaults should be enough; add one package per line only when a target app still sees it.",
-    saveHide:"Save & hide them",
-    rootApps:"Root apps", rootHint:"Used when Hide root apps is on. System apps come back with Restore; user-installed root tools may need reinstall after hiding.",
+    hiddenApps:"Apps hidden from target apps",
+    defaultTemplate:"Default",
+    hideTemplate:"Hidden-app template", hideTemplatePh:"Template name",
+    templateCount:"{name}: {n} hidden", invalidTemplate:"Invalid template name",
+    hideSearchPh:"Search app to hide from targets",
+    manualPackagePh:"Manual package name",
+    denyHint:"Root tools, fake-GPS tools, and packages picked here stay installed and visible to you; Causentry only tells protected target apps they are missing when target-scoped cloak is active.",
+    saveHide:"Save hidden apps",
+    addManual:"Add package",
+    addToList:"Hide", listed:"hidden", listedCount:"{n} hidden", alreadyListed:"Already hidden", addedToList:"Added to hidden apps", removedFromList:"Removed from hidden apps", noCandidates:"No app matches this search",
+    candidate:"candidate", manualPackage:"manual package", hiddenChip:"HIDDEN", hideChip:"HIDE", invalidPackage:"Invalid package name",
     actions:"Diagnostics & recovery", applyNow:"Re-sync now", showLog:"Show log", restoreAll:"Restore everything (undo all changes)",
     bypassForApp:"Bypass for this app",
     fDevOff:"Hide developer options", fDevOffD:"The app sees dev-mode OFF while it runs; your dev menu is untouched the rest of the time",
     fMock:"Hide mock location / fake GPS", fMockD:"Forces mock_location=0 and keeps fake-GPS packages hidden while it runs",
     fIsolate:"Block app-zygote self-checks", fIsolateD:"Stops services that run from a privileged per-app zygote (PairIP/RASP tamper checks)",
     deviceWide:"Device-wide (shared by every app)",
-    rootHidden:"Root apps hidden", rootHiddenD:"Magisk & friends are invisible to apps",
+    hiddenAppsDetail:"Hidden-app list", hiddenAppsDetailD:"Root tools, fake-GPS apps, and other selected packages are hidden only from protected target apps",
     kernelHidingD:"SUSFS hides /data/adb, mounts and boot props from every app",
     applyForApp:"Apply for this app",
     cancel:"Cancel", confirm:"Confirm",
@@ -438,19 +454,26 @@ const STRINGS = {
     defaultsForApps:"Perilaku default",
     alwaysHidden:"Selalu disembunyikan", alwaysHiddenD:"Flag developer-option tetap hilang walau tidak ada app yang jalan",
     susfs:"Kernel path hiding (SUSFS)", susfsD:"Device-wide: sembunyikan /data/adb, mount, dan boot props dari semua app",
-    hideRoot:"Sembunyikan app root", hideRootD:"Device-wide: Magisk dan tool root jadi tidak terlihat oleh app",
     uiApk:"Pasang app kontrol-UI", uiApkD:"Ikon launcher untuk halaman ini",
     saveDevice:"Simpan setelan device", language:"Bahasa", langAuto:"Auto (HP)",
-    detectionPkgs:"Paket deteksi", denyHint:"Daftar lanjutan untuk detector fake-GPS dan tool root. Default biasanya cukup; tambah satu package per baris hanya kalau app target masih melihatnya.",
-    saveHide:"Simpan & sembunyikan",
-    rootApps:"App root", rootHint:"Dipakai saat Sembunyikan app root aktif. App sistem balik lewat Restore; tool root yang dipasang user mungkin perlu diinstal ulang setelah disembunyikan.",
+    hiddenApps:"App yang disembunyikan dari app target",
+    defaultTemplate:"Default",
+    hideTemplate:"Template hidden-app", hideTemplatePh:"Nama template",
+    templateCount:"{name}: {n} tersembunyi", invalidTemplate:"Nama template tidak valid",
+    hideSearchPh:"Cari app yang disembunyikan dari target",
+    manualPackagePh:"Nama package manual",
+    denyHint:"Tool root, fake-GPS, dan package yang dipilih di sini tetap terpasang dan terlihat untuk user; app target yang diproteksi melihatnya seolah tidak ada saat cloak target-scoped aktif.",
+    saveHide:"Simpan app tersembunyi",
+    addManual:"Tambah package",
+    addToList:"Sembunyikan", listed:"tersembunyi", listedCount:"{n} tersembunyi", alreadyListed:"Sudah disembunyikan", addedToList:"Ditambahkan ke app tersembunyi", removedFromList:"Dihapus dari app tersembunyi", noCandidates:"Tidak ada app yang cocok",
+    candidate:"kandidat", manualPackage:"package manual", hiddenChip:"TERSEMBUNYI", hideChip:"SEMBUNYIKAN", invalidPackage:"Nama package tidak valid",
     actions:"Diagnostik & recovery", applyNow:"Sinkronkan ulang", showLog:"Lihat log", restoreAll:"Restore semuanya (batalkan semua perubahan)",
     bypassForApp:"Bypass untuk app ini",
     fDevOff:"Sembunyikan developer options", fDevOffD:"App melihat dev-mode OFF saat dia jalan; menu dev lo tetap normal di waktu lain",
     fMock:"Sembunyikan mock location / fake GPS", fMockD:"Paksa mock_location=0 dan tahan paket fake-GPS tetap tersembunyi saat app jalan",
     fIsolate:"Blokir self-check app-zygote", fIsolateD:"Hentikan service yang jalan dari app-zygote istimewa (cek anti-tamper PairIP/RASP)",
     deviceWide:"Device-wide (dipakai semua app)",
-    rootHidden:"App root disembunyikan", rootHiddenD:"Magisk & kawan-kawan tidak terlihat oleh app",
+    hiddenAppsDetail:"Daftar app tersembunyi", hiddenAppsDetailD:"Tool root, fake-GPS, dan package lain yang dipilih hanya disembunyikan dari app target yang diproteksi",
     kernelHidingD:"SUSFS menyembunyikan /data/adb, mount, dan boot props dari semua app",
     applyForApp:"Apply untuk app ini",
     cancel:"Batal", confirm:"Konfirmasi",
@@ -513,8 +536,10 @@ const Transport = {};
 const ICON_CACHE = {};
 
 /* ---------- state ---------- */
-const S = { snap:{}, apps:[], labels:{}, cfg:{apps:{},targets:[],hardened:[]}, view:"list", sel:null, loaded:false,
-  panelStack:[],
+const S = { snap:{}, apps:[], labels:{}, cfg:{apps:{},targets:[],hardened:[],denylist:[],hideTemplates:{}}, view:"list", sel:null, loaded:false,
+  rootVisible:[], rootSuggested:[],
+  hideTemplate:"default",
+  panelStack:[], hiddenDirty:false,
   detailDirty:false, detailPkg:null };
 const PANELS = [["headApps","wrapApps"],["headAdvanced","wrapAdvanced"],["headActions","wrapActions"]];
 
@@ -553,7 +578,129 @@ function escText(s){
 }
 function escAttr(s){ return escText(s); }
 function isProtected(pkg){ return (S.cfg.targets || []).indexOf(pkg) !== -1; }
+function isActiveApp(a){ return !!(a && (a.protected || isProtected(a.pkg))); }
 function isHardened(pkg){ return (S.cfg.hardened || []).indexOf(pkg) !== -1; }
+function validPkgName(p){ return /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+$/.test(p); }
+function validTemplateName(n){ return /^[A-Za-z0-9_.-]{1,48}$/.test(String(n || "")); }
+function normalTemplateName(n){
+  n = String(n || "").trim();
+  return validTemplateName(n) ? n : "default";
+}
+function uniqPackages(list){
+  const seen = {}, out = [];
+  (list || []).forEach(p => {
+    p = String(p || "").trim();
+    if (!p || !validPkgName(p) || seen[p]) return;
+    seen[p] = true;
+    out.push(p);
+  });
+  return out;
+}
+function normaliseHideTemplates(obj, denylist){
+  const out = {};
+  Object.keys(obj || {}).forEach(k => {
+    if (validTemplateName(k)) out[k] = uniqPackages(Array.isArray(obj[k]) ? obj[k] : []);
+  });
+  if (!Array.isArray(out.default)) out.default = uniqPackages(denylist || []);
+  return out;
+}
+function ensureHideTemplates(){
+  S.cfg.hideTemplates = normaliseHideTemplates(S.cfg.hideTemplates, S.cfg.denylist);
+  S.cfg.denylist = uniqPackages(S.cfg.hideTemplates.default || S.cfg.denylist || []);
+  return S.cfg.hideTemplates;
+}
+function activeHideTemplate(){
+  const name = normalTemplateName(activeHideTemplateRaw());
+  S.hideTemplate = name;
+  return name;
+}
+function activeHideTemplateRaw(){
+  const el = $("hideTpl");
+  return String((el && el.value) || S.hideTemplate || "default").trim() || "default";
+}
+function requireActiveHideTemplate(){
+  const name = activeHideTemplateRaw();
+  if (!validTemplateName(name)) { toast(t("invalidTemplate"), "err"); return ""; }
+  S.hideTemplate = name;
+  return name;
+}
+function setActiveHideTemplate(name){
+  S.hideTemplate = normalTemplateName(name);
+  const el = $("hideTpl");
+  if (el) el.value = S.hideTemplate;
+  updateHiddenCount();
+  renderRoots(S.rootVisible, S.rootSuggested);
+}
+function templatePackages(name){
+  const all = ensureHideTemplates();
+  return uniqPackages(all[normalTemplateName(name)] || []);
+}
+function detailHideTemplate(){
+  return normalTemplateName(detailHideTemplateRaw());
+}
+function detailHideTemplateRaw(){
+  const el = $("d-hideTemplate");
+  return String((el && el.value) || "default").trim() || "default";
+}
+function isHiddenInAnyTemplate(pkg){
+  const all = ensureHideTemplates();
+  return Object.keys(all).some(k => (all[k] || []).indexOf(pkg) !== -1);
+}
+function hiddenPackages(){
+  return templatePackages(activeHideTemplate());
+}
+function updateHiddenCount(){
+  const n = hiddenPackages().length;
+  const name = activeHideTemplate();
+  const text = name + ": " + (n ? t("listedCount", {n:n}) : "0");
+  const main = $("rootCount"), detail = $("d-rootapps");
+  if (main) main.textContent = text;
+  if (detail) {
+    const dn = detailHideTemplate();
+    const dc = templatePackages(dn).length;
+    detail.textContent = dn + ": " + (dc ? t("listedCount", {n:dc}) : "0");
+  }
+}
+function setHiddenPackages(list, dirty){
+  const pkgs = uniqPackages(list);
+  const name = activeHideTemplate();
+  ensureHideTemplates()[name] = pkgs;
+  if (name === "default") S.cfg.denylist = pkgs;
+  if (dirty) S.hiddenDirty = true;
+  updateHiddenCount();
+}
+function addHiddenPackage(pkg){
+  if (!requireActiveHideTemplate()) return;
+  pkg = String(pkg || "").trim();
+  if (!validPkgName(pkg)) return;
+  const list = hiddenPackages();
+  if (list.indexOf(pkg) !== -1) {
+    toast(t("alreadyListed"), "ok");
+    return;
+  }
+  list.push(pkg);
+  setHiddenPackages(list, true);
+  renderRoots(S.rootVisible, S.rootSuggested);
+  toast(t("addedToList"), "ok");
+}
+function removeHiddenPackage(pkg){
+  if (!requireActiveHideTemplate()) return;
+  const list = hiddenPackages().filter(p => p !== pkg);
+  setHiddenPackages(list, true);
+  renderRoots(S.rootVisible, S.rootSuggested);
+  toast(t("removedFromList"), "ok");
+}
+function toggleHiddenPackage(pkg){
+  if (hiddenPackages().indexOf(pkg) !== -1) removeHiddenPackage(pkg);
+  else addHiddenPackage(pkg);
+}
+function addManualHiddenPackage(){
+  const el = $("hideManual");
+  const pkg = String((el && el.value) || "").trim();
+  if (!validPkgName(pkg)) { toast(t("invalidPackage"), "err"); return; }
+  addHiddenPackage(pkg);
+  if (el) el.value = "";
+}
 function syncToggleRow(id){
   const inp = $(id);
   const row = document.querySelector('[data-toggle="' + id + '"]');
@@ -575,11 +722,12 @@ function updateDetailControls(pkg){
   if (!pkg) return;
   const down = (S.snap && S.snap.daemon === false);
   const selected = detailFeatureList().length;
+  const tplCount = templatePackages(detailHideTemplate()).length;
   const protectedApp = isProtected(pkg);
-  $("btnApplyApp").disabled = down || (!protectedApp && selected === 0);
+  $("btnApplyApp").disabled = down || (!protectedApp && selected === 0 && tplCount === 0);
   $("btnApplyApp").textContent = t("applyForApp");
   $("d-note").textContent = down ? t("daemonDown")
-    : (selected === 0 ? (protectedApp ? t("clearByApply") : t("chooseBypass"))
+    : (selected === 0 && tplCount === 0 ? (protectedApp ? t("clearByApply") : t("chooseBypass"))
       : (S.detailDirty ? t("unsavedChanges")
         : (isHardened(pkg) ? t("noteHardened") : t("noteNormal"))));
 }
@@ -634,7 +782,15 @@ function renderList(){
   loading.hidden = true;
   box.innerHTML = "";
   let shown = 0;
-  S.apps.forEach(a => {
+  const sortName = a => (appName(a.pkg) || a.pkg || "").toLowerCase();
+  const sorted = S.apps.slice().sort((a, b) => {
+    // active first, then app name A-Z
+    const pa = isActiveApp(a) ? 0 : 1;
+    const pb = isActiveApp(b) ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    return sortName(a).localeCompare(sortName(b));
+  });
+  sorted.forEach(a => {
     if (q && ((a.pkg || "") + " " + appName(a.pkg)).toLowerCase().indexOf(q) === -1) return;
     shown++;
     const row = document.createElement("button");
@@ -645,7 +801,8 @@ function renderList(){
       '<span class="body"><span class="n">' + escText(appName(a.pkg)) + "</span>" +
       '<span class="p">' + escText(a.pkg) + "</span></span>" +
       '<span class="trail">' +
-        (isProtected(a.pkg) ? '<span class="chip ok">' + t("protectedChip") + "</span>" : "") +
+        (isActiveApp(a) ? '<span class="chip ok">' + t("protectedChip") + "</span>" : "") +
+        ((a.hidden || isHiddenInAnyTemplate(a.pkg)) ? '<span class="chip warn">' + t("hiddenChip") + "</span>" : "") +
         (a.hardened ? '<span class="chip warn">' + t("hardenedChip") + "</span>" : "") +
         '<span class="chev-arrow">\u203a</span>' +
       "</span>";
@@ -681,8 +838,11 @@ function renderDetail(pkg){
     $("d-devOff").checked = feats ? !!feats.devOff : (protectedApp ? !!S.snap.autoDevOff : false);
     $("d-mock").checked   = feats ? !!feats.mock   : (protectedApp ? !!S.snap.hideMockLocation : false);
     $("d-isolate").checked = feats ? (feats.isolate !== false) : (protectedApp && isHardened(pkg));
+    $("d-hideTemplate").value = (feats && validTemplateName(feats.hideTemplate)) ? feats.hideTemplate : "default";
   }
-  $("d-rootapps").textContent = S.snap.hideRootApps ? t("ok_on") : t("ok_off");
+  const tpl = detailHideTemplate();
+  $("d-templateCount").textContent = t("templateCount", {name:tpl, n:templatePackages(tpl).length});
+  updateHiddenCount();
   $("d-susfs").textContent = (S.snap.susfs || t("ok_unsupported"));
   localise();
   updateDetailControls(pkg);
@@ -713,46 +873,88 @@ function applySnapshot(s){
   set("st-flags", (s && s.global === "0") ? t("ok_hidden") : t("ok_visible"), (s && s.global === "0") ? "good" : "warn");
   set("st-kernel", (s && s.susfs) || t("ok_unsupported"), "");
 
+  const incomingDenylist = (s && s.denylist) || [];
   S.cfg.targets  = (s && s.targets)  || [];
   S.cfg.hardened = (s && s.hardened) || [];
-  S.cfg.denylist = (s && s.denylist) || [];
+  if (!S.hiddenDirty) {
+    S.cfg.denylist = incomingDenylist;
+    S.cfg.hideTemplates = normaliseHideTemplates(s && s.config && s.config.hideTemplates, incomingDenylist);
+  } else {
+    ensureHideTemplates();
+  }
   S.cfg.apps     = (s && s.config && s.config.apps) || {};
 
-  [["alwaysHidden","f-alwaysHidden"],["susfsOn","f-susfs"],["hideRootApps","f-hideRootApps"],["uiApk","f-uiApk"]]
-    .forEach(([k, id]) => { if (s && typeof s[k] === "boolean") $(id).checked = s[k]; });
+  [["alwaysHidden","f-alwaysHidden"],["susfsOn","f-susfs"],["uiApk","f-uiApk"]]
+    .forEach(([k, id]) => { const el = $(id); if (el && s && typeof s[k] === "boolean") el.checked = s[k]; });
 
-  $("denylist").value = (S.cfg.denylist || []).join("\n");
   const rc = (s && s.rootApps || "").split(",").filter(Boolean);
   const sc = (s && s.rootSuggest || "").split(",").filter(Boolean);
-  $("rootCount").textContent = rc.length + " / " + sc.length;
-  renderRoots(rc, sc);
+  S.rootVisible = uniqPackages(rc);
+  S.rootSuggested = uniqPackages(sc);
+  updateHiddenCount();
+  renderRoots(S.rootVisible, S.rootSuggested);
   if (S.view === "list") renderList(); else if (S.sel) renderDetail(S.sel);
 }
 function renderRoots(visible, suggested){
-  const box = $("roots");
-  box.innerHTML = visible.length
-    ? visible.map(p => '<div class="row"><span class="lead">!</span><span class="body"><span class="p">' + escText(p) + "</span></span></div>").join("")
-    : '<div class="empty">0 visible \u2014 nothing to hide</div>';
-  const sbox = $("rootsuggest");
-  sbox.innerHTML = suggested.length
-    ? suggested.map(p => '<div class="row"><span class="lead">?</span><span class="body"><span class="p">' + escText(p) + "</span></span>" +
-        '<button class="chip" data-pkg="' + escAttr(p) + '">Hide</button></div>').join("")
-    : "";
-  sbox.querySelectorAll("button[data-pkg]").forEach(b => {
-    b.onclick = async () => {
-      const ok = await Transport.send({action:"hideone", pkg:b.dataset.pkg});
-      toast(ok ? t("queued") : t("saveWarn"), ok ? "ok" : "err");
-      setTimeout(refresh, 2200);
-    };
+  const box = $("hiddenPicker");
+  const empty = $("hiddenEmpty");
+  if (!box) return;
+  const panel = $("wrapAdvanced");
+  if (panel && panel.hidden) {
+    box.innerHTML = "";
+    if (empty) empty.hidden = true;
+    return;
+  }
+  const selected = hiddenPackages();
+  const selectedMap = {};
+  selected.forEach(p => { selectedMap[p] = true; });
+  const rootMap = {}, suggestMap = {}, installedMap = {};
+  (visible || []).forEach(p => { rootMap[p] = true; });
+  (suggested || []).forEach(p => { suggestMap[p] = true; });
+  (S.apps || []).forEach(a => { if (a && a.pkg) installedMap[a.pkg] = true; });
+  const q = (($("hideQ") && $("hideQ").value) || "").trim().toLowerCase();
+  const wrap = $("hiddenSearchWrap");
+  if (wrap) wrap.classList.toggle("has-text", !!q);
+  const candidates = uniqPackages([].concat(selected, visible || [], suggested || [], (S.apps || []).map(a => a.pkg)));
+  const rows = candidates.filter(p => {
+    const meta = (rootMap[p] || suggestMap[p]) ? t("candidate") : (installedMap[p] ? "" : t("manualPackage"));
+    return !q || (p + " " + appName(p) + " " + meta).toLowerCase().indexOf(q) !== -1;
+  }).sort((a, b) => {
+    const rank = p => selectedMap[p] ? 0 : ((rootMap[p] || suggestMap[p]) ? 1 : (installedMap[p] ? 2 : 3));
+    const ra = rank(a), rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    return appName(a).toLowerCase().localeCompare(appName(b).toLowerCase());
   });
+  box.innerHTML = "";
+  rows.forEach(p => {
+    const on = !!selectedMap[p];
+    const meta = (rootMap[p] || suggestMap[p]) ? t("candidate") : (installedMap[p] ? "" : t("manualPackage"));
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "row";
+    row.innerHTML =
+      '<span class="lead">' + escText(monogram(appName(p), p)) + "</span>" +
+      '<span class="body"><span class="n">' + escText(appName(p)) + "</span>" +
+      '<span class="p">' + escText(p + (meta ? " - " + meta : "")) + "</span></span>" +
+      '<span class="trail"><span class="chip' + (on ? ' ok' : '') + '">' + (on ? t("hiddenChip") : t("hideChip")) + "</span></span>";
+    row.onclick = () => toggleHiddenPackage(p);
+    box.appendChild(row);
+    iconInto(row.querySelector(".lead"), p);
+  });
+  if (empty) {
+    empty.hidden = rows.length > 0;
+    empty.textContent = t("noCandidates");
+  }
 }
 
 /* ---------- actions ---------- */
 async function applyForApp(){
   const pkg = S.sel; if (!pkg) return;
   const feats = detailFeatureList();
+  const template = detailHideTemplateRaw();
+  if (!validTemplateName(template)) { toast(t("invalidTemplate"), "err"); updateDetailControls(pkg); return; }
   $("btnApplyApp").disabled = true;
-  if (!feats.length) {
+  if (!feats.length && !templatePackages(template).length) {
     if (!isProtected(pkg)) { toast(t("chooseBypass"), "err"); updateDetailControls(pkg); return; }
     const r = await sendVerified({action:"delapp", pkg:pkg}, () => !isProtected(pkg));
     $("btnApplyApp").disabled = false;
@@ -762,8 +964,8 @@ async function applyForApp(){
     return;
   }
   const want = feats.slice().sort().join(",");
-  const r = await sendVerified({action:"setapp", pkg:pkg, features:feats.join(",")},
-      () => featuresOfEntry((S.cfg.apps || {})[pkg]) === want);
+  const r = await sendVerified({action:"setapp", pkg:pkg, features:feats.join(","), template:template},
+      () => featuresOfEntry((S.cfg.apps || {})[pkg]) === want && entryTemplate((S.cfg.apps || {})[pkg]) === template);
   $("btnApplyApp").disabled = false;
   if (r.ok || r.why === "pending") S.detailDirty = false;
   reportResult(r, t("applied") + ": " + appName(pkg));
@@ -771,25 +973,35 @@ async function applyForApp(){
 }
 async function saveAdvanced(){
   const b = id => $(id).checked ? 1 : 0;
-  const wantSusfs = !!b("f-susfs"), wantRoot = !!b("f-hideRootApps");
+  const wantSusfs = !!b("f-susfs");
   const r = await sendVerified({action:"save",
     targets: S.cfg.targets.join(","), denylist:(S.cfg.denylist || []).join(","), hardened: S.cfg.hardened.join(","),
     autoDevOff:1, hideMockLocation:1,
     alwaysHidden:b("f-alwaysHidden"), susfs:b("f-susfs"), hooks:0,
-    hideRootApps:b("f-hideRootApps"), uiApk:b("f-uiApk")},
-    () => { const c = S.snap && S.snap.config; return !!c && (!!c.hideRootApps === wantRoot) && (!!c.susfs === wantSusfs); });
+    hideRootApps:0, uiApk:b("f-uiApk")},
+    () => { const c = S.snap && S.snap.config; return !!c && (!!c.susfs === wantSusfs); });
   reportResult(r, t("saved"));
 }
 async function saveDenylist(){
-  const dl = $("denylist").value.split("\n").map(x => x.trim()).filter(Boolean);
-  S.cfg.denylist = dl;
+  const templateName = requireActiveHideTemplate();
+  if (!templateName) return;
+  const dl = templatePackages(templateName);
+  setHiddenPackages(dl);
+  const defaultDenylist = templateName === "default" ? dl : (S.cfg.denylist || []);
   const b = id => $(id).checked ? 1 : 0;
   const r = await sendVerified({action:"save",
-    targets: S.cfg.targets.join(","), denylist: dl.join(","), hardened: S.cfg.hardened.join(","),
+    targets: S.cfg.targets.join(","), denylist: defaultDenylist.join(","), hardened: S.cfg.hardened.join(","),
+    templateName: templateName, templatePackages: dl.join(","),
     autoDevOff:1, hideMockLocation:1,
     alwaysHidden:b("f-alwaysHidden"), susfs:b("f-susfs"), hooks:0,
-    hideRootApps:b("f-hideRootApps"), uiApk:b("f-uiApk")},
-    () => { const c = S.snap && S.snap.config; const have = (c && c.denylist) || []; return have.length === dl.length; });
+    hideRootApps:0, uiApk:b("f-uiApk")},
+    () => {
+      const c = S.snap && S.snap.config;
+      const templates = normaliseHideTemplates(c && c.hideTemplates, (c && c.denylist) || []);
+      const have = templates[templateName] || [];
+      return have.length === dl.length && dl.every(p => have.indexOf(p) !== -1);
+    });
+  if (r.ok || r.why === "pending") S.hiddenDirty = false;
   reportResult(r, t("saved"));
 }
 async function restoreEverything(){
@@ -813,6 +1025,7 @@ function setPanel(head, wrap, open){
   h.setAttribute("aria-expanded", open ? "true" : "false");
   const chev = h.querySelector(".chev");
   if (chev) chev.textContent = open ? t("tapToHide") : t("tapToShow");
+  if (open && wrap === "wrapAdvanced") renderRoots(S.rootVisible, S.rootSuggested);
   return true;
 }
 function closeOpenPanel(){
@@ -873,6 +1086,13 @@ $("btnReload").onclick = () => { refresh(); toast(t("loading")); };
 $("btnApplyApp").onclick = applyForApp;
 $("btnSaveAdv").onclick = saveAdvanced;
 $("btnSaveDeny").onclick = saveDenylist;
+$("hideTpl").addEventListener("input", () => { S.hideTemplate = normalTemplateName($("hideTpl").value); updateHiddenCount(); renderRoots(S.rootVisible, S.rootSuggested); });
+$("btnHideTplDefault").onclick = () => setActiveHideTemplate("default");
+$("hideQ").addEventListener("input", () => renderRoots(S.rootVisible, S.rootSuggested));
+$("hideQClear").onclick = () => { $("hideQ").value = ""; renderRoots(S.rootVisible, S.rootSuggested); $("hideQ").focus(); };
+$("btnAddManual").onclick = addManualHiddenPackage;
+$("hideManual").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addManualHiddenPackage(); } });
+$("d-hideTemplate").addEventListener("input", () => { S.detailDirty = true; S.detailPkg = S.sel; updateDetailControls(S.sel); updateHiddenCount(); });
 $("btnApply").onclick = async () => { const ok = await Transport.send({action:"apply"}); toast(ok ? t("applied") : t("saveWarn"), ok ? "ok" : "err"); };
 $("btnLog").onclick = toggleLog;
 $("btnRestore").onclick = restoreEverything;
@@ -958,6 +1178,9 @@ function featuresOfEntry(e){
   if (e.isolate !== false) got.push("isolate");
   return got.sort().join(",");
 }
+function entryTemplate(e){
+  return e && validTemplateName(e.hideTemplate) ? e.hideTemplate : "default";
+}
 function reportResult(r, okMsg){
   if (r.ok) { toast(okMsg, "ok"); return; }
   if (r.why === "pending") { toast(t("queued"), "ok"); return; }
@@ -980,6 +1203,7 @@ async function refresh(){
   S.apps = (a && a.apps) || [];
   if (!Object.keys(S.labels || {}).length) S.labels = await Transport.labels();
   S.loaded = true;
+  renderRoots(S.rootVisible, S.rootSuggested);
   renderList();
   if (S.view === "detail" && S.sel) renderDetail(S.sel);
 }
@@ -998,6 +1222,8 @@ document.querySelectorAll(".seg-btn").forEach(b => {
     localise();
     if (S.view === "list") $("barSub").textContent = t("tagline");
     if (S.view === "detail" && S.sel) renderDetail(S.sel);
+    updateHiddenCount();
+    renderRoots(S.rootVisible, S.rootSuggested);
     renderList();
     toast(t("saved"), "ok");
   };
