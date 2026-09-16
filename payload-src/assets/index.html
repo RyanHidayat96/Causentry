@@ -69,6 +69,11 @@ main{padding:var(--sp-3) var(--sp-3) 0;max-width:720px;margin:0 auto}
 .chip.warn{color:var(--warn);border-color:#5b3d1c;background:var(--warn-bg)}
 .section-label{color:var(--muted);font-size:var(--fs-11);text-transform:uppercase;
   letter-spacing:.06em;margin:var(--sp-4) 0 var(--sp-2)}
+.subsection{border-top:1px solid var(--line);margin-top:var(--sp-4);padding-top:var(--sp-4)}
+.subsection .section-label:first-child{margin-top:0}
+.section-title{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);
+  margin:0 0 var(--sp-2)}
+.section-title .section-label{margin:0}
 
 /* ---------- summary stats ---------- */
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap)}
@@ -270,30 +275,23 @@ pre{background:var(--surface-2);border:1px solid var(--line);border-radius:var(-
           <button class="seg-btn" data-lang="id" role="radio" aria-checked="false">Indonesia</button>
         </div>
         <div class="actions"><button class="btn primary" id="btnSaveAdv" style="grid-column:1/-1" data-i18n="saveDevice">Save device settings</button></div>
-      </div>
-    </div>
 
-    <div class="card">
-      <div class="card-head" id="headDeny" role="button" tabindex="0" aria-expanded="false">
-        <h2 data-i18n="detectionPkgs">Detection packages</h2>
-        <span class="chev" id="denyCount" data-i18n="tapToShow">tap to show &#9662;</span>
-      </div>
-      <div id="wrapDeny" hidden>
-        <textarea id="denylist" spellcheck="false" aria-label="Detection packages"></textarea>
-        <div class="hint" data-i18n="denyHint">One package per line (fake-GPS tools, root tooling). They are disabled for the user so protected apps cannot see them; reversible.</div>
-        <div class="actions"><button class="btn primary" id="btnSaveDeny" style="grid-column:1/-1" data-i18n="saveHide">Save &amp; hide them</button></div>
-      </div>
-    </div>
+        <div class="subsection">
+          <div class="section-label" data-i18n="detectionPkgs">Detection packages</div>
+          <textarea id="denylist" spellcheck="false" aria-label="Detection packages"></textarea>
+          <div class="hint" data-i18n="denyHint">One package per line (fake-GPS tools, root tooling). They are disabled for the user so protected apps cannot see them; reversible.</div>
+          <div class="actions"><button class="btn primary" id="btnSaveDeny" style="grid-column:1/-1" data-i18n="saveHide">Save &amp; hide them</button></div>
+        </div>
 
-    <div class="card">
-      <div class="card-head" id="headRoot" role="button" tabindex="0" aria-expanded="false">
-        <h2 data-i18n="rootApps">Root apps</h2>
-        <span class="chev" id="rootCount" data-i18n="tapToShow">tap to show &#9662;</span>
-      </div>
-      <div id="wrapRoot" hidden>
-        <div id="roots" class="list"></div>
-        <div id="rootsuggest" class="list"></div>
-        <div class="hint" data-i18n="rootHint">Hiding uses pm uninstall --user 0: system apps come back with Restore, user-installed apps must be reinstalled.</div>
+        <div class="subsection">
+          <div class="section-title">
+            <div class="section-label" data-i18n="rootApps">Root apps</div>
+            <span class="chip" id="rootCount">&ndash;</span>
+          </div>
+          <div id="roots" class="list"></div>
+          <div id="rootsuggest" class="list"></div>
+          <div class="hint" data-i18n="rootHint">Hiding uses pm uninstall --user 0: system apps come back with Restore, user-installed apps must be reinstalled.</div>
+        </div>
       </div>
     </div>
 
@@ -393,17 +391,17 @@ const STRINGS = {
     daemonHint:"All bypassing runs in the background daemon; this app only talks to it.",
     apps:"Apps", searchPh:"Search app name or package",
     appsHint:"Tap an app to choose which bypass it gets. Apps with PairIP / anti-injection protection are handled system-side and never injected.",
-    advanced:"Advanced", tapToShow:"tap to show \u25be", tapToHide:"hide \u25b4",
-    defaultsForApps:"Defaults for apps without their own choice",
+    advanced:"Device-wide settings", tapToShow:"tap to show \u25be", tapToHide:"hide \u25b4",
+    defaultsForApps:"Default behavior",
     alwaysHidden:"Always hidden", alwaysHiddenD:"Keep the developer-option flag hidden even with nothing running",
     susfs:"Kernel path hiding (SUSFS)", susfsD:"Device-wide: hides /data/adb, mounts and boot props from every app",
     hideRoot:"Hide root apps", hideRootD:"Device-wide: Magisk and root tooling become invisible to apps",
     uiApk:"Install control-UI app", uiApkD:"Launcher icon for this page",
     saveDevice:"Save device settings", language:"Language", langAuto:"Auto (phone)",
-    detectionPkgs:"Detection packages", denyHint:"One package per line (fake-GPS tools, root tooling). They are disabled for the user so protected apps cannot see them; reversible.",
+    detectionPkgs:"Detection packages", denyHint:"Advanced list for fake-GPS and root-tool detectors. The defaults should be enough; add one package per line only when a target app still sees it.",
     saveHide:"Save & hide them",
-    rootApps:"Root apps", rootHint:"Hiding uses pm uninstall --user 0: system apps come back with Restore, user-installed apps must be reinstalled.",
-    actions:"Actions", applyNow:"Apply now", showLog:"Show log", restoreAll:"Restore everything (undo all changes)",
+    rootApps:"Root apps", rootHint:"Used when Hide root apps is on. System apps come back with Restore; user-installed root tools may need reinstall after hiding.",
+    actions:"Diagnostics & recovery", applyNow:"Re-sync now", showLog:"Show log", restoreAll:"Restore everything (undo all changes)",
     bypassForApp:"Bypass for this app",
     fDevOff:"Hide developer options", fDevOffD:"The app sees dev-mode OFF while it runs; your dev menu is untouched the rest of the time",
     fMock:"Hide mock location / fake GPS", fMockD:"Forces mock_location=0 and keeps fake-GPS packages hidden while it runs",
@@ -436,17 +434,17 @@ const STRINGS = {
     daemonHint:"Semua bypass jalan di daemon background; app ini cuma ngobrol dengannya.",
     apps:"App", searchPh:"Cari nama app atau package",
     appsHint:"Tap app untuk pilih bypass-nya. App dengan proteksi PairIP / anti-injection ditangani dari sisi sistem, tidak pernah di-inject.",
-    advanced:"Lanjutan", tapToShow:"tap untuk buka \u25be", tapToHide:"tutup \u25b4",
-    defaultsForApps:"Default untuk app yang belum diatur sendiri",
+    advanced:"Setelan device", tapToShow:"tap untuk buka \u25be", tapToHide:"tutup \u25b4",
+    defaultsForApps:"Perilaku default",
     alwaysHidden:"Selalu disembunyikan", alwaysHiddenD:"Flag developer-option tetap hilang walau tidak ada app yang jalan",
     susfs:"Kernel path hiding (SUSFS)", susfsD:"Device-wide: sembunyikan /data/adb, mount, dan boot props dari semua app",
     hideRoot:"Sembunyikan app root", hideRootD:"Device-wide: Magisk dan tool root jadi tidak terlihat oleh app",
     uiApk:"Pasang app kontrol-UI", uiApkD:"Ikon launcher untuk halaman ini",
     saveDevice:"Simpan setelan device", language:"Bahasa", langAuto:"Auto (HP)",
-    detectionPkgs:"Paket deteksi", denyHint:"Satu package per baris (tool fake-GPS, tool root). Di-disable untuk user supaya app target tidak bisa melihatnya; bisa dibalikin.",
+    detectionPkgs:"Paket deteksi", denyHint:"Daftar lanjutan untuk detector fake-GPS dan tool root. Default biasanya cukup; tambah satu package per baris hanya kalau app target masih melihatnya.",
     saveHide:"Simpan & sembunyikan",
-    rootApps:"App root", rootHint:"Cara sembunyi: pm uninstall --user 0. App sistem balik lewat Restore; app yang lo instal sendiri harus dipasang ulang.",
-    actions:"Aksi", applyNow:"Apply sekarang", showLog:"Lihat log", restoreAll:"Restore semuanya (batalkan semua perubahan)",
+    rootApps:"App root", rootHint:"Dipakai saat Sembunyikan app root aktif. App sistem balik lewat Restore; tool root yang dipasang user mungkin perlu diinstal ulang setelah disembunyikan.",
+    actions:"Diagnostik & recovery", applyNow:"Sinkronkan ulang", showLog:"Lihat log", restoreAll:"Restore semuanya (batalkan semua perubahan)",
     bypassForApp:"Bypass untuk app ini",
     fDevOff:"Sembunyikan developer options", fDevOffD:"App melihat dev-mode OFF saat dia jalan; menu dev lo tetap normal di waktu lain",
     fMock:"Sembunyikan mock location / fake GPS", fMockD:"Paksa mock_location=0 dan tahan paket fake-GPS tetap tersembunyi saat app jalan",
@@ -518,7 +516,7 @@ const ICON_CACHE = {};
 const S = { snap:{}, apps:[], labels:{}, cfg:{apps:{},targets:[],hardened:[]}, view:"list", sel:null, loaded:false,
   panelStack:[],
   detailDirty:false, detailPkg:null };
-const PANELS = [["headApps","wrapApps"],["headAdvanced","wrapAdvanced"],["headDeny","wrapDeny"],["headRoot","wrapRoot"],["headActions","wrapActions"]];
+const PANELS = [["headApps","wrapApps"],["headAdvanced","wrapAdvanced"],["headActions","wrapActions"]];
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
@@ -726,7 +724,7 @@ function applySnapshot(s){
   $("denylist").value = (S.cfg.denylist || []).join("\n");
   const rc = (s && s.rootApps || "").split(",").filter(Boolean);
   const sc = (s && s.rootSuggest || "").split(",").filter(Boolean);
-  $("rootCount").textContent = rc.length + " / " + sc.length + " \u00b7 " + t("tapToShow");
+  $("rootCount").textContent = rc.length + " / " + sc.length;
   renderRoots(rc, sc);
   if (S.view === "list") renderList(); else if (S.sel) renderDetail(S.sel);
 }
