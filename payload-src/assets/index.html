@@ -86,10 +86,12 @@ main{padding:var(--sp-3) var(--sp-3) 0;max-width:720px;margin:0 auto}
 
 /* ---------- search ---------- */
 .search-wrap{position:relative;margin:var(--sp-3) 0 var(--sp-2)}
-input[type=text],textarea{width:100%;background:var(--surface-2);color:var(--fg);
+input[type=text],select,textarea{width:100%;background:var(--surface-2);color:var(--fg);
   border:1px solid var(--line);border-radius:var(--r-2);padding:var(--sp-3) var(--sp-3);
   min-height:var(--tap);font:var(--fs-15)/1.4 inherit}
 input[type=text]{padding-right:44px}
+select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 18px) 21px,calc(100% - 12px) 21px;background-size:6px 6px,6px 6px;background-repeat:no-repeat;padding-right:38px}
 textarea{min-height:120px;font:var(--fs-13)/1.5 ui-monospace,Menlo,monospace}
 .search-wrap .clear{position:absolute;right:0;top:0;width:44px;height:100%;
   display:none;place-items:center;color:var(--muted);font-size:var(--fs-17)}
@@ -97,6 +99,15 @@ textarea{min-height:120px;font:var(--fs-13)/1.5 ui-monospace,Menlo,monospace}
 .manual-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--gap);margin-top:var(--sp-3)}
 .manual-add .btn{padding:0 var(--sp-3)}
 @media (max-width:420px){.manual-add{grid-template-columns:1fr}}
+.template-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--gap);margin-top:var(--sp-3)}
+.template-tools .btn{padding:0 var(--sp-3);min-width:86px}
+.template-pills{display:flex;gap:var(--gap);overflow-x:auto;padding:var(--sp-3) 0 var(--sp-1);scrollbar-width:none}
+.template-pills::-webkit-scrollbar{display:none}
+.template-pill{min-height:40px;flex:0 0 auto;border:1px solid var(--line);border-radius:var(--r-pill);
+  background:var(--surface-2);padding:0 var(--sp-3);display:flex;align-items:center;gap:var(--sp-2);
+  color:var(--muted);font-size:var(--fs-13);font-weight:700}
+.template-pill.active{background:var(--ok-bg);border-color:#1c5b2b;color:var(--ok)}
+.template-pill span{font-size:var(--fs-11);font-weight:700;color:inherit;opacity:.8}
 
 /* ---------- list rows (M3 list: leading + 2 lines + trailing, >=48dp) ---------- */
 .list{display:flex;flex-direction:column}
@@ -279,9 +290,14 @@ pre{background:var(--surface-2);border:1px solid var(--line);border-radius:var(-
             <div class="section-label" data-i18n="hiddenApps">Apps hidden from target apps</div>
             <span class="chip" id="rootCount">&ndash;</span>
           </div>
-          <div class="manual-add">
-            <input id="hideTpl" type="text" data-i18n-ph="hideTemplatePh" placeholder="default" autocomplete="off" value="default">
+          <div class="template-tools">
+            <select id="hideTpl"></select>
             <button class="btn" id="btnHideTplDefault" data-i18n="defaultTemplate">Default</button>
+          </div>
+          <div id="templateList" class="template-pills" role="list"></div>
+          <div class="template-tools">
+            <input id="hideTplNew" type="text" data-i18n-ph="newTemplatePh" placeholder="new-template" autocomplete="off">
+            <button class="btn" id="btnAddTemplate" data-i18n="addTemplate">Create template</button>
           </div>
           <div class="search-wrap" id="hiddenSearchWrap">
             <input id="hideQ" type="text" data-i18n-ph="hideSearchPh" placeholder="Search app to hide from targets" autocomplete="off">
@@ -345,7 +361,7 @@ pre{background:var(--surface-2);border:1px solid var(--line);border-radius:var(-
       </div>
       <div class="section-label" data-i18n="hideTemplate">Hidden-app template</div>
       <div class="manual-add">
-        <input id="d-hideTemplate" type="text" data-i18n-ph="hideTemplatePh" placeholder="default" autocomplete="off">
+        <select id="d-hideTemplate"></select>
       </div>
       <div class="hint" id="d-templateCount"></div>
 
@@ -409,6 +425,7 @@ const STRINGS = {
     hiddenApps:"Apps hidden from target apps",
     defaultTemplate:"Default",
     hideTemplate:"Hidden-app template", hideTemplatePh:"Template name",
+    newTemplatePh:"New template name", addTemplate:"Create", selectTemplate:"Select", templateExists:"Template already exists", templateCreated:"Template created",
     templateCount:"{name}: {n} hidden", invalidTemplate:"Invalid template name",
     hideSearchPh:"Search app to hide from targets",
     manualPackagePh:"Manual package name",
@@ -460,6 +477,7 @@ const STRINGS = {
     hiddenApps:"App yang disembunyikan dari app target",
     defaultTemplate:"Default",
     hideTemplate:"Template hidden-app", hideTemplatePh:"Nama template",
+    newTemplatePh:"Nama template baru", addTemplate:"Buat", selectTemplate:"Pilih", templateExists:"Template sudah ada", templateCreated:"Template dibuat",
     templateCount:"{name}: {n} tersembunyi", invalidTemplate:"Nama template tidak valid",
     hideSearchPh:"Cari app yang disembunyikan dari target",
     manualPackagePh:"Nama package manual",
@@ -612,6 +630,53 @@ function ensureHideTemplates(){
   S.cfg.denylist = uniqPackages(S.cfg.hideTemplates.default || S.cfg.denylist || []);
   return S.cfg.hideTemplates;
 }
+function templateNames(){
+  const all = ensureHideTemplates();
+  const names = Object.keys(all).filter(validTemplateName).sort((a, b) => {
+    if (a === "default") return -1;
+    if (b === "default") return 1;
+    return a.toLowerCase().localeCompare(b.toLowerCase());
+  });
+  return names.length ? names : ["default"];
+}
+function fillTemplateSelect(sel, value){
+  if (!sel) return;
+  const names = templateNames();
+  const want = names.indexOf(value) !== -1 ? value : "default";
+  sel.innerHTML = "";
+  names.forEach(name => {
+    const o = document.createElement("option");
+    o.value = name;
+    o.textContent = name + " (" + templatePackages(name).length + ")";
+    sel.appendChild(o);
+  });
+  sel.value = want;
+}
+function renderTemplateControls(){
+  const names = templateNames();
+  if (names.indexOf(S.hideTemplate) === -1) S.hideTemplate = "default";
+  fillTemplateSelect($("hideTpl"), S.hideTemplate || "default");
+  const detailSelect = $("d-hideTemplate");
+  if (detailSelect) {
+    const current = validTemplateName(detailSelect.value) ? detailSelect.value : "default";
+    fillTemplateSelect(detailSelect, current);
+  }
+  const list = $("templateList");
+  if (!list) return;
+  list.innerHTML = "";
+  names.forEach(name => {
+    const row = document.createElement("button");
+    row.type = "button";
+    const count = templatePackages(name).length;
+    const active = name === activeHideTemplate();
+    row.className = "template-pill" + (active ? " active" : "");
+    row.innerHTML = escText(name) + '<span>' + escText(count) + "</span>";
+    row.setAttribute("role", "listitem");
+    row.setAttribute("aria-pressed", active ? "true" : "false");
+    row.onclick = () => setActiveHideTemplate(name);
+    list.appendChild(row);
+  });
+}
 function activeHideTemplate(){
   const name = normalTemplateName(activeHideTemplateRaw());
   S.hideTemplate = name;
@@ -634,6 +699,18 @@ function setActiveHideTemplate(name){
   updateHiddenCount();
   renderRoots(S.rootVisible, S.rootSuggested);
 }
+function createTemplate(){
+  const el = $("hideTplNew");
+  const name = String((el && el.value) || "").trim();
+  if (!validTemplateName(name)) { toast(t("invalidTemplate"), "err"); return; }
+  const all = ensureHideTemplates();
+  if (all[name]) { setActiveHideTemplate(name); toast(t("templateExists"), "ok"); return; }
+  all[name] = [];
+  if (el) el.value = "";
+  S.hiddenDirty = true;
+  setActiveHideTemplate(name);
+  toast(t("templateCreated"), "ok");
+}
 function templatePackages(name){
   const all = ensureHideTemplates();
   return uniqPackages(all[normalTemplateName(name)] || []);
@@ -653,6 +730,7 @@ function hiddenPackages(){
   return templatePackages(activeHideTemplate());
 }
 function updateHiddenCount(){
+  renderTemplateControls();
   const n = hiddenPackages().length;
   const name = activeHideTemplate();
   const text = name + ": " + (n ? t("listedCount", {n:n}) : "0");
@@ -1097,13 +1175,15 @@ $("btnReload").onclick = () => { refresh(); toast(t("loading")); };
 $("btnApplyApp").onclick = applyForApp;
 $("btnSaveAdv").onclick = saveAdvanced;
 $("btnSaveDeny").onclick = saveDenylist;
-$("hideTpl").addEventListener("input", () => { S.hideTemplate = normalTemplateName($("hideTpl").value); updateHiddenCount(); renderRoots(S.rootVisible, S.rootSuggested); });
+$("hideTpl").addEventListener("change", () => { S.hideTemplate = normalTemplateName($("hideTpl").value); updateHiddenCount(); renderRoots(S.rootVisible, S.rootSuggested); });
 $("btnHideTplDefault").onclick = () => setActiveHideTemplate("default");
+$("btnAddTemplate").onclick = createTemplate;
+$("hideTplNew").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); createTemplate(); } });
 $("hideQ").addEventListener("input", () => renderRoots(S.rootVisible, S.rootSuggested));
 $("hideQClear").onclick = () => { $("hideQ").value = ""; renderRoots(S.rootVisible, S.rootSuggested); $("hideQ").focus(); };
 $("btnAddManual").onclick = addManualHiddenPackage;
 $("hideManual").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addManualHiddenPackage(); } });
-$("d-hideTemplate").addEventListener("input", () => { S.detailDirty = true; S.detailPkg = S.sel; updateDetailControls(S.sel); updateHiddenCount(); });
+$("d-hideTemplate").addEventListener("change", () => { S.detailDirty = true; S.detailPkg = S.sel; updateDetailControls(S.sel); updateHiddenCount(); });
 $("btnApply").onclick = async () => {
   const btn = $("btnApply");
   btn.disabled = true;

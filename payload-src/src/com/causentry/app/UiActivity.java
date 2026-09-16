@@ -72,6 +72,8 @@ public class UiActivity extends Activity {   // cache-busting on update
         // first frame of the WebView is ready (that is the "black flash" on open)
         getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(
                 Color.parseColor("#0a0e13")));
+        getWindow().setStatusBarColor(Color.parseColor("#0b0f14"));
+        getWindow().setNavigationBarColor(Color.parseColor("#0b0f14"));
 
         status = new TextView(this);
         status.setText("Causentry \u2014 waiting for the daemon\u2026");

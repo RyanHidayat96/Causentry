@@ -12,6 +12,7 @@
         android:allowBackup="false"
         android:hasCode="true"
         android:usesCleartextTraffic="false"
+        android:theme="@style/CausentryTheme"
         android:label="@string/app_name">
 
         <activity
