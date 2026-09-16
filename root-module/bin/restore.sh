@@ -1,6 +1,6 @@
 #!/system/bin/sh
-# Causentry — restore everything: re-enable hidden packages, give the original
-# developer-options flags back, and drop the optional hook payload.
+# Causentry — restore everything: re-enable hidden packages and give the original
+# developer-options flags back.
 DIR=/data/adb/causentry
 CONF=$DIR/config.json
 . "$DIR/lib.sh"
@@ -30,13 +30,7 @@ if [ -f "$DIR/devsaved" ]; then
   log "flags restored"
 fi
 
-# 3) remove hook scopes
-VCLI=$(vector_cli)
-if [ -n "$VCLI" ]; then
-  for pkg in $(jlist targets); do
-    "$VCLI" scope rm com.causentry.app "$pkg/0" >/dev/null 2>&1
-  done
-fi
+# 3) old runtime scratch files only; no Vector/LSPosed scoping is used.
 rm -f /data/local/tmp/causentry/config.json 2>/dev/null
 
 echo "Causentry: restore done (reboot recommended to clear kernel-side hiding)"

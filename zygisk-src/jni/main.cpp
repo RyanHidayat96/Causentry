@@ -2,6 +2,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <sys/stat.h>
 #include <string>
 #include <unistd.h>
 
@@ -48,6 +49,19 @@ static std::string readConfig() {
     return {};
 }
 
+static void writeLoadedMarker() {
+    mkdir("/data/system/causentry", 0700);
+    FILE *f = fopen("/data/system/causentry/zygisk.loaded", "w");
+    if (f == nullptr) {
+        logi("failed to write zygisk.loaded");
+        return;
+    }
+    fprintf(f, "%d\n", getpid());
+    fclose(f);
+    chmod("/data/system/causentry/zygisk.loaded", 0644);
+    logi("zygisk.loaded written for system_server pid=%d", getpid());
+}
+
 class CausentryZygisk : public zygisk::ModuleBase {
 public:
     void onLoad(zygisk::Api *api, JNIEnv *env) override {
@@ -60,13 +74,17 @@ public:
         const char *nice = args->nice_name ? env->GetStringUTFChars(args->nice_name, nullptr) : nullptr;
         process_name = nice ? nice : "";
         if (nice) env->ReleaseStringUTFChars(args->nice_name, nice);
+        if (process_name == "system_server") {
+            is_system_server = true;
+            logi("preAppSpecialize fallback: process=system_server");
+            return;
+        }
         is_system_server = false;
         if (api != nullptr) api->setOption(zygisk::DLCLOSE_MODULE_LIBRARY);
-        logi("preAppSpecialize: process=%s system_server=0", process_name.c_str());
     }
 
     void postAppSpecialize(const zygisk::AppSpecializeArgs *) override {
-        // App-process hooks are intentionally not implemented in this backend.
+        if (is_system_server) reportSystemServer();
     }
 
     void preServerSpecialize(zygisk::ServerSpecializeArgs *) override {
@@ -83,6 +101,7 @@ private:
     void reportSystemServer() {
         if (!is_system_server) return;
         std::string cfg = readConfig();
+        writeLoadedMarker();
         logi("injected into system_server (config %zu bytes, targets json present: %s)",
              cfg.size(), cfg.find("\"targets\"") != std::string::npos ? "yes" : "no");
         // stage 2: LSPlant hooks - package cloaking, app-ops, settings, app-zygote denial

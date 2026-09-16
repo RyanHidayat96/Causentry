@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Default scope is system-side only. Hardened target apps must not be injected by default. -->
-    <string-array name="xposed_scope">
-        <item>android</item>
-        <item>com.android.providers.settings</item>
-    </string-array>
-</resources>

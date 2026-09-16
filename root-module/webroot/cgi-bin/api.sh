@@ -10,6 +10,21 @@ ARG1="$1"
 NL='
 '
 
+schedule_apply() {
+  mode="${1:-ui}"
+  op="$2"
+  case "$op" in *[!A-Za-z0-9_.:-]*|"") op="";; esac
+  if [ -x "$DIR/apply-async.sh" ]; then
+    sh "$DIR/apply-async.sh" "$mode" "$op" >/dev/null 2>&1
+  else
+    sh "$DIR/apply.sh" "$mode" >/dev/null 2>&1
+    rc=$?
+    date +%s > "$DIR/.apply.done" 2>/dev/null
+    printf '%s' "$rc" > "$DIR/.apply.rc" 2>/dev/null
+    [ -n "$op" ] && printf '%s' "$op" > "$DIR/.apply.done.token" 2>/dev/null
+  fi
+}
+
 getp() {
   echo "$QS" | tr '&' '\n' | sed -nE "s/^$1=//p" | head -1 | sed 's/%2C/,/g; s/%20/_/g'
 }
@@ -46,8 +61,6 @@ case "$action" in
     [ -n "$dpid" ] && [ -d "/proc/$dpid" ] && dalive=true
     susfs="unsupported"
     susfs=$(susfs_variant)
-    vector=false
-    vector_cli >/dev/null 2>&1 && vector=true
     uiapk=false
     package_installed com.causentry.app && uiapk=true
     rootlist=$(root_apps_cached | tr '\n' ',')
@@ -56,6 +69,11 @@ case "$action" in
     age=$(( $(date +%s) - hb ))
     [ "$age" -ge 0 ] 2>/dev/null || age=999999
     [ "$age" -le 20 ] || dalive=false
+    apply_busy=false
+    if [ -d "$DIR/apply.lock" ] || [ -f "$DIR/.apply.pending" ]; then apply_busy=true; fi
+    apply_done=$(cat "$DIR/.apply.done" 2>/dev/null); case "$apply_done" in ""|*[!0-9]*) apply_done=0;; esac
+    apply_rc=$(cat "$DIR/.apply.rc" 2>/dev/null); case "$apply_rc" in ""|*[!0-9]*) apply_rc=0;; esac
+    apply_token=$(cat "$DIR/.apply.done.token" 2>/dev/null)
     printf 'Content-Type: application/json\r\n\r\n'
     printf '{"state":'; json_string "$state"
     printf ',"daemon":%s,"ts":%s,"age":%s' "$dalive" "$(date +%s)" "$age"
@@ -63,20 +81,21 @@ case "$action" in
     printf ',"secure":'; json_string "$(settings get secure development_settings_enabled 2>/dev/null)"
     printf ',"mock":'; json_string "$(settings get secure mock_location 2>/dev/null)"
     printf ',"susfs":'; json_string "$susfs"
-    printf ',"vector":%s' "$vector"
+    printf ',"zygisk":'; json_string "$(zygisk_backend_status)"
+    printf ',"cloakReady":'; bool_json "$(cloak_backend_ready && echo 1 || echo 0)"
     printf ',"targets":'; json_jlist targets
     printf ',"hardened":'; json_jlist hardened
     printf ',"denylist":'; json_jlist denylist
     printf ',"hidden":%s,"version":"1.1.0"' "$(jlist denylist | wc -l)"
     printf ',"alwaysHidden":'; bool_json "$(jbool alwaysHidden)"
     printf ',"autoDevOff":'; bool_json "$(jbool autoDevOff)"
-    printf ',"hooks":'; bool_json "$(jbool hooks)"
     printf ',"hideMockLocation":'; bool_json "$(jbool hideMockLocation)"
     printf ',"susfsOn":'; bool_json "$(jbool susfs)"
     printf ',"hideRootApps":'; bool_json "$(jbool hideRootApps)"
     printf ',"rootApps":'; json_string "$rootlist"
     printf ',"rootSuggest":'; json_string "$rootsuggest"
     printf ',"uiApk":%s,"uiAppInstalled":%s' "$uiapk" "$uiapk"
+    printf ',"applyBusy":%s,"applyDone":%s,"applyRc":%s,"applyToken":' "$apply_busy" "$apply_done" "$apply_rc"; json_string "$apply_token"
     printf ',"config":%s' "$(tr -d '\n' < "$CONF" 2>/dev/null || echo '{}')"
     printf ',"log":'; json_string "$(tail -25 "$DIR/causentry.log" 2>/dev/null)"
     printf '}'
@@ -181,9 +200,9 @@ case "$action" in
     hideMockLocation="$(getp hideMockLocation)"; [ "$hideMockLocation" = 1 ] || hideMockLocation=0
     alwaysHidden="$(getp alwaysHidden)"; [ "$alwaysHidden" = 1 ] || alwaysHidden=0
     susfsF="$(getp susfs)"; [ "$susfsF" = 1 ] || susfsF=0
-    hooks="$(getp hooks)"; [ "$hooks" = 1 ] || hooks=0
     hideRootApps=0
     uiApk="$(getp uiApk)"; [ "$uiApk" = 1 ] || uiApk=0
+    op="$(getp op)"
 
     tojson_arr() {
       printf '['
@@ -206,7 +225,7 @@ case "$action" in
       done < "$1"
     }
     APPS_T="$DIR/.api-appentries"
-    grep -oE '"[^"]+"[[:space:]]*:[[:space:]]*\{[^}]*"devOff"[^}]*\}' "$CONF" 2>/dev/null > "$APPS_T" || : > "$APPS_T"
+    extract_app_entries "$CONF" > "$APPS_T" || : > "$APPS_T"
 
     {
       printf '{"targets":';          tojson_arr "$targets"
@@ -218,7 +237,6 @@ case "$action" in
       printf ',"hideMockLocation":'; bool_json "$hideMockLocation"
       printf ',"alwaysHidden":';     bool_json "$alwaysHidden"
       printf ',"susfs":';            bool_json "$susfsF"
-      printf ',"hooks":';            bool_json "$hooks"
       printf ',"hideRootApps":';     bool_json "$hideRootApps"
       printf ',"uiApk":';            bool_json "$uiApk"
       printf ',"systemCloak":';      bool_json "$(jbool systemCloak)"
@@ -229,13 +247,15 @@ case "$action" in
     rm -f "$APPS_T"
     chmod 644 "$CONF"
     log "config saved from UI"
-    sh "$DIR/apply.sh" ui >/dev/null 2>&1
+    schedule_apply ui "$op"
     date +%s > "$DIR/.uirpc.changed" 2>/dev/null
     printf 'Content-Type: application/json\r\n\r\n{"ok":true}'
     ;;
   apply)
     printf 'Content-Type: application/json\r\n\r\n'
-    out=$(sh "$DIR/apply.sh" ui 2>&1)
+    op="$(getp op)"
+    schedule_apply ui "$op"
+    out="queued"
     date +%s > "$DIR/.uirpc.changed" 2>/dev/null
     printf '{"ok":true,"out":'; json_string "$out"; printf '}'
     ;;

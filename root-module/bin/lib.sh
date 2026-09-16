@@ -74,6 +74,11 @@ list_package_json_array() {
   printf ']'
 }
 
+extract_app_entries() {   # extract_app_entries [config-file]
+  src="${1:-$CONF}"
+  grep -oE '"[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+"[[:space:]]*:[[:space:]]*\{[^{}]*"devOff"[^{}]*\}' "$src" 2>/dev/null
+}
+
 hide_template_pairs() {
   sed -nE 's/.*"hideTemplates"[[:space:]]*:[[:space:]]*\{([^}]*)\}.*/\1/p' "$CONF" 2>/dev/null \
     | head -1 | grep -oE '"[A-Za-z0-9_.-]+"[[:space:]]*:[[:space:]]*\[[^]]*\]' 2>/dev/null
@@ -140,10 +145,55 @@ hide_mode() {
   case "$m" in none|cloak|hide|uninstall) echo "$m";; *) echo none;; esac
 }
 
-# "cloak" needs an installed system_server hook backend. The native Zygisk backend
-# in this repo is still experimental, so production builds must not fall back to
-# destructive pm hide unless a maintainer explicitly enables a verified backend.
-cloak_backend_ready() { [ "$(jbool systemCloak)" = 1 ]; }
+zygisk_backend_installed() {
+  for p in /data/adb/modules/causentry/zygisk/arm64-v8a.so \
+           /data/adb/modules/causentry/zygisk/armeabi-v7a.so \
+           /data/adb/modules_update/causentry/zygisk/arm64-v8a.so \
+           /data/adb/modules_update/causentry/zygisk/armeabi-v7a.so; do
+    [ -f "$p" ] && return 0
+  done
+  return 1
+}
+
+zygisk_pid_marker_alive() {
+  f="$1"
+  [ -s "$f" ] || return 1
+  pid=$(cat "$f" 2>/dev/null | tr -dc '0-9')
+  case "$pid" in ""|*[!0-9]*) return 1;; esac
+  [ -d "/proc/$pid" ] || return 1
+  tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q 'system_server'
+}
+
+zygisk_backend_loaded() {
+  zygisk_pid_marker_alive /data/system/causentry/zygisk.loaded
+}
+
+zygisk_loader_active() {
+  grep -q '^causentry ' /data/adb/zygisksu/modules_info 2>/dev/null \
+    || grep -q '^causentry ' /data/adb/ksu/log/modules_info 2>/dev/null
+}
+
+zygisk_cloak_ready() {
+  zygisk_pid_marker_alive /data/system/causentry/zygisk.cloak.ready
+}
+
+zygisk_backend_status() {
+  if zygisk_backend_loaded; then
+    echo system-server-active
+  elif zygisk_loader_active; then
+    echo zygisk-loader-active
+  elif zygisk_backend_installed; then
+    echo installed-reboot-needed
+  else
+    echo absent
+  fi
+}
+
+# "cloak" needs a live system_server hook backend. Stage-1 Zygisk only proves
+# loading; the ART hook layer must write zygisk.cloak.ready before cloak is usable.
+cloak_backend_ready() {
+  [ "$(jbool systemCloak)" = 1 ] && zygisk_cloak_ready
+}
 
 effective_hide_mode() {
   m=$(hide_mode)
@@ -185,7 +235,7 @@ detect_hardened_pkg() {
 #   busybox    -> control web UI (httpd)          : CLI + daemon keep working
 #   resetprop  -> boot property spoofing          : other cloaks keep working
 #   ksu_susfs  -> kernel-level path hiding        : userspace cloaks keep working
-#   vector cli -> optional in-process hooks       : off by default anyway
+#   zygisk     -> system_server cloak backend     : Zygisk-only, no Vector/LSPosed
 # ---------------------------------------------------------------------------
 find_busybox() {
   for p in /data/adb/ksu/bin/busybox /data/adb/magisk/busybox /data/adb/ap/bin/busybox \
@@ -227,14 +277,6 @@ susfs_variant() {
   p=$(find_susfs) || { echo unsupported; return 0; }
   v=$("$p" show variant 2>/dev/null)
   [ -n "$v" ] && echo "$v" || echo unsupported
-}
-
-vector_cli() {
-  for p in /data/adb/modules/zygisk_vector/cli /data/adb/modules/zygisk-vector/cli \
-           /data/adb/modules/lsposed/cli; do
-    [ -x "$p" ] && { echo "$p"; return 0; }
-  done
-  return 1
 }
 
 has() { command -v "$1" >/dev/null 2>&1; }
@@ -291,9 +333,7 @@ per_app_refresh() {
   pkg="$1"
   mode="${2:-app}"
   log "per-app refresh: mode=$mode pkg=${pkg:-?}"
-  if [ "$(jbool hooks)" = 1 ]; then
-    sh "$DIR/apply.sh" "$mode"
-  elif cloak_backend_ready; then
+  if cloak_backend_ready; then
     [ -x "$DIR/cloak.sh" ] && sh "$DIR/cloak.sh"
   else
     log "per-app refresh: cloak metadata skipped (backend disabled)"

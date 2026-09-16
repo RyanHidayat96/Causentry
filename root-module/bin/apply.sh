@@ -27,7 +27,66 @@ install_control_apk() {
   cp -f "$src" "$tmp" 2>/dev/null || return 1
   chmod 644 "$tmp" 2>/dev/null
   chcon u:object_r:shell_data_file:s0 "$tmp" 2>/dev/null
-  pm install -r "$tmp"
+  install_log=/data/local/tmp/causentry/pm-install.log
+  : > "$install_log" 2>/dev/null
+  i=0
+  while [ "$i" -lt 5 ]; do
+    cmd package install -r "$tmp" >> "$install_log" 2>&1 && return 0
+    pm install -r "$tmp" >> "$install_log" 2>&1 && return 0
+    i=$((i+1))
+    sleep 2
+  done
+  cat "$install_log" 2>/dev/null
+  return 1
+}
+
+apk_fingerprint() {
+  stat -c '%s:%Y' "$1" 2>/dev/null
+}
+
+control_apk_needs_install() {
+  src="$1"
+  package_installed com.causentry.app || return 0
+  want=$(apk_fingerprint "$src")
+  have=$(cat "$DIR/.uiapk.fingerprint" 2>/dev/null)
+  [ -n "$want" ] && [ "$want" != "$have" ]
+}
+
+mark_control_apk_installed() {
+  apk_fingerprint "$1" > "$DIR/.uiapk.fingerprint" 2>/dev/null
+}
+
+schedule_control_apk_install() {
+  helper=/data/local/tmp/causentry/install-control-ui.sh
+  mkdir -p /data/local/tmp/causentry 2>/dev/null
+  {
+    echo '#!/system/bin/sh'
+    echo 'DIR=/data/adb/causentry'
+    echo 'LOG="$DIR/causentry.log"'
+    echo 'APK=/data/local/tmp/causentry/Causentry.apk'
+    echo 'sleep 20'
+    echo 'i=0'
+    echo 'while [ "$i" -lt 20 ]; do'
+    echo '  TMPLOG=/data/local/tmp/causentry/pm-install.log'
+    echo '  : > "$TMPLOG" 2>/dev/null'
+    echo '  if cmd package install -r "$APK" >> "$TMPLOG" 2>&1 || pm install -r "$APK" >> "$TMPLOG" 2>&1; then'
+    echo '    stat -c "%s:%Y" "$DIR/Causentry.apk" > "$DIR/.uiapk.fingerprint" 2>/dev/null'
+    echo '    echo "$(date "+%m-%d %H:%M:%S") [apply] delayed control UI APK installed/updated" >> "$LOG"'
+    echo '    exit 0'
+    echo '  fi'
+    echo '  cat "$TMPLOG" >> "$LOG" 2>/dev/null'
+    echo '  i=$((i+1))'
+    echo '  sleep 3'
+    echo 'done'
+    echo 'echo "$(date "+%m-%d %H:%M:%S") [apply] delayed control UI APK install failed" >> "$LOG"'
+    echo 'exit 1'
+  } > "$helper" 2>/dev/null
+  chmod 755 "$helper" 2>/dev/null
+  if command -v setsid >/dev/null 2>&1; then
+    setsid /system/bin/sh "$helper" >/dev/null 2>&1 < /dev/null &
+  else
+    /system/bin/sh "$helper" >/dev/null 2>&1 < /dev/null &
+  fi
 }
 
 # 0) boot properties that root/RASP checks read (safe subset)
@@ -80,10 +139,12 @@ fi
 # 3b) control-UI app: payload/Causentry.apk doubles as a launcher (WebView over the
 #     loopback UI). Installed only when uiApk is enabled and not already present.
 if [ "$(jbool uiApk)" = 1 ] && [ -f "$DIR/Causentry.apk" ]; then
-  if wait_package_manager 30 && ! package_installed com.causentry.app; then
+  if wait_package_manager 30 && control_apk_needs_install "$DIR/Causentry.apk"; then
     if install_control_apk "$DIR/Causentry.apk" >> "$LOG" 2>&1; then
-      log "control-UI app installed (com.causentry.app)"
+      mark_control_apk_installed "$DIR/Causentry.apk"
+      log "control-UI app installed/updated (com.causentry.app)"
     else
+      schedule_control_apk_install
       log "control-UI app install failed"
     fi
   elif ! wait_package_manager 1; then
@@ -100,34 +161,8 @@ if [ "$(jbool uiApk)" = 1 ] && [ -f "$DIR/Causentry.apk" ]; then
   fi
 fi
 
-# 4) optional in-process hook payload (Vector/LSPosed) — only for apps that are NOT
-#    hardened. Injecting into a PairIP app is exactly what makes it crash, so those
-#    are skipped on purpose and served by the system-side cloaks instead.
-if [ "$(jbool hooks)" = 1 ]; then
-  VCLI=$(vector_cli)
-  APK="$DIR/Causentry.apk"
-  if [ -x "$VCLI" ] && [ -f "$APK" ]; then
-    if ! package_installed com.causentry.app; then
-      install_control_apk "$APK" >/dev/null 2>&1 && log "Causentry.apk installed"
-    fi
-    "$VCLI" modules enable com.causentry.app >/dev/null 2>&1
-    # runtime config for the hook engine (readable by app processes)
-    cp -f "$CONF" /data/local/tmp/causentry/config.json 2>/dev/null
-    chmod 644 /data/local/tmp/causentry/config.json 2>/dev/null
-    chcon u:object_r:system_file:s0 /data/local/tmp/causentry/config.json 2>/dev/null
-    for pkg in $(jlist targets); do
-      if is_hardened "$pkg"; then
-        "$VCLI" scope rm com.causentry.app "$pkg/0" >/dev/null 2>&1
-        log "hooks skipped (hardened): $pkg"
-      else
-        "$VCLI" scope add com.causentry.app "$pkg/0" >/dev/null 2>&1
-        log "hooks enabled: $pkg"
-      fi
-    done
-  else
-    log "hooks requested but Vector framework not found — using system-side mode only"
-  fi
-fi
+# 4) Zygisk-only policy: no Vector/LSPosed module/scoping path.
+log "zygisk-only: Vector/LSPosed hook scoping disabled"
 
 echo "Causentry: apply($mode) done"
 

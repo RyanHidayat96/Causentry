@@ -11,11 +11,12 @@ echo "  pm/am/settings  : $(has pm && has am && has settings && echo OK || echo 
 echo "  module payload  : $([ -f "$DIR/Causentry.apk" ] && echo present || echo 'absent (optional)')"
 echo
 echo "OPTIONAL (absence only disables that feature)"
-bb=$(find_busybox 2>/dev/null); rp=$(find_resetprop 2>/dev/null); sf=$(find_susfs 2>/dev/null); vc=$(vector_cli 2>/dev/null)
+bb=$(find_busybox 2>/dev/null); rp=$(find_resetprop 2>/dev/null); sf=$(find_susfs 2>/dev/null)
 echo "  busybox         : ${bb:-absent}   -> control Web UI"
 echo "  resetprop       : ${rp:-absent}   -> boot property spoofing"
 echo "  ksu_susfs       : ${sf:-absent}   -> kernel-level path hiding  (variant: $(susfs_variant))"
-echo "  Vector/LSPosed  : ${vc:-absent}   -> optional in-process hooks (default off)"
+echo "  zygisk loader   : $(zygisk_backend_status)   -> system_server loader"
+echo "  cloak hook      : $(cloak_backend_ready && echo ready || echo inactive)   -> package cloak"
 echo
 echo "STATE"
 echo "  config          : $([ -f "$DIR/config.json" ] && echo ok || echo MISSING)"

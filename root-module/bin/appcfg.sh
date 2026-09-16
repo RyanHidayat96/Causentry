@@ -12,7 +12,7 @@ DIR=${CAUSENTRY_DIR:-/data/adb/causentry}
 
 APP_ENTRIES_FILE=$DIR/.appentries
 all_app_entries() {   # one `"pkg":{...}` entry per line
-  grep -oE '"[^"]+"[[:space:]]*:[[:space:]]*\{[^}]*"devOff"[^}]*\}' "$CONF" 2>/dev/null > "$APP_ENTRIES_FILE" || : > "$APP_ENTRIES_FILE"
+  extract_app_entries "$CONF" > "$APP_ENTRIES_FILE" || : > "$APP_ENTRIES_FILE"
   cat "$APP_ENTRIES_FILE"
 }
 
@@ -59,7 +59,6 @@ emit() {   # emit <targets> <denylist> <hardened> <appentries>
   printf ',"hideMockLocation":%s' "$( [ "$(jbool hideMockLocation)" = 1 ] && echo true || echo false )"
   printf ',"alwaysHidden":%s' "$( [ "$(jbool alwaysHidden)" = 1 ] && echo true || echo false )"
   printf ',"susfs":%s' "$( [ "$(jbool susfs)" = 1 ] && echo true || echo false )"
-  printf ',"hooks":%s' "$( [ "$(jbool hooks)" = 1 ] && echo true || echo false )"
   printf ',"hideRootApps":%s' "$( [ "$(jbool hideRootApps)" = 1 ] && echo true || echo false )"
   printf ',"uiApk":%s' "$( [ "$(jbool uiApk)" = 1 ] && echo true || echo false )"
   printf ',"systemCloak":%s' "$( [ "$(jbool systemCloak)" = 1 ] && echo true || echo false )"

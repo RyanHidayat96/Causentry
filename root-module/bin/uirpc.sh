@@ -63,6 +63,34 @@ list_has_line() {
 
 mark_changed() { date +%s > "$CHANGE_MARK" 2>/dev/null; }
 
+schedule_apply() {
+  mode="${1:-app}"
+  op="$2"
+  case "$op" in *[!A-Za-z0-9_.:-]*|"") op="";; esac
+  if [ -x "$DIR/apply-async.sh" ]; then
+    sh "$DIR/apply-async.sh" "$mode" "$op" >/dev/null 2>&1
+  else
+    sh "$DIR/apply.sh" "$mode" >> "$LOG" 2>&1
+    rc=$?
+    date +%s > "$DIR/.apply.done" 2>/dev/null
+    printf '%s' "$rc" > "$DIR/.apply.rc" 2>/dev/null
+    [ -n "$op" ] && printf '%s' "$op" > "$DIR/.apply.done.token" 2>/dev/null
+  fi
+}
+
+schedule_apps_snapshot() {
+  pid=$(cat "$DIR/.apps-snapshot.pid" 2>/dev/null)
+  if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+    return 0
+  fi
+  if command -v setsid >/dev/null 2>&1; then
+    setsid /system/bin/sh "$DIR/uirpc.sh" apps >/dev/null 2>&1 < /dev/null &
+  else
+    /system/bin/sh "$DIR/uirpc.sh" apps >/dev/null 2>&1 < /dev/null &
+  fi
+  echo "$!" > "$DIR/.apps-snapshot.pid" 2>/dev/null
+}
+
 snapshot() {
   [ -d "/data/data/$APP_PKG" ] || return 0
   ensure_app_dirs
@@ -76,6 +104,11 @@ snapshot() {
   dage=$(( $(date +%s) - hb ))
   [ "$dage" -ge 0 ] 2>/dev/null || dage=999999
   if [ "$dage" -gt 20 ]; then dalive=false; fi
+  apply_busy=false
+  if [ -d "$DIR/apply.lock" ] || [ -f "$DIR/.apply.pending" ]; then apply_busy=true; fi
+  apply_done=$(cat "$DIR/.apply.done" 2>/dev/null); case "$apply_done" in ""|*[!0-9]*) apply_done=0;; esac
+  apply_rc=$(cat "$DIR/.apply.rc" 2>/dev/null); case "$apply_rc" in ""|*[!0-9]*) apply_rc=0;; esac
+  apply_token=$(cat "$DIR/.apply.done.token" 2>/dev/null)
   rootapps=$(root_apps_cached | tr '\n' ',')
   suggests=$(root_suggest_cached | tr '\n' ',')
   {
@@ -85,19 +118,20 @@ snapshot() {
     printf ',"secure":'; json_string "$(settings get secure development_settings_enabled 2>/dev/null)"
     printf ',"mock":'; json_string "$(settings get secure mock_location 2>/dev/null)"
     printf ',"susfs":'; json_string "$(susfs_variant)"
-    printf ',"vector":%s,' "$(vector_cli >/dev/null 2>&1 && echo true || echo false)"
+    printf ',"zygisk":'; json_string "$(zygisk_backend_status)"
+    printf ',"cloakReady":'; bool_json "$(cloak_backend_ready && echo 1 || echo 0)"; printf ','
     printf '"targets":'; json_jlist targets; printf ','
     printf '"hardened":'; json_jlist hardened; printf ','
     printf '"denylist":'; json_jlist denylist; printf ','
-    printf '"autoDevOff":%s,"hideMockLocation":%s,"alwaysHidden":%s,"susfsOn":%s,"hooks":%s,"hideRootApps":%s,"uiApk":%s,' \
+    printf '"autoDevOff":%s,"hideMockLocation":%s,"alwaysHidden":%s,"susfsOn":%s,"hideRootApps":%s,"uiApk":%s,' \
       "$( [ "$(jbool autoDevOff)" = 1 ] && echo true || echo false )" \
       "$( [ "$(jbool hideMockLocation)" = 1 ] && echo true || echo false )" \
       "$( [ "$(jbool alwaysHidden)" = 1 ] && echo true || echo false )" \
       "$( [ "$(jbool susfs)" = 1 ] && echo true || echo false )" \
-      "$( [ "$(jbool hooks)" = 1 ] && echo true || echo false )" \
       "$( [ "$(jbool hideRootApps)" = 1 ] && echo true || echo false )" \
       "$( [ "$(jbool uiApk)" = 1 ] && echo true || echo false )"
     printf '"rootApps":'; json_string "$rootapps"; printf ',"rootSuggest":'; json_string "$suggests"; printf ','
+    printf '"applyBusy":%s,"applyDone":%s,"applyRc":%s,"applyToken":' "$apply_busy" "$apply_done" "$apply_rc"; json_string "$apply_token"; printf ','
     printf '"config":%s,' "$(tr -d '\n' < "$CONF" 2>/dev/null || echo '{}')"
     printf '"log":'; json_string "$(tail -25 "$DIR/causentry.log" 2>/dev/null)"; printf '}'
   } > "$T"
@@ -150,12 +184,13 @@ process_cmds() {
       save)
         targets=$(getf targets); denylist=$(getf denylist); hardened=$(getf hardened)
         templateName=$(getf templateName); templatePackages=$(getf templatePackages)
+        op=$(getf op)
         ad=$(getf autoDevOff); hm=$(getf hideMockLocation); ah=$(getf alwaysHidden)
-        sf=$(getf susfs); hk=$(getf hooks); hr=0; ui=$(getf uiApk)
+        sf=$(getf susfs); hr=0; ui=$(getf uiApk)
         tojson_arr() { printf '['; fl=1; for i in $(echo "$1" | tr ',' ' '); do valid_package_name "$i" || continue; [ $fl -eq 1 ] || printf ','; fl=0; json_string "$i"; done; printf ']'; }
         bj() { bool_json "$1"; }
         APPS_T="$DIR/.uirpc-appentries"
-        grep -oE '"[^"]+"[[:space:]]*:[[:space:]]*\{[^}]*"devOff"[^}]*\}' "$DIR/config.json" 2>/dev/null > "$APPS_T" || : > "$APPS_T"
+        extract_app_entries "$DIR/config.json" > "$APPS_T" || : > "$APPS_T"
         emit_saved_entries() {
           f=1
           while IFS= read -r e; do
@@ -173,7 +208,7 @@ process_cmds() {
           printf ',"apps":{'; emit_saved_entries; printf '}'
           printf ',"autoDevOff":'; bj "$ad"; printf ',"hideMockLocation":'; bj "$hm"
           printf ',"alwaysHidden":'; bj "$ah"; printf ',"susfs":'; bj "$sf"
-          printf ',"hooks":'; bj "$hk"; printf ',"hideRootApps":'; bj "$hr"
+          printf ',"hideRootApps":'; bj "$hr"
           printf ',"uiApk":'; bj "$ui"
           printf ',"systemCloak":'; bj "$(jbool systemCloak)"
           printf ',"hideMode":'; json_string "$(hide_mode)"
@@ -183,10 +218,10 @@ process_cmds() {
         rm -f "$APPS_T"
         chmod 644 "$DIR/config.json"
         log "config saved (control-UI app)"
-        sh "$DIR/apply.sh" app >> "$LOG" 2>&1
+        schedule_apply app "$op"
         mark_changed
         ;;
-      apply)   sh "$DIR/apply.sh" app >> "$LOG" 2>&1; mark_changed ;;
+      apply)   op=$(getf op); schedule_apply app "$op"; mark_changed ;;
       restore) sh "$DIR/restore.sh" >> "$LOG" 2>&1; root_cache_invalidate; mark_changed ;;
       roothide) log "ignored deprecated roothide command; use hidden-app list"; mark_changed ;;
       hideone)
@@ -196,7 +231,7 @@ process_cmds() {
           mark_changed
         fi
         ;;
-      refresh) apps_snapshot ;;
+      refresh) schedule_apps_snapshot ;;
       savecfg)
         # Deprecated: complete config replacement is too broad for a bridge command.
         rm -f "$CMD_DIR/config.json"

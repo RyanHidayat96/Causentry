@@ -7,6 +7,15 @@ mkdir -p "$DIR/webroot/cgi-bin" 2>/dev/null
 echo "Causentry: re-applying protections..."
 sh "$DIR/apply.sh" action 2>&1 | tail -20
 
+if package_installed com.causentry.app; then
+  echo "Opening Causentry app..."
+  am start -n com.causentry.app/.UiActivity >/dev/null 2>&1
+  echo ""
+  echo "Status:"
+  sh "$DIR/status.sh" 2>/dev/null
+  exit 0
+fi
+
 if [ ! -s "$DIR/ui.token" ]; then
   head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$DIR/ui.token"
   chmod 600 "$DIR/ui.token"

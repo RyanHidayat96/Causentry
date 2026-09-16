@@ -3,13 +3,14 @@
 Core principles:
 
 - No arbitrary shell command RPCs from the APK.
-- No mandatory Zygisk, LSPosed, KPM, metamodule, root hiding, or third-party module dependency.
+- No LSPosed, Vector, KPM, metamodule, root hiding, or third-party module dependency.
 - No SELinux permissive mode.
 - No protected-app process injection by default.
 - Bounded privileged behavior: shell actions are allowlisted, package inputs are
   validated, and the browser API requires a local per-install token.
-- Fallbacks prefer reversible state changes. `hideMode=cloak` only stays active when a
-  verified `systemCloak` backend is enabled; otherwise the module falls back to `hide`.
+- Fallbacks prefer reversible state changes. `hideMode=cloak` only stays active when
+  the bundled Zygisk ART hook marker is live in `system_server`; otherwise the module keeps
+  package lists saved and avoids destructive hiding.
 - The UI APK does not request network access and blocks WebView navigation outside its
   bundled asset page.
 

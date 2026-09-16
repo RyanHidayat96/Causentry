@@ -33,7 +33,7 @@ $Release   = Join-Path $Root "release"
 $Ks        = Join-Path $Root "causentry.keystore"
 $ApkOut    = Join-Path $Mod "payload\Causentry.apk"
 $PropPath  = Join-Path $Mod "module.prop"
-$IncludeExperimentalZygisk = $env:CAUSENTRY_INCLUDE_EXPERIMENTAL_ZYGISK -eq "1"
+$IncludeZygisk = $env:CAUSENTRY_EXCLUDE_ZYGISK -ne "1"
 
 function Say($m, $c = "Cyan") { Write-Host $m -ForegroundColor $c }
 function Die($m) { Write-Host "ERROR: $m" -ForegroundColor Red; exit 1 }
@@ -114,10 +114,10 @@ Say "   root    : $Root"
 Say "   java    : $Java"
 Say "   sdk     : $Sdk"
 Say "   version : v$Version"
-if ($IncludeExperimentalZygisk) {
-  Say "   zygisk  : including experimental native backend" "Yellow"
+if ($IncludeZygisk) {
+  Say "   zygisk  : included when native .so artifacts are present" "Green"
 } else {
-  Say "   zygisk  : excluded (set CAUSENTRY_INCLUDE_EXPERIMENTAL_ZYGISK=1 to include)" "DarkGray"
+  Say "   zygisk  : excluded by CAUSENTRY_EXCLUDE_ZYGISK=1" "DarkGray"
 }
 New-Item -ItemType Directory -Force -Path $Release | Out-Null
 
@@ -134,16 +134,23 @@ if (-not $NoApk) {
     New-Item -ItemType Directory -Force -Path (Join-Path $Build $d) | Out-Null
   }
 
-  Say "[1/7] compiling Xposed API stubs"
-  $stubSrc = (Get-ChildItem (Join-Path $Src "stubs") -Recurse -Filter *.java).FullName
-  if (-not $stubSrc) { Die "no stub sources under $Src\stubs" }
-  & $Javac -nowarn -cp $AJar -d (Join-Path $Build "stubs") @stubSrc
-  if ($LASTEXITCODE -ne 0) { Die "javac (stubs) failed" }
+  Say "[1/7] selecting Zygisk-only control UI sources"
+  $legacyHookSources = @(
+    "AppOpsCloak.java",
+    "AppZygoteCloak.java",
+    "CausentryModule.java",
+    "Cfg.java",
+    "CloakCfg.java",
+    "Hide.java",
+    "PackageCloak.java",
+    "SystemCloak.java"
+  )
 
   Say "[2/7] compiling payload classes"
-  $modSrc = (Get-ChildItem (Join-Path $Src "src") -Recurse -Filter *.java).FullName
+  $modSrc = (Get-ChildItem (Join-Path $Src "src") -Recurse -Filter *.java |
+    Where-Object { $legacyHookSources -notcontains $_.Name }).FullName
   if (-not $modSrc) { Die "no payload sources under $Src\src" }
-  & $Javac -nowarn --release 11 -cp "$AJar;$(Join-Path $Build 'stubs')" -d (Join-Path $Build "classes") @modSrc
+  & $Javac -nowarn --release 11 -cp $AJar -d (Join-Path $Build "classes") @modSrc
   if ($LASTEXITCODE -ne 0) { Die "javac (payload) failed" }
 
   Say "[3/7] dexing (d8)"
@@ -228,7 +235,7 @@ $files = Get-ChildItem $Mod -Recurse -File | Where-Object {
   $_.FullName -notmatch "\\build\\|\\.git\\" `
     -and $_.Name -ne ".gitkeep" `
     -and $_.Extension -ne ".idsig" `
-    -and ($IncludeExperimentalZygisk -or $_.FullName -notmatch "\\zygisk\\[^\\]+\.so$")
+    -and ($IncludeZygisk -or $_.FullName -notmatch "\\zygisk\\[^\\]+\.so$")
 }
 $zip = [System.IO.Compression.ZipFile]::Open($zipPath, [System.IO.Compression.ZipArchiveMode]::Create)
 try {
@@ -242,6 +249,13 @@ try {
     try { $in.CopyTo($es) } finally { $es.Dispose(); $in.Dispose() }
   }
 } finally { $zip.Dispose() }
+
+$zipCheck = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+try {
+  if (-not $zipCheck.GetEntry("payload/Causentry.apk")) {
+    Die "zip validation failed: payload/Causentry.apk is missing"
+  }
+} finally { $zipCheck.Dispose() }
 
 Say ("   zip ok      : {0} ({1:n0} bytes, {2} files)" -f $zipPath, (Get-Item $zipPath).Length, $files.Count) "Green"
 

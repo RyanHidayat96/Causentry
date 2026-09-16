@@ -4,9 +4,10 @@ Universal detection bypass for apps that refuse to run, show a block dialog, or
 force-close because of developer options, mock location / fake-GPS apps, root
 tooling, or anti-injection (PairIP / RASP) protection.
 
-Protected apps are never injected by default. Hardened apps can crash when foreign
-code is loaded into their process, so the default path is **system / kernel side**
-shell hardening. Optional hook backends are explicit and must be verified per device.
+Protected apps are never injected by the control APK. Hardened apps can crash when
+foreign code is loaded into their process, so the default path is **system / kernel
+side** shell hardening. Package cloaking is Zygisk-only; Vector/LSPosed is not used
+as a fallback.
 
 ## Files
 
@@ -20,7 +21,7 @@ shell hardening. Optional hook backends are explicit and must be verified per de
 | `config.default.json` | default configuration |
 | `bin/*.sh` | lib, apply, restore, watch daemon, root-apps, denylist, status, doctor |
 | `webroot/` | control UI (`index.html`) + token-protected CGI API |
-| `payload/Causentry.apk` | control UI and optional hook app (only for apps that are *not* PairIP-hardened) |
+| `payload/Causentry.apk` | control UI app; not an Xposed/LSPosed module |
 
 Runtime state lives in `/data/adb/causentry/` (config, log, legacy restore list,
 UI token). Nothing is written inside protected apps.
@@ -58,9 +59,8 @@ CLI equivalent: `APP_PKG_NEW=com.x APP_FEATS_NEW=devOff,mock APP_HIDE_TEMPLATE_N
 | `alwaysHidden` | keep flags hidden permanently (dev menu stays hidden too) |
 | `susfs` | kernel-level path hiding when SUSFS is available |
 | `hideRootApps` | deprecated compatibility flag; UI/save forces it off |
-| `hooks` | install/scope the optional in-process payload (non-hardened apps only) |
 | `hideMode` | `none` by default; normal apply never disables/uninstalls user apps |
-| `systemCloak` | enables target-scoped package cloaking only when a verified backend is installed |
+| `systemCloak` | enables target-scoped package cloaking only when the Zygisk ART hook marker is live |
 
 ## Control UI (the app) — design rules
 
@@ -87,7 +87,7 @@ launcher app (disable with `"uiApk": false`). The app:
 * shows the same interface as before, bundled inside the APK (`assets/index.html`),
 * talks to the root daemon through **its own private files dir** - the daemon drops
   `status.json` / `apps.json` there and executes the commands the app queues in `files/cmd/`,
-* therefore needs **no root prompt, no LSPosed, no web server and no network**.
+* therefore needs **no root prompt, no LSPosed, no Vector, no web server and no network**.
 
 `127.0.0.1:8899` (busybox httpd) still exists for the browser and for automation
 (`webroot/cgi-bin/api.sh`), and the daemon restarts it if it dies - but nothing depends
@@ -114,9 +114,12 @@ or use the module Action flow instead.
 
 - Physical package hiding is deprecated. The normal path keeps Magisk, fake-GPS apps,
   and other selected packages installed and visible to the user.
-- Target-scoped package invisibility requires a working system-side cloak backend.
+- Target-scoped package invisibility requires the bundled Zygisk ART hook layer to be
+  active in `system_server`.
   Without it, Causentry saves the list and avoids destructive fallback.
-- The native Zygisk backend under `zygisk-src/` is stage-1 only and is excluded from
-  release zips unless `CAUSENTRY_INCLUDE_EXPERIMENTAL_ZYGISK=1` is set.
+- The native Zygisk backend under `zygisk-src/` is bundled when `.so` artifacts are
+  present (set `CAUSENTRY_EXCLUDE_ZYGISK=1` to omit it). Stage 1 reports loader
+  activity; Java method cloaking still needs the bundled ART hook runtime to be
+  completed.
 - The watch daemon is currently implemented in shell (`bin/causentryd.sh`). Porting
   long-lived privileged logic into the Rust `daemon/` crate remains a roadmap item.

@@ -434,11 +434,12 @@ const STRINGS = {
     daemonDown:"Daemon not running. Open KernelSU \u2192 Modules \u2192 Causentry \u2192 Action, then reopen this app.",
     protectedChip:"PROTECTED", hardenedChip:"PAIRIP", inactiveChip:"NOT ACTIVE",
     noteHardened:"PairIP / anti-injection detected: this app is protected system-side only (no injection) \u2014 that is exactly what keeps it from crashing.",
-    noteNormal:"No PairIP detected: system-side cloaking is used. In-app hooks are optional and only needed for exotic checks.",
+    noteNormal:"No PairIP detected: system-side cloaking is used. No app-process hook fallback is enabled.",
     chooseBypass:"Turn on at least one bypass before applying this app.",
     clearByApply:"All bypasses are off. Apply will remove this app from protection.",
     unsavedChanges:"Unsaved changes. Tap Apply for this app to save them.",
     applied:"Applied", removed:"Protection removed", queued:"Queued \u2014 the daemon is applying it; status will refresh shortly",
+    savingWait:"Saving and applying\u2026", applyingWait:"Applying\u2026", applyFail:"Apply failed \u2014 check log",
     confirmRestoreT:"Restore everything?", confirmRestoreB:"Hidden packages are re-installed, the developer-option flag goes back to its original value and the daemon stops hiding.",
     yesRestore:"Restore",
     saveWarn:"Save failed \u2014 daemon not reachable", saved:"Saved",
@@ -484,11 +485,12 @@ const STRINGS = {
     daemonDown:"Daemon tidak jalan. Buka KernelSU \u2192 Modules \u2192 Causentry \u2192 Action, lalu buka app ini lagi.",
     protectedChip:"DIPROTEKSI", hardenedChip:"PAIRIP", inactiveChip:"BELUM AKTIF",
     noteHardened:"Terdeteksi PairIP / anti-injection: app ini diproteksi dari sisi sistem saja (tanpa injeksi) \u2014 itu yang bikin dia tidak crash.",
-    noteNormal:"Tidak ada PairIP: cloaking dilakukan dari sisi sistem. Hook dalam app opsional dan hanya perlu untuk pemeriksaan yang aneh.",
+    noteNormal:"Tidak ada PairIP: cloaking dilakukan dari sisi sistem. Tidak ada fallback hook di proses app.",
     chooseBypass:"Aktifkan minimal satu bypass sebelum apply app ini.",
     clearByApply:"Semua bypass off. Apply akan menghapus proteksi app ini.",
     unsavedChanges:"Ada perubahan belum disimpan. Tekan Apply untuk app ini.",
     applied:"Diterapkan", removed:"Proteksi dihapus", queued:"Diantrikan \u2014 daemon sedang menerapkan; status akan refresh sebentar lagi",
+    savingWait:"Menyimpan dan menerapkan\u2026", applyingWait:"Menerapkan\u2026", applyFail:"Apply gagal \u2014 cek log",
     confirmRestoreT:"Restore semuanya?", confirmRestoreB:"Paket yang disembunyikan dipasang balik, flag developer-option kembali ke nilai asli, dan daemon berhenti menyembunyikan.",
     yesRestore:"Restore",
     saveWarn:"Gagal menyimpan \u2014 daemon tidak terjangkau", saved:"Tersimpan",
@@ -545,12 +547,12 @@ const PANELS = [["headApps","wrapApps"],["headAdvanced","wrapAdvanced"],["headAc
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
-function toast(msg, kind){
+function toast(msg, kind, persist){
   const el = $("toast");
   el.textContent = msg;
   el.className = "toast show" + (kind ? " " + kind : "");
   clearTimeout(el._h);
-  el._h = setTimeout(() => { el.className = "toast"; }, 2600);
+  if (!persist) el._h = setTimeout(() => { el.className = "toast"; }, 2600);
 }
 function iconInto(leadEl, pkg){
   if (!Transport.icon) return;
@@ -582,6 +584,7 @@ function isActiveApp(a){ return !!(a && (a.protected || isProtected(a.pkg))); }
 function isHardened(pkg){ return (S.cfg.hardened || []).indexOf(pkg) !== -1; }
 function validPkgName(p){ return /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+$/.test(p); }
 function validTemplateName(n){ return /^[A-Za-z0-9_.-]{1,48}$/.test(String(n || "")); }
+function makeOp(){ return "op-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,8); }
 function normalTemplateName(n){
   n = String(n || "").trim();
   return validTemplateName(n) ? n : "default";
@@ -972,19 +975,25 @@ async function applyForApp(){
   if (r.ok) showList();
 }
 async function saveAdvanced(){
+  const btn = $("btnSaveAdv");
+  btn.disabled = true;
   const b = id => $(id).checked ? 1 : 0;
   const wantSusfs = !!b("f-susfs");
   const r = await sendVerified({action:"save",
     targets: S.cfg.targets.join(","), denylist:(S.cfg.denylist || []).join(","), hardened: S.cfg.hardened.join(","),
     autoDevOff:1, hideMockLocation:1,
-    alwaysHidden:b("f-alwaysHidden"), susfs:b("f-susfs"), hooks:0,
+    alwaysHidden:b("f-alwaysHidden"), susfs:b("f-susfs"),
     hideRootApps:0, uiApk:b("f-uiApk")},
-    () => { const c = S.snap && S.snap.config; return !!c && (!!c.susfs === wantSusfs); });
+    () => { const c = S.snap && S.snap.config; return !!c && (!!c.susfs === wantSusfs); },
+    120, {waitApply:true, waitMsg:t("savingWait")});
+  btn.disabled = false;
   reportResult(r, t("saved"));
 }
 async function saveDenylist(){
   const templateName = requireActiveHideTemplate();
   if (!templateName) return;
+  const btn = $("btnSaveDeny");
+  btn.disabled = true;
   const dl = templatePackages(templateName);
   setHiddenPackages(dl);
   const defaultDenylist = templateName === "default" ? dl : (S.cfg.denylist || []);
@@ -993,14 +1002,16 @@ async function saveDenylist(){
     targets: S.cfg.targets.join(","), denylist: defaultDenylist.join(","), hardened: S.cfg.hardened.join(","),
     templateName: templateName, templatePackages: dl.join(","),
     autoDevOff:1, hideMockLocation:1,
-    alwaysHidden:b("f-alwaysHidden"), susfs:b("f-susfs"), hooks:0,
+    alwaysHidden:b("f-alwaysHidden"), susfs:b("f-susfs"),
     hideRootApps:0, uiApk:b("f-uiApk")},
     () => {
       const c = S.snap && S.snap.config;
       const templates = normaliseHideTemplates(c && c.hideTemplates, (c && c.denylist) || []);
       const have = templates[templateName] || [];
       return have.length === dl.length && dl.every(p => have.indexOf(p) !== -1);
-    });
+    },
+    120, {waitApply:true, waitMsg:t("savingWait")});
+  btn.disabled = false;
   if (r.ok || r.why === "pending") S.hiddenDirty = false;
   reportResult(r, t("saved"));
 }
@@ -1093,7 +1104,13 @@ $("hideQClear").onclick = () => { $("hideQ").value = ""; renderRoots(S.rootVisib
 $("btnAddManual").onclick = addManualHiddenPackage;
 $("hideManual").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addManualHiddenPackage(); } });
 $("d-hideTemplate").addEventListener("input", () => { S.detailDirty = true; S.detailPkg = S.sel; updateDetailControls(S.sel); updateHiddenCount(); });
-$("btnApply").onclick = async () => { const ok = await Transport.send({action:"apply"}); toast(ok ? t("applied") : t("saveWarn"), ok ? "ok" : "err"); };
+$("btnApply").onclick = async () => {
+  const btn = $("btnApply");
+  btn.disabled = true;
+  const r = await sendVerified({action:"apply"}, null, 120, {waitApply:true, waitMsg:t("applyingWait")});
+  btn.disabled = false;
+  reportResult(r, t("applied"));
+};
 $("btnLog").onclick = toggleLog;
 $("btnRestore").onclick = restoreEverything;
 document.querySelectorAll(".switch-row").forEach(row => {
@@ -1151,7 +1168,12 @@ async function refreshStatusOnly(){
    file only means "queued" - if the daemon is down the user would otherwise see a fake
    success. verify() is checked against the status snapshot only; the full app list is
    intentionally not reloaded in this polling loop because it can lag behind commands. */
-async function sendVerified(o, verify, tries){
+async function sendVerified(o, verify, tries, opts){
+  opts = opts || {};
+  const start = Math.floor(Date.now() / 1000);
+  const op = opts.waitApply ? makeOp() : "";
+  if (op) o = Object.assign({}, o, {op:op});
+  if (opts.waitMsg) toast(opts.waitMsg, "warn", true);
   const sent = await Transport.send(o);
   if (!sent) return { ok:false, why:"send" };
   const n = tries || 40;
@@ -1159,7 +1181,14 @@ async function sendVerified(o, verify, tries){
   for (let i = 0; i < n; i++){
     await new Promise(r => setTimeout(r, 500));
     try { await refreshStatusOnly(); } catch(e){}
-    if (verify && verify()) return { ok:true };
+    const verified = verify ? verify() : true;
+    const tokenDone = op && S.snap && S.snap.applyToken === op;
+    const timeDone = op && S.snap && !S.snap.applyToken && Number(S.snap.applyDone || 0) >= start;
+    const applyDone = !opts.waitApply || (!S.snap.applyBusy && (tokenDone || timeDone));
+    if (verified && applyDone) {
+      if (opts.waitApply && Number(S.snap.applyRc || 0) !== 0) return { ok:false, why:"apply" };
+      return { ok:true };
+    }
     if (S.snap && S.snap.daemon === false) {
       daemonMisses++;
       if (daemonMisses >= 3) return { ok:false, why:"daemon" };
@@ -1184,7 +1213,7 @@ function entryTemplate(e){
 function reportResult(r, okMsg){
   if (r.ok) { toast(okMsg, "ok"); return; }
   if (r.why === "pending") { toast(t("queued"), "ok"); return; }
-  const bad = (r.why === "daemon") ? t("daemonDown") : t("saveWarn");
+  const bad = (r.why === "daemon") ? t("daemonDown") : (r.why === "apply" ? t("applyFail") : t("saveWarn"));
   toast(bad, "err");
 }
 

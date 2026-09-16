@@ -8,7 +8,7 @@ mkdir -p "$DIR" "$DIR/webroot/cgi-bin" 2>/dev/null
 echo "$(date '+%m-%d %H:%M:%S') [service] starting" >> "$LOG"
 
 # --- stage writable copies (the module dir itself is read-only) ---
-for f in lib.sh apply.sh restore.sh causentryd.sh causentry-loop.sh root-apps.sh enforce-denylist.sh status.sh doctor.sh uirpc.sh appcfg.sh cloak.sh hidden.sh; do
+for f in lib.sh apply.sh apply-async.sh restore.sh causentryd.sh causentry-loop.sh root-apps.sh enforce-denylist.sh status.sh doctor.sh uirpc.sh appcfg.sh cloak.sh hidden.sh; do
   [ -f "$MODDIR/bin/$f" ] && cp -f "$MODDIR/bin/$f" "$DIR/$f" 2>/dev/null
 done
 [ -f "$MODDIR/payload/Causentry.apk" ] && cp -f "$MODDIR/payload/Causentry.apk" "$DIR/Causentry.apk" 2>/dev/null
