@@ -151,6 +151,49 @@ vector_cli() {
 
 has() { command -v "$1" >/dev/null 2>&1; }
 
+# Root-app discovery is useful UI context, but it is relatively expensive and must
+# not sit on the hot status/apply path. Keep a short cache; explicit root actions
+# invalidate it below.
+root_cache_valid() {
+  now=$(date +%s)
+  ts=$(cat "$DIR/.rootapps.cache.ts" 2>/dev/null)
+  case "$ts" in ""|*[!0-9]*) ts=0;; esac
+  age=$((now - ts))
+  [ "$age" -ge 0 ] 2>/dev/null || return 1
+  [ "$age" -lt "${CAUSENTRY_ROOT_CACHE_TTL:-30}" ] \
+    && [ -f "$DIR/.rootapps.cache" ] \
+    && [ -f "$DIR/.rootsuggest.cache" ]
+}
+
+root_cache_refresh() {
+  root_cache_valid && return 0
+  [ -x "$DIR/root-apps.sh" ] || {
+    : > "$DIR/.rootapps.cache"
+    : > "$DIR/.rootsuggest.cache"
+    date +%s > "$DIR/.rootapps.cache.ts"
+    return 0
+  }
+  sh "$DIR/root-apps.sh" scan > "$DIR/.rootapps.cache.new" 2>/dev/null || : > "$DIR/.rootapps.cache.new"
+  sh "$DIR/root-apps.sh" suggest > "$DIR/.rootsuggest.cache.new" 2>/dev/null || : > "$DIR/.rootsuggest.cache.new"
+  mv -f "$DIR/.rootapps.cache.new" "$DIR/.rootapps.cache" 2>/dev/null
+  mv -f "$DIR/.rootsuggest.cache.new" "$DIR/.rootsuggest.cache" 2>/dev/null
+  date +%s > "$DIR/.rootapps.cache.ts"
+}
+
+root_apps_cached() {
+  root_cache_refresh
+  cat "$DIR/.rootapps.cache" 2>/dev/null
+}
+
+root_suggest_cached() {
+  root_cache_refresh
+  cat "$DIR/.rootsuggest.cache" 2>/dev/null
+}
+
+root_cache_invalidate() {
+  rm -f "$DIR/.rootapps.cache" "$DIR/.rootsuggest.cache" "$DIR/.rootapps.cache.ts"
+}
+
 # the settings service is not up yet at the very first boot stage
 settings_ready() { [ -n "$(settings get global development_settings_enabled 2>/dev/null)" ]; }
 wait_settings() {

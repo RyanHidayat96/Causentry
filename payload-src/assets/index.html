@@ -129,10 +129,17 @@ textarea{min-height:120px;font:var(--fs-13)/1.5 ui-monospace,Menlo,monospace}
 .switch input:checked + .slider{background:var(--ok-bg);border:1px solid #1c5b2b}
 .switch input:checked + .slider::before{transform:translateX(20px);background:var(--ok)}
 .switch input:focus-visible + .slider{outline:2px solid var(--accent);outline-offset:2px}
+.switch-row.is-off .body .n{color:var(--muted)}
+.switch-row.is-off .body .d{opacity:.78}
+.switch-row.is-on .body .n{color:var(--fg)}
 
 /* ---------- detail header ---------- */
 .detail-head{display:flex;align-items:center;gap:var(--sp-3)}
-.detail-head .lead{width:48px;height:48px;border-radius:var(--r-3)}
+.detail-head .lead{width:48px;height:48px;flex:0 0 48px;border-radius:var(--r-3);
+  overflow:hidden;background:var(--surface-2);border:1px solid var(--line);display:grid;
+  place-items:center;font-weight:700;color:var(--muted)}
+.detail-head .lead.has-icon{border-color:transparent;background:none}
+.detail-head .lead img{width:100%;height:100%;display:block;object-fit:contain}
 .detail-head .meta{flex:1;min-width:0}
 .detail-head .meta{display:flex;flex-direction:column;gap:4px}
 .detail-head .meta .n{display:block;font-size:var(--fs-17);font-weight:700;line-height:1.25}
@@ -368,8 +375,7 @@ pre{background:var(--surface-2);border:1px solid var(--line);border-radius:var(-
 </div>
 
 <div class="bottom-bar" id="bottomBar" hidden>
-  <button class="btn primary wide" id="btnApplyApp" data-i18n="applyForApp">Apply for this app</button>
-  <button class="btn ghost" id="btnRemoveApp" data-i18n="remove">Remove</button>
+  <button class="btn primary" id="btnApplyApp" data-i18n="applyForApp">Apply for this app</button>
 </div>
 
 <script>
@@ -405,20 +411,22 @@ const STRINGS = {
     deviceWide:"Device-wide (shared by every app)",
     rootHidden:"Root apps hidden", rootHiddenD:"Magisk & friends are invisible to apps",
     kernelHidingD:"SUSFS hides /data/adb, mounts and boot props from every app",
-    applyForApp:"Apply for this app", remove:"Remove", removeProtection:"Remove protection",
+    applyForApp:"Apply for this app",
     cancel:"Cancel", confirm:"Confirm",
     ok_cloakActive:"hiding now", ok_cloakIdle:"standby", ok_running:"running", ok_stopped:"stopped",
     ok_hidden:"hidden", ok_visible:"visible", ok_off:"off", ok_on:"on", ok_unsupported:"unsupported",
     appsProtected:"{n} protected", loading:"Loading apps\u2026",
     noApps:"No app matches your search.", noAppsAtAll:"Waiting for the daemon to send the app list\u2026",
     daemonDown:"Daemon not running. Open KernelSU \u2192 Modules \u2192 Causentry \u2192 Action, then reopen this app.",
-    protectedChip:"PROTECTED", hardenedChip:"PAIRIP",
+    protectedChip:"PROTECTED", hardenedChip:"PAIRIP", inactiveChip:"NOT ACTIVE",
     noteHardened:"PairIP / anti-injection detected: this app is protected system-side only (no injection) \u2014 that is exactly what keeps it from crashing.",
     noteNormal:"No PairIP detected: system-side cloaking is used. In-app hooks are optional and only needed for exotic checks.",
-    applied:"Applied", removed:"Protection removed", queued:"Queued \u2014 the daemon applies it within ~5s",
-    confirmRemoveT:"Remove protection?", confirmRemoveB:"{app} will no longer be cloaked. You can add it again any time.",
+    chooseBypass:"Turn on at least one bypass before applying this app.",
+    clearByApply:"All bypasses are off. Apply will remove this app from protection.",
+    unsavedChanges:"Unsaved changes. Tap Apply for this app to save them.",
+    applied:"Applied", removed:"Protection removed", queued:"Queued \u2014 the daemon is applying it; status will refresh shortly",
     confirmRestoreT:"Restore everything?", confirmRestoreB:"Hidden packages are re-installed, the developer-option flag goes back to its original value and the daemon stops hiding.",
-    yesRemove:"Remove", yesRestore:"Restore",
+    yesRestore:"Restore",
     saveWarn:"Save failed \u2014 daemon not reachable", saved:"Saved",
     stats_hint:""
   },
@@ -446,20 +454,22 @@ const STRINGS = {
     deviceWide:"Device-wide (dipakai semua app)",
     rootHidden:"App root disembunyikan", rootHiddenD:"Magisk & kawan-kawan tidak terlihat oleh app",
     kernelHidingD:"SUSFS menyembunyikan /data/adb, mount, dan boot props dari semua app",
-    applyForApp:"Apply untuk app ini", remove:"Hapus", removeProtection:"Hapus proteksi",
+    applyForApp:"Apply untuk app ini",
     cancel:"Batal", confirm:"Konfirmasi",
     ok_cloakActive:"sedang menyembunyikan", ok_cloakIdle:"standby", ok_running:"jalan", ok_stopped:"mati",
     ok_hidden:"disembunyikan", ok_visible:"terlihat", ok_off:"off", ok_on:"on", ok_unsupported:"tidak didukung",
     appsProtected:"{n} diproteksi", loading:"Memuat daftar app\u2026",
     noApps:"Tidak ada app yang cocok.", noAppsAtAll:"Menunggu daemon mengirim daftar app\u2026",
     daemonDown:"Daemon tidak jalan. Buka KernelSU \u2192 Modules \u2192 Causentry \u2192 Action, lalu buka app ini lagi.",
-    protectedChip:"DIPROTEKSI", hardenedChip:"PAIRIP",
+    protectedChip:"DIPROTEKSI", hardenedChip:"PAIRIP", inactiveChip:"BELUM AKTIF",
     noteHardened:"Terdeteksi PairIP / anti-injection: app ini diproteksi dari sisi sistem saja (tanpa injeksi) \u2014 itu yang bikin dia tidak crash.",
     noteNormal:"Tidak ada PairIP: cloaking dilakukan dari sisi sistem. Hook dalam app opsional dan hanya perlu untuk pemeriksaan yang aneh.",
-    applied:"Diterapkan", removed:"Proteksi dihapus", queued:"Diantrikan \u2014 daemon menerapkan dalam ~5 detik",
-    confirmRemoveT:"Hapus proteksi?", confirmRemoveB:"{app} tidak lagi di-cloak. Bisa ditambahkan lagi kapan saja.",
+    chooseBypass:"Aktifkan minimal satu bypass sebelum apply app ini.",
+    clearByApply:"Semua bypass off. Apply akan menghapus proteksi app ini.",
+    unsavedChanges:"Ada perubahan belum disimpan. Tekan Apply untuk app ini.",
+    applied:"Diterapkan", removed:"Proteksi dihapus", queued:"Diantrikan \u2014 daemon sedang menerapkan; status akan refresh sebentar lagi",
     confirmRestoreT:"Restore semuanya?", confirmRestoreB:"Paket yang disembunyikan dipasang balik, flag developer-option kembali ke nilai asli, dan daemon berhenti menyembunyikan.",
-    yesRemove:"Hapus", yesRestore:"Restore",
+    yesRestore:"Restore",
     saveWarn:"Gagal menyimpan \u2014 daemon tidak terjangkau", saved:"Tersimpan",
     stats_hint:""
   }
@@ -483,7 +493,7 @@ function localise(){
   document.documentElement.lang = LANG;
   document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll("[data-i18n-ph]").forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
-  [["headApps","wrapApps"],["headAdvanced","wrapAdvanced"],["headDeny","wrapDeny"],["headRoot","wrapRoot"],["headActions","wrapActions"]]
+  PANELS
     .forEach(([hid, wid]) => {
       const h = document.getElementById(hid), w = document.getElementById(wid);
       if (!h || !w) return;
@@ -492,8 +502,9 @@ function localise(){
     });
   document.querySelectorAll("[data-toggle]").forEach(row => {
     const inp = document.getElementById(row.dataset.toggle);
+    if (!inp) return;
     row.setAttribute("role", "switch");
-    row.setAttribute("aria-checked", inp.checked ? "true" : "false");
+    syncToggleRow(row.dataset.toggle);
     const n = row.querySelector(".n"), d = row.querySelector(".d");
     row.setAttribute("aria-label", (n ? n.textContent : "") + (d ? ". " + d.textContent : ""));
   });
@@ -504,7 +515,10 @@ const Transport = {};
 const ICON_CACHE = {};
 
 /* ---------- state ---------- */
-const S = { snap:{}, apps:[], labels:{}, cfg:{apps:{},targets:[],hardened:[]}, view:"list", sel:null, loaded:false };
+const S = { snap:{}, apps:[], labels:{}, cfg:{apps:{},targets:[],hardened:[]}, view:"list", sel:null, loaded:false,
+  panelStack:[],
+  detailDirty:false, detailPkg:null };
+const PANELS = [["headApps","wrapApps"],["headAdvanced","wrapAdvanced"],["headDeny","wrapDeny"],["headRoot","wrapRoot"],["headActions","wrapActions"]];
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
@@ -517,7 +531,12 @@ function toast(msg, kind){
 }
 function iconInto(leadEl, pkg){
   if (!Transport.icon) return;
-  const put = src => { if (!src) return; leadEl.classList.add("has-icon"); leadEl.innerHTML = '<img alt="" src="' + escAttr(src) + '">'; };
+  leadEl.dataset.iconPkg = pkg;
+  const put = src => {
+    if (!src || leadEl.dataset.iconPkg !== pkg) return;
+    leadEl.classList.add("has-icon");
+    leadEl.innerHTML = '<img alt="" src="' + escAttr(src) + '">';
+  };
   if (ICON_CACHE[pkg]) { put(ICON_CACHE[pkg]); return; }
   Promise.resolve(Transport.icon(pkg)).then(src => {
     if (src){ ICON_CACHE[pkg] = src; put(src); }
@@ -537,6 +556,35 @@ function escText(s){
 function escAttr(s){ return escText(s); }
 function isProtected(pkg){ return (S.cfg.targets || []).indexOf(pkg) !== -1; }
 function isHardened(pkg){ return (S.cfg.hardened || []).indexOf(pkg) !== -1; }
+function syncToggleRow(id){
+  const inp = $(id);
+  const row = document.querySelector('[data-toggle="' + id + '"]');
+  if (!inp || !row) return;
+  row.setAttribute("aria-checked", inp.checked ? "true" : "false");
+  row.classList.toggle("is-on", !!inp.checked);
+  row.classList.toggle("is-off", !inp.checked);
+}
+function detailFeatureList(){
+  const feats = [];
+  if ($("d-devOff").checked) feats.push("devOff");
+  if ($("d-mock").checked) feats.push("mock");
+  if ($("d-isolate").checked) feats.push("isolate");
+  return feats;
+}
+function updateDetailControls(pkg){
+  pkg = pkg || S.sel;
+  ["d-devOff","d-mock","d-isolate"].forEach(syncToggleRow);
+  if (!pkg) return;
+  const down = (S.snap && S.snap.daemon === false);
+  const selected = detailFeatureList().length;
+  const protectedApp = isProtected(pkg);
+  $("btnApplyApp").disabled = down || (!protectedApp && selected === 0);
+  $("btnApplyApp").textContent = t("applyForApp");
+  $("d-note").textContent = down ? t("daemonDown")
+    : (selected === 0 ? (protectedApp ? t("clearByApply") : t("chooseBypass"))
+      : (S.detailDirty ? t("unsavedChanges")
+        : (isHardened(pkg) ? t("noteHardened") : t("noteNormal"))));
+}
 
 function confirmDialog(title, body, okLabel){
   return new Promise(resolve => {
@@ -559,6 +607,7 @@ function confirmDialog(title, body, okLabel){
 /* ---------- view switching ---------- */
 function showList(){
   S.view = "list"; S.sel = null;
+  S.detailDirty = false; S.detailPkg = null;
   $("viewDetail").hidden = true; $("viewList").hidden = false;
   $("bottomBar").hidden = true; $("navBack").hidden = true;
   $("logo").hidden = false; $("barTitle").textContent = "Causentry";
@@ -566,7 +615,7 @@ function showList(){
   renderList();
 }
 function showDetail(pkg){
-  S.view = "detail"; S.sel = pkg;
+  S.view = "detail"; S.sel = pkg; S.detailDirty = false; S.detailPkg = pkg;
   $("viewList").hidden = true; $("viewDetail").hidden = false;
   $("bottomBar").hidden = false; $("navBack").hidden = false;
   $("logo").hidden = true;
@@ -616,32 +665,29 @@ function renderList(){
 // deep link for the native shell (am start --es app <pkg>) and for automation
 window.CausentryOpenApp = function(pkg){ try { showDetail(pkg); } catch (e) {} };
 // automation hooks: they exercise exactly the same handlers the buttons call
-window.CausentrySetFeature = function(id, on){ try { const el = $(id); if (el) el.checked = !!on; } catch (e) {} };
+window.CausentrySetFeature = function(id, on){ try { const el = $(id); if (el) { el.checked = !!on; el.dispatchEvent(new Event("change", {bubbles:true})); } } catch (e) {} };
 window.CausentryClickApply = function(){ try { $("btnApplyApp").click(); } catch (e) {} };
-window.CausentryClickRemove = function(){ try { $("btnRemoveApp").click(); } catch (e) {} };
 
 function renderDetail(pkg){
   const feats = (S.cfg.apps || {})[pkg] || null;
+  const protectedApp = isProtected(pkg);
+  const dirty = S.detailDirty && S.detailPkg === pkg;
   $("d-lead").textContent = monogram(appName(pkg), pkg);
   $("d-lead").classList.remove("has-icon");
   iconInto($("d-lead"), pkg);
   $("d-name").textContent = appName(pkg);
   $("d-pkg").textContent = pkg;
-  $("d-chip").innerHTML = (isProtected(pkg) ? '<span class="chip ok">' + t("protectedChip") + "</span>" : "") +
+  $("d-chip").innerHTML = (protectedApp ? '<span class="chip ok">' + t("protectedChip") + "</span>" : '<span class="chip">' + t("inactiveChip") + "</span>") +
                           (isHardened(pkg) ? ' <span class="chip warn">' + t("hardenedChip") + "</span>" : "");
-  $("d-devOff").checked = feats ? !!feats.devOff : true;
-  $("d-mock").checked   = feats ? !!feats.mock   : true;
-  $("d-isolate").checked = feats ? (feats.isolate !== false) : true;
+  if (!dirty) {
+    $("d-devOff").checked = feats ? !!feats.devOff : (protectedApp ? !!S.snap.autoDevOff : false);
+    $("d-mock").checked   = feats ? !!feats.mock   : (protectedApp ? !!S.snap.hideMockLocation : false);
+    $("d-isolate").checked = feats ? (feats.isolate !== false) : (protectedApp && isHardened(pkg));
+  }
   $("d-rootapps").textContent = S.snap.hideRootApps ? t("ok_on") : t("ok_off");
   $("d-susfs").textContent = (S.snap.susfs || t("ok_unsupported"));
-  const down = (S.snap && S.snap.daemon === false);
-  $("d-note").textContent = down ? t("daemonDown") : (isHardened(pkg) ? t("noteHardened") : t("noteNormal"));
-  // nothing can be applied while the watch daemon is down - say so instead of
-  // pretending the change was saved
-  $("btnApplyApp").disabled = down;
-  $("btnRemoveApp").disabled = down;
-  $("btnRemoveApp").textContent = isProtected(pkg) ? t("remove") : t("remove");
   localise();
+  updateDetailControls(pkg);
 }
 
 /* ---------- data ---------- */
@@ -652,13 +698,12 @@ function applySnapshot(s){
   // the snapshot is written by the daemon: an old timestamp means the daemon is gone,
   // whatever the file still claims
   const snapAge = (s && s.ts) ? (Date.now() / 1000 - s.ts) : 1e9;
-  const daemon = !!(s && s.daemon) && snapAge < 15;
+  const daemon = !!(s && s.daemon) && snapAge < 60;
   S.snap.daemon = daemon;
   S.snap.age = Math.round(snapAge);
   // reuse whatever view is on screen: freeze the action buttons when the daemon is gone
-  const ba = $("btnApplyApp"), br = $("btnRemoveApp"), dnote = $("d-note");
+  const ba = $("btnApplyApp"), dnote = $("d-note");
   if (ba) ba.disabled = !daemon;
-  if (br) br.disabled = !daemon;
   if (dnote) dnote.textContent = !daemon ? t("daemonDown") : "";
   pill.textContent = !daemon ? t("ok_stopped").toUpperCase()
         : (st === "active" ? t("ok_cloakActive").toUpperCase() : t("ok_cloakIdle").toUpperCase());
@@ -707,26 +752,24 @@ function renderRoots(visible, suggested){
 /* ---------- actions ---------- */
 async function applyForApp(){
   const pkg = S.sel; if (!pkg) return;
-  const feats = [];
-  if ($("d-devOff").checked) feats.push("devOff");
-  if ($("d-mock").checked)   feats.push("mock");
-  if ($("d-isolate").checked) feats.push("isolate");
+  const feats = detailFeatureList();
   $("btnApplyApp").disabled = true;
+  if (!feats.length) {
+    if (!isProtected(pkg)) { toast(t("chooseBypass"), "err"); updateDetailControls(pkg); return; }
+    const r = await sendVerified({action:"delapp", pkg:pkg}, () => !isProtected(pkg));
+    $("btnApplyApp").disabled = false;
+    if (r.ok || r.why === "pending") S.detailDirty = false;
+    reportResult(r, t("removed"));
+    if (r.ok) showList();
+    return;
+  }
   const want = feats.slice().sort().join(",");
   const r = await sendVerified({action:"setapp", pkg:pkg, features:feats.join(",")},
       () => featuresOfEntry((S.cfg.apps || {})[pkg]) === want);
   $("btnApplyApp").disabled = false;
+  if (r.ok || r.why === "pending") S.detailDirty = false;
   reportResult(r, t("applied") + ": " + appName(pkg));
   if (r.ok) showList();
-}
-async function removeApp(){
-  const pkg = S.sel; if (!pkg) return;
-  const yes = await confirmDialog(t("confirmRemoveT"), t("confirmRemoveB", {app:appName(pkg)}), t("yesRemove"));
-  if (!yes) return;
-  const r = await sendVerified({action:"delapp", pkg:pkg},
-      () => !((S.cfg.apps || {})[pkg]));
-  reportResult(r, t("removed"));
-  showList();
 }
 async function saveAdvanced(){
   const b = id => $(id).checked ? 1 : 0;
@@ -763,17 +806,62 @@ function toggleLog(){
   el.style.display = el.style.display === "block" ? "none" : "block";
   if (el.style.display === "block"){ el.textContent = (S.snap && S.snap.log) || "(no log yet)"; el.scrollTop = el.scrollHeight; }
 }
+function setPanel(head, wrap, open){
+  const h = $(head), w = $(wrap);
+  if (!h || !w) return false;
+  w.hidden = !open;
+  S.panelStack = (S.panelStack || []).filter(id => id !== wrap);
+  if (open) S.panelStack.push(wrap);
+  h.setAttribute("aria-expanded", open ? "true" : "false");
+  const chev = h.querySelector(".chev");
+  if (chev) chev.textContent = open ? t("tapToHide") : t("tapToShow");
+  return true;
+}
+function closeOpenPanel(){
+  while (S.panelStack && S.panelStack.length) {
+    const wrap = S.panelStack.pop();
+    const pair = PANELS.find(p => p[1] === wrap);
+    const w = $(wrap);
+    if (pair && w && !w.hidden) return setPanel(pair[0], pair[1], false);
+  }
+  for (let i = PANELS.length - 1; i >= 0; i--) {
+    const pair = PANELS[i], w = $(pair[1]);
+    if (w && !w.hidden) return setPanel(pair[0], pair[1], false);
+  }
+  return false;
+}
+function handleBack(){
+  const modal = $("modal");
+  if (modal && !modal.hidden) {
+    const cancel = $("modalCancel");
+    if (cancel) cancel.click(); else modal.hidden = true;
+    return true;
+  }
+  if (S.view === "detail") {
+    showList();
+    return true;
+  }
+  const log = $("log");
+  if (log && log.style.display === "block") {
+    log.style.display = "none";
+    return true;
+  }
+  if (closeOpenPanel()) return true;
+  const q = $("q");
+  if (q && q.value) {
+    q.value = "";
+    renderList();
+    return true;
+  }
+  return false;
+}
 
 /* ---------- collapsibles ---------- */
-[["headApps","wrapApps"],["headAdvanced","wrapAdvanced"],["headDeny","wrapDeny"],["headRoot","wrapRoot"],["headActions","wrapActions"]]
+PANELS
   .forEach(([head, wrap]) => {
     const h = $(head), w = $(wrap);
     const toggle = () => {
-      const nextHidden = !w.hidden;
-      w.hidden = nextHidden;
-      h.setAttribute("aria-expanded", nextHidden ? "false" : "true");
-      const chev = h.querySelector(".chev");
-      if (chev) chev.textContent = nextHidden ? t("tapToShow") : t("tapToHide");
+      setPanel(head, wrap, w.hidden);
     };
     h.onclick = toggle;
     h.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } };
@@ -782,10 +870,9 @@ function toggleLog(){
 /* ---------- wiring ---------- */
 $("q").addEventListener("input", renderList);
 $("qClear").onclick = () => { $("q").value = ""; renderList(); $("q").focus(); };
-$("navBack").onclick = showList;
+$("navBack").onclick = () => handleBack();
 $("btnReload").onclick = () => { refresh(); toast(t("loading")); };
 $("btnApplyApp").onclick = applyForApp;
-$("btnRemoveApp").onclick = removeApp;
 $("btnSaveAdv").onclick = saveAdvanced;
 $("btnSaveDeny").onclick = saveDenylist;
 $("btnApply").onclick = async () => { const ok = await Transport.send({action:"apply"}); toast(ok ? t("applied") : t("saveWarn"), ok ? "ok" : "err"); };
@@ -794,12 +881,21 @@ $("btnRestore").onclick = restoreEverything;
 document.querySelectorAll(".switch-row").forEach(row => {
   row.addEventListener("click", ev => {
     const inp = $(row.dataset.toggle);
-    if (ev.target.closest(".switch") && ev.target.tagName === "INPUT") return;   // native toggle handles it
+    if (ev.target.closest(".switch")) return;   // native label/input handles it
     inp.checked = !inp.checked;
-    row.setAttribute("aria-checked", inp.checked ? "true" : "false");
+    inp.dispatchEvent(new Event("change", {bubbles:true}));
   });
 });
-window.addEventListener("keydown", e => { if (e.key === "Escape" && S.view === "detail") showList(); });
+document.querySelectorAll("input[type=checkbox]").forEach(inp => {
+  inp.addEventListener("change", () => {
+    syncToggleRow(inp.id);
+    if (S.view === "detail" && ["d-devOff","d-mock","d-isolate"].indexOf(inp.id) !== -1) {
+      S.detailDirty = true; S.detailPkg = S.sel; updateDetailControls(S.sel);
+    }
+  });
+});
+window.addEventListener("keydown", e => { if (e.key === "Escape" && handleBack()) e.preventDefault(); });
+window.CausentryBack = function(){ try { return handleBack(); } catch (e) { return false; } };
 
 /* ---------- transport: Android bridge in the APK, HTTP token in browser ---------- */
 const B = window.Causentry;
@@ -828,20 +924,33 @@ if (B) {
   Transport.icon   = async pkg => "";
 }
 
+async function refreshStatusOnly(){
+  const s = await Transport.status();
+  applySnapshot(s);
+  return s || {};
+}
 /* Send a command and wait until the daemon has really applied it. Writing the command
    file only means "queued" - if the daemon is down the user would otherwise see a fake
-   success. verify() is re-checked against the refreshed snapshot until it passes. */
+   success. verify() is checked against the status snapshot only; the full app list is
+   intentionally not reloaded in this polling loop because it can lag behind commands. */
 async function sendVerified(o, verify, tries){
   const sent = await Transport.send(o);
   if (!sent) return { ok:false, why:"send" };
-  const n = tries || 18;
+  const n = tries || 40;
+  let daemonMisses = 0;
   for (let i = 0; i < n; i++){
     await new Promise(r => setTimeout(r, 500));
-    try { await refresh(); } catch(e){}
+    try { await refreshStatusOnly(); } catch(e){}
     if (verify && verify()) return { ok:true };
-    if (S.snap && S.snap.daemon === false) return { ok:false, why:"daemon" };
+    if (S.snap && S.snap.daemon === false) {
+      daemonMisses++;
+      if (daemonMisses >= 3) return { ok:false, why:"daemon" };
+    } else {
+      daemonMisses = 0;
+    }
   }
-  return { ok:false, why:"timeout" };
+  setTimeout(refresh, 2500);
+  return { ok:false, why:"pending" };
 }
 function featuresOfEntry(e){
   if (!e) return "";
@@ -852,8 +961,10 @@ function featuresOfEntry(e){
   return got.sort().join(",");
 }
 function reportResult(r, okMsg){
-  const bad = (r.why === "daemon" || r.why === "timeout") ? t("daemonDown") : t("saveWarn");
-  toast(r.ok ? okMsg : bad, r.ok ? "ok" : "err");
+  if (r.ok) { toast(okMsg, "ok"); return; }
+  if (r.why === "pending") { toast(t("queued"), "ok"); return; }
+  const bad = (r.why === "daemon") ? t("daemonDown") : t("saveWarn");
+  toast(bad, "err");
 }
 
 /* ---------- refresh loop ---------- */

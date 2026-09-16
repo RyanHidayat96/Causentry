@@ -112,19 +112,37 @@ touch_heartbeat
 # watchdog: keeps the state honest even if events were missed
 (
   n=0
+  apps_pid=
+  refresh_apps_snapshot() {
+    [ -f "$DIR/uirpc.sh" ] || return 0
+    if [ -n "$apps_pid" ] && [ -d "/proc/$apps_pid" ]; then
+      return 0
+    fi
+    (
+      timeout 12 sh "$DIR/uirpc.sh" apps >/dev/null 2>&1
+      rc=$?
+      [ "$rc" -ne 0 ] && echo "$(date '+%m-%d %H:%M:%S') uirpc apps rc=$rc" >> "$DIR/.watchdog.log"
+    ) &
+    apps_pid=$!
+  }
   while true; do
-    sleep 5
+    sleep 1
     n=$((n+1))
     touch_heartbeat
-    [ $((n % 6)) -eq 0 ] && ensure_ui
+    [ $((n % 30)) -eq 0 ] && ensure_ui
     # control-UI app: run its pending commands + refresh the state snapshot
     if [ -f "$DIR/uirpc.sh" ]; then
-      timeout 12 sh "$DIR/uirpc.sh" serve >/dev/null 2>&1
+      timeout 8 sh "$DIR/uirpc.sh" serve >/dev/null 2>&1
       rc=$?
       [ "$rc" -ne 0 ] && echo "$(date '+%m-%d %H:%M:%S') uirpc serve rc=$rc" >> "$DIR/.watchdog.log"
-      [ $((n % 6)) -eq 0 ] && timeout 12 sh "$DIR/uirpc.sh" apps >/dev/null 2>&1
+      [ $((n % 30)) -eq 0 ] && refresh_apps_snapshot
     fi
     locked_evaluate
+    if [ -f "$DIR/.uirpc.changed" ]; then
+      rm -f "$DIR/.uirpc.changed"
+      timeout 8 sh "$DIR/uirpc.sh" snapshot >/dev/null 2>&1
+      refresh_apps_snapshot
+    fi
     touch_heartbeat
   done
 ) &

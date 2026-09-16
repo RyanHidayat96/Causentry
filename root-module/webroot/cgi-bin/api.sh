@@ -48,10 +48,8 @@ case "$action" in
     vector_cli >/dev/null 2>&1 && vector=true
     uiapk=false
     pm list packages 2>/dev/null | grep -q "^package:com.causentry.app$" && uiapk=true
-    rootlist=""
-    [ -x "$DIR/root-apps.sh" ] && rootlist=$(sh "$DIR/root-apps.sh" scan 2>/dev/null | tr '\n' ',')
-    rootsuggest=""
-    [ -x "$DIR/root-apps.sh" ] && rootsuggest=$(sh "$DIR/root-apps.sh" suggest 2>/dev/null | tr '\n' ',')
+    rootlist=$(root_apps_cached | tr '\n' ',')
+    rootsuggest=$(root_suggest_cached | tr '\n' ',')
     hb=$(cat "$DIR/heartbeat" 2>/dev/null); [ -n "$hb" ] || hb=0
     age=$(( $(date +%s) - hb ))
     [ "$age" -ge 0 ] 2>/dev/null || age=999999
@@ -98,6 +96,7 @@ case "$action" in
     if valid_package_name "$pkg"; then
       grep -qx "$pkg" "$DIR/root_extra.txt" 2>/dev/null || echo "$pkg" >> "$DIR/root_extra.txt"
       out=$(sh "$DIR/root-apps.sh" hide 2>&1)
+      root_cache_invalidate
       printf '{"ok":true,"out":'; json_string "$out"; printf '}'
     else
       printf '{"ok":false}'
@@ -109,6 +108,7 @@ case "$action" in
     if valid_package_name "$pkg"; then
       APP_PKG_NEW="$pkg" APP_FEATS_NEW="$feats" sh "$DIR/appcfg.sh" set >/dev/null 2>&1
       sh "$DIR/apply.sh" ui >/dev/null 2>&1
+      date +%s > "$DIR/.uirpc.changed" 2>/dev/null
       printf '{"ok":true}'
     else
       printf '{"ok":false}'
@@ -119,6 +119,8 @@ case "$action" in
     printf 'Content-Type: application/json\r\n\r\n'
     if valid_package_name "$pkg"; then
       APP_PKG_NEW="$pkg" sh "$DIR/appcfg.sh" del >/dev/null 2>&1
+      sh "$DIR/apply.sh" ui >/dev/null 2>&1
+      date +%s > "$DIR/.uirpc.changed" 2>/dev/null
       printf '{"ok":true}'
     else
       printf '{"ok":false}'
@@ -143,6 +145,8 @@ case "$action" in
   roothide)
     printf 'Content-Type: application/json\r\n\r\n'
     out=$(sh "$DIR/root-apps.sh" hide 2>&1)
+    root_cache_invalidate
+    date +%s > "$DIR/.uirpc.changed" 2>/dev/null
     printf '{"ok":true,"out":'; json_string "$out"; printf '}'
     ;;
   apps)
@@ -221,16 +225,20 @@ case "$action" in
     chmod 644 "$CONF"
     log "config saved from UI"
     sh "$DIR/apply.sh" ui >/dev/null 2>&1
+    date +%s > "$DIR/.uirpc.changed" 2>/dev/null
     printf 'Content-Type: application/json\r\n\r\n{"ok":true}'
     ;;
   apply)
     printf 'Content-Type: application/json\r\n\r\n'
     out=$(sh "$DIR/apply.sh" ui 2>&1)
+    date +%s > "$DIR/.uirpc.changed" 2>/dev/null
     printf '{"ok":true,"out":'; json_string "$out"; printf '}'
     ;;
   restore)
     printf 'Content-Type: application/json\r\n\r\n'
     sh "$DIR/restore.sh" >/dev/null 2>&1
+    root_cache_invalidate
+    date +%s > "$DIR/.uirpc.changed" 2>/dev/null
     printf '{"ok":true}'
     ;;
   log)

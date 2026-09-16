@@ -16,6 +16,7 @@ APP_DIR=/data/data/$APP_PKG/files
 CMD_DIR=$APP_DIR/cmd
 NL='
 '
+CHANGE_MARK=$DIR/.uirpc.changed
 
 app_uid() { stat -c %u "/data/data/$APP_PKG" 2>/dev/null; }
 
@@ -60,6 +61,8 @@ list_has_line() {
   return 1
 }
 
+mark_changed() { date +%s > "$CHANGE_MARK" 2>/dev/null; }
+
 snapshot() {
   [ -d "/data/data/$APP_PKG" ] || return 0
   ensure_app_dirs
@@ -73,8 +76,8 @@ snapshot() {
   dage=$(( $(date +%s) - hb ))
   [ "$dage" -ge 0 ] 2>/dev/null || dage=999999
   if [ "$dage" -gt 20 ]; then dalive=false; fi
-  rootapps=$(sh "$DIR/root-apps.sh" scan 2>/dev/null | tr '\n' ',')
-  suggests=$(sh "$DIR/root-apps.sh" suggest 2>/dev/null | tr '\n' ',')
+  rootapps=$(root_apps_cached | tr '\n' ',')
+  suggests=$(root_suggest_cached | tr '\n' ',')
   {
     printf '{"state":'; json_string "$state"
     printf ',"daemon":%s,"ts":%s,"age":%s' "$dalive" "$(date +%s)" "$dage"
@@ -177,15 +180,18 @@ process_cmds() {
         chmod 644 "$DIR/config.json"
         log "config saved (control-UI app)"
         sh "$DIR/apply.sh" app >> "$LOG" 2>&1
+        mark_changed
         ;;
-      apply)   sh "$DIR/apply.sh" app >> "$LOG" 2>&1 ;;
-      restore) sh "$DIR/restore.sh" >> "$LOG" 2>&1 ;;
-      roothide) sh "$DIR/root-apps.sh" hide >> "$LOG" 2>&1 ;;
+      apply)   sh "$DIR/apply.sh" app >> "$LOG" 2>&1; mark_changed ;;
+      restore) sh "$DIR/restore.sh" >> "$LOG" 2>&1; root_cache_invalidate; mark_changed ;;
+      roothide) sh "$DIR/root-apps.sh" hide >> "$LOG" 2>&1; root_cache_invalidate; mark_changed ;;
       hideone)
         pkg=$(getf pkg)
         if valid_package_name "$pkg"; then
           grep -qx "$pkg" "$DIR/root_extra.txt" 2>/dev/null || echo "$pkg" >> "$DIR/root_extra.txt"
           sh "$DIR/root-apps.sh" hide >> "$LOG" 2>&1
+          root_cache_invalidate
+          mark_changed
         fi
         ;;
       refresh) apps_snapshot ;;
@@ -199,11 +205,16 @@ process_cmds() {
         if valid_package_name "$pkg"; then
           APP_PKG_NEW="$pkg" APP_FEATS_NEW="$feats" sh "$DIR/appcfg.sh" set >> "$LOG" 2>&1
           sh "$DIR/apply.sh" app >> "$LOG" 2>&1
+          mark_changed
         fi
         ;;
       delapp)
         pkg=$(getf pkg)
-        valid_package_name "$pkg" && APP_PKG_NEW="$pkg" sh "$DIR/appcfg.sh" del >> "$LOG" 2>&1
+        if valid_package_name "$pkg"; then
+          APP_PKG_NEW="$pkg" sh "$DIR/appcfg.sh" del >> "$LOG" 2>&1
+          sh "$DIR/apply.sh" app >> "$LOG" 2>&1
+          mark_changed
+        fi
         ;;
     esac
     snapshot

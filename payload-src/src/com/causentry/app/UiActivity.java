@@ -28,6 +28,7 @@ public class UiActivity extends Activity {   // cache-busting on update
     private WebView web;
     private TextView status;
     private LinearLayout splash;
+    private boolean pageReady;
 
     private static boolean isPackageName(String s) {
         return s != null && s.matches("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+");
@@ -137,13 +138,8 @@ public class UiActivity extends Activity {   // cache-busting on update
             @Override
             public void onPageFinished(WebView view, String url) {
                 hideSplash();
-                // am start --es app <pkg> opens that app's detail page directly
-                String app = getIntent() != null ? getIntent().getStringExtra("app") : null;
-                if (isPackageName(app)) {
-                    web.evaluateJavascript(
-                            "window.CausentryOpenApp && window.CausentryOpenApp("
-                                    + JSONObject.quote(app) + ")", null);
-                }
+                pageReady = true;
+                openRequestedApp();
                 // headless automation: --ez apply true drives the real Apply handler,
                 // optionally with a feature forced on/off first (audit / smoke test)
                 if (getIntent() != null && getIntent().getBooleanExtra("apply", false)) {
@@ -206,5 +202,41 @@ public class UiActivity extends Activity {   // cache-busting on update
             // ask the daemon for a fresh app list (it also refreshes every 30s)
             new UiBridge(this).command("{\"action\":\"refresh\"}");
         }
+    }
+
+    @Override
+    protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        openRequestedApp();
+    }
+
+    private void openRequestedApp() {
+        if (!pageReady || web == null || getIntent() == null) return;
+        // am start --es app <pkg> opens that app's detail page directly.
+        String app = getIntent().getStringExtra("app");
+        if (isPackageName(app)) {
+            web.evaluateJavascript(
+                    "window.CausentryOpenApp && window.CausentryOpenApp("
+                            + JSONObject.quote(app) + ")", null);
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (web == null || !pageReady) {
+            super.onBackPressed();
+            return;
+        }
+        web.evaluateJavascript(
+                "(function(){try{return !!(window.CausentryBack&&window.CausentryBack());}catch(e){return false;}})()",
+                new android.webkit.ValueCallback<String>() {
+                    @Override
+                    public void onReceiveValue(String value) {
+                        if (!"true".equals(value)) {
+                            UiActivity.super.onBackPressed();
+                        }
+                    }
+                });
     }
 }

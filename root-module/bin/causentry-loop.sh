@@ -9,7 +9,7 @@
 # stale heartbeat -> kill whatever is left and start a fresh daemon.
 DIR=/data/adb/causentry
 LOCK=$DIR/loop.lock
-MAX_AGE=30
+MAX_AGE=60
 
 if [ -f "$LOCK" ]; then
   old=$(cat "$LOCK" 2>/dev/null)
