@@ -329,14 +329,21 @@ per_app_refresh() {
   pkg="$1"
   mode="${2:-app}"
   log "per-app refresh: mode=$mode pkg=${pkg:-?}"
+  policy_rc=0
+  # Always generate policy. A template change must be durable before the hook
+  # comes online; gating this on readiness left cloak.json stale.
+  if [ -x "$DIR/cloak.sh" ]; then
+    sh "$DIR/cloak.sh" || policy_rc=1
+  fi
   if cloak_backend_ready; then
-    [ -x "$DIR/cloak.sh" ] && sh "$DIR/cloak.sh"
+    log "per-app refresh: cloak policy updated (backend ready)"
   else
-    log "per-app refresh: cloak metadata skipped (backend disabled)"
+    log "per-app refresh: cloak policy updated; hook inactive"
   fi
   if valid_package_name "$pkg"; then
     am force-stop "$pkg" >/dev/null 2>&1 && log "force-stopped target after config change: $pkg"
   fi
+  return "$policy_rc"
 }
 
 # the settings service is not up yet at the very first boot stage

@@ -63,6 +63,15 @@ list_has_line() {
 
 mark_changed() { date +%s > "$CHANGE_MARK" 2>/dev/null; }
 
+complete_command() {
+  token="$1"
+  rc="$2"
+  case "$token" in *[!A-Za-z0-9_.:-]*|"") return 0;; esac
+  case "$rc" in ''|*[!0-9]*) rc=1;; esac
+  printf '%s' "$rc" > "$DIR/.command.rc" 2>/dev/null
+  printf '%s' "$token" > "$DIR/.command.done.token" 2>/dev/null
+}
+
 schedule_apply() {
   mode="${1:-app}"
   op="$2"
@@ -109,6 +118,8 @@ snapshot() {
   apply_done=$(cat "$DIR/.apply.done" 2>/dev/null); case "$apply_done" in ""|*[!0-9]*) apply_done=0;; esac
   apply_rc=$(cat "$DIR/.apply.rc" 2>/dev/null); case "$apply_rc" in ""|*[!0-9]*) apply_rc=0;; esac
   apply_token=$(cat "$DIR/.apply.done.token" 2>/dev/null)
+  command_rc=$(cat "$DIR/.command.rc" 2>/dev/null); case "$command_rc" in ""|*[!0-9]*) command_rc=0;; esac
+  command_token=$(cat "$DIR/.command.done.token" 2>/dev/null)
   rootapps=$(root_apps_cached | tr '\n' ',')
   suggests=$(root_suggest_cached | tr '\n' ',')
   {
@@ -132,6 +143,7 @@ snapshot() {
       "$( [ "$(jbool uiApk)" = 1 ] && echo true || echo false )"
     printf '"rootApps":'; json_string "$rootapps"; printf ',"rootSuggest":'; json_string "$suggests"; printf ','
     printf '"applyBusy":%s,"applyDone":%s,"applyRc":%s,"applyToken":' "$apply_busy" "$apply_done" "$apply_rc"; json_string "$apply_token"; printf ','
+    printf '"commandRc":%s,"commandToken":' "$command_rc"; json_string "$command_token"; printf ','
     printf '"config":%s,' "$(tr -d '\n' < "$CONF" 2>/dev/null || echo '{}')"
     printf '"log":'; json_string "$(tail -25 "$DIR/causentry.log" 2>/dev/null)"; printf '}'
   } > "$T"
@@ -183,6 +195,7 @@ process_cmds() {
     case "$act" in
       save)
         targets=$(getf targets); denylist=$(getf denylist); hardened=$(getf hardened)
+        printf '%s' "$line" | grep -q '"denylist"' || denylist=$(jlist denylist | tr '\n' ',')
         templateName=$(getf templateName); templatePackages=$(getf templatePackages)
         templateDelete=$(getf templateDelete)
         op=$(getf op)
@@ -201,6 +214,7 @@ process_cmds() {
             printf '%s' "$e"
           done < "$APPS_T"
         }
+        CONF_NEW="$CONF.new"
         {
           printf '{"targets":'; tojson_arr "$targets"
           printf ',"denylist":'; tojson_arr "$denylist"
@@ -214,13 +228,22 @@ process_cmds() {
           printf ',"systemCloak":'; bj "$(jbool systemCloak)"
           printf ',"hideMode":'; json_string "$(hide_mode)"
           printf ',"cloakPackages":'; tojson_arr "$(jlist cloakPackages | tr '\n' ',')"
+          printf ',"root_packages":'; tojson_arr "$(jlist root_packages | tr '\n' ',')"
           printf '}'
-        } > "$DIR/config.json"
+        } > "$CONF_NEW"
         rm -f "$APPS_T"
-        chmod 644 "$DIR/config.json"
-        log "config saved (control-UI app)"
-        schedule_apply app "$op"
-        mark_changed
+        if mv -f "$CONF_NEW" "$CONF" 2>/dev/null; then
+          chmod 644 "$CONF"
+          log "config saved (control-UI app)"
+          schedule_apply app "$op"
+          mark_changed
+        else
+          rm -f "$CONF_NEW"
+          log "config save failed (control-UI app)"
+          printf '%s' 1 > "$DIR/.apply.rc" 2>/dev/null
+          [ -n "$op" ] && printf '%s' "$op" > "$DIR/.apply.done.token" 2>/dev/null
+          complete_command "$op" 1
+        fi
         ;;
       apply)   op=$(getf op); schedule_apply app "$op"; mark_changed ;;
       restore) sh "$DIR/restore.sh" >> "$LOG" 2>&1; root_cache_invalidate; mark_changed ;;
@@ -239,20 +262,26 @@ process_cmds() {
         log "ignored deprecated savecfg command" ;;
       setapp)
         # {"action":"setapp","pkg":"x","features":"devOff,mock"} -> enable + set features
-        pkg=$(getf pkg); feats=$(getf features); template=$(getf template)
+        pkg=$(getf pkg); feats=$(getf features); template=$(getf template); op=$(getf op); rc=1
         if valid_package_name "$pkg"; then
           APP_PKG_NEW="$pkg" APP_FEATS_NEW="$feats" APP_HIDE_TEMPLATE_NEW="$template" sh "$DIR/appcfg.sh" set >> "$LOG" 2>&1
-          per_app_refresh "$pkg" app >> "$LOG" 2>&1
-          mark_changed
+          rc=$?
+          [ "$rc" -eq 0 ] && per_app_refresh "$pkg" app >> "$LOG" 2>&1
+          rc=$?
+          [ "$rc" -eq 0 ] && mark_changed
         fi
+        complete_command "$op" "$rc"
         ;;
       delapp)
-        pkg=$(getf pkg)
+        pkg=$(getf pkg); op=$(getf op); rc=1
         if valid_package_name "$pkg"; then
           APP_PKG_NEW="$pkg" sh "$DIR/appcfg.sh" del >> "$LOG" 2>&1
-          per_app_refresh "$pkg" app >> "$LOG" 2>&1
-          mark_changed
+          rc=$?
+          [ "$rc" -eq 0 ] && per_app_refresh "$pkg" app >> "$LOG" 2>&1
+          rc=$?
+          [ "$rc" -eq 0 ] && mark_changed
         fi
+        complete_command "$op" "$rc"
         ;;
     esac
     snapshot

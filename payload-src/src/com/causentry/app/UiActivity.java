@@ -526,7 +526,7 @@ public class UiActivity extends Activity {
         addAppHeader(selectedPkg);
         Switch dev = switchRow("Hide developer options", "The app sees dev-mode OFF while it runs",
                 cfg != null ? cfg.optBoolean("devOff", false) : (targets.contains(selectedPkg) && status.optBoolean("autoDevOff", true)));
-        Switch mock = switchRow("Hide mock location / fake GPS", "mock_location=0 and template packages hidden while it runs",
+        Switch mock = switchRow("Hide mock location", "Sets mock_location=0 while this app runs. Package templates need an active Zygisk hook.",
                 cfg != null ? cfg.optBoolean("mock", false) : (targets.contains(selectedPkg) && status.optBoolean("hideMockLocation", true)));
         Switch isolate = switchRow("Block app-zygote self-checks", "Stops privileged per-app zygote checks",
                 cfg != null ? cfg.optBoolean("isolate", false) : (targets.contains(selectedPkg) && hardened.contains(selectedPkg)));
@@ -553,6 +553,11 @@ public class UiActivity extends Activity {
                 }
                 public void onNothingSelected(android.widget.AdapterView<?> parent) {}
             });
+        }
+        if (!status.optBoolean("cloakReady", false)) {
+            TextView unavailable = tv(13, WARN, Typeface.NORMAL);
+            unavailable.setText("Package hiding unavailable: Zygisk system hook is inactive. Templates are saved but target apps can still list their packages.");
+            content.addView(wrap(unavailable, 24, 0, 24, 12));
         }
         addValueRow("Kernel path hiding", status.optString("susfs", "unsupported"), null);
         bottomApply.setOnClickListener(v -> applyDetail(dev, mock, isolate, sp));
@@ -588,14 +593,14 @@ public class UiActivity extends Activity {
         if (dev.isChecked()) feats.add("devOff");
         if (mock.isChecked()) feats.add("mock");
         if (isolate.isChecked()) feats.add("isolate");
+        String op = op();
         if (feats.isEmpty() && templatePackages(tpl).isEmpty()) {
-            command(json("action", "delapp", "pkg", selectedPkg));
-            toast("Protection removed");
+            command(json("action", "delapp", "pkg", selectedPkg, "op", op));
+            waitCommand(op, "", "Protection removed", true);
         } else {
-            command(json("action", "setapp", "pkg", selectedPkg, "features", join(feats), "template", tpl));
-            toast("Applied: " + label(selectedPkg));
+            command(json("action", "setapp", "pkg", selectedPkg, "features", join(feats), "template", tpl, "op", op));
+            waitCommand(op, tpl, "Applied: " + label(selectedPkg), false);
         }
-        handler.postDelayed(() -> { readAll(); detailMode = false; selectedPkg = null; render(); }, 1200);
     }
 
     private void saveTemplates() {
@@ -609,13 +614,12 @@ public class UiActivity extends Activity {
             cmd.put("action", "save");
             cmd.put("op", op);
             cmd.put("targets", join(targets));
-            cmd.put("denylist", "");
             cmd.put("hardened", join(hardened));
             cmd.put("templateName", name == null ? "" : name);
             cmd.put("templatePackages", join(packages));
             if (isTemplateName(deleteName)) cmd.put("templateDelete", deleteName);
-            cmd.put("autoDevOff", 1);
-            cmd.put("hideMockLocation", 1);
+            cmd.put("autoDevOff", status.optBoolean("autoDevOff", true) ? 1 : 0);
+            cmd.put("hideMockLocation", status.optBoolean("hideMockLocation", true) ? 1 : 0);
             cmd.put("alwaysHidden", status.optBoolean("alwaysHidden", false) ? 1 : 0);
             cmd.put("susfs", status.optBoolean("susfsOn", true) ? 1 : 0);
             cmd.put("uiApk", status.optBoolean("uiApk", true) ? 1 : 0);
@@ -633,13 +637,55 @@ public class UiActivity extends Activity {
                 readAll();
                 boolean done = token.equals(status.optString("applyToken", "")) && !status.optBoolean("applyBusy", false);
                 if (done) {
-                    toast(status.optInt("applyRc", 1) == 0 ? "Done" : "Apply failed");
+                    if (status.optInt("applyRc", 1) == 0) {
+                        toast(templateCloakNeeded() && !status.optBoolean("cloakReady", false)
+                                ? "Saved. Package hiding unavailable: Zygisk hook inactive" : "Done");
+                    } else toast("Apply failed");
                     render();
                 } else if (tries[0] < 120) handler.postDelayed(this, 500);
                 else toast("Queued - still applying");
             }
         };
         handler.postDelayed(r, 500);
+    }
+
+    private void waitCommand(String token, String template, String success, boolean removing) {
+        toast("Saving...");
+        final int[] tries = {0};
+        Runnable r = new Runnable() {
+            public void run() {
+                tries[0]++;
+                readAll();
+                boolean reported = token.equals(status.optString("commandToken", ""));
+                boolean legacyApplied = !status.has("commandToken") && tries[0] >= 12
+                        && legacyCommandApplied(template, removing);
+                if (reported || legacyApplied) {
+                    if (legacyApplied || status.optInt("commandRc", 1) == 0) {
+                        toast(!templatePackages(template).isEmpty() && !status.optBoolean("cloakReady", false)
+                                ? "Saved. Package hiding unavailable: Zygisk hook inactive" : success);
+                        detailMode = false;
+                        selectedPkg = null;
+                        render();
+                    } else toast("Save failed");
+                } else if (tries[0] < 40) handler.postDelayed(this, 500);
+                else toast("Queued - waiting for daemon");
+            }
+        };
+        handler.postDelayed(r, 500);
+    }
+
+    private boolean legacyCommandApplied(String template, boolean removing) {
+        if (removing) return !appConfig.containsKey(selectedPkg);
+        JSONObject entry = appConfig.get(selectedPkg);
+        return entry != null && (template.isEmpty() || template.equals(entry.optString("hideTemplate", "")));
+    }
+
+    private boolean templateCloakNeeded() {
+        for (String pkg : targets) {
+            JSONObject entry = appConfig.get(pkg);
+            if (entry != null && !templatePackages(entry.optString("hideTemplate", "")).isEmpty()) return true;
+        }
+        return false;
     }
 
     private void createTemplate(String name) {
