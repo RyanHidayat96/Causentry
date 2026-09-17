@@ -17,8 +17,8 @@ Implemented foundation:
 - Universal root-module skeleton in `root-module/`
 - Proto, rules, testdata, scripts, and initial documentation directories
 
-The root module now includes shell-based privileged state management, a bundled WebView
-control app, file-based app-to-daemon RPC, and a legacy token-protected loopback CGI UI.
+The root module now includes shell-based privileged state management, a bundled native
+Android control app, file-based app-to-daemon RPC, and a legacy token-protected loopback CGI UI.
 The Rust diagnostic daemon, provider adapters, collectors, and analyzer are still roadmap
 work.
 

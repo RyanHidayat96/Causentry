@@ -20,8 +20,8 @@ as a fallback.
 | `uninstall.sh` | restore packages + flags, stop daemon, remove runtime state |
 | `config.default.json` | default configuration |
 | `bin/*.sh` | lib, apply, restore, watch daemon, root-apps, denylist, status, doctor |
-| `webroot/` | control UI (`index.html`) + token-protected CGI API |
-| `payload/Causentry.apk` | control UI app; not an Xposed/LSPosed module |
+| `webroot/` | legacy browser UI (`index.html`) + token-protected CGI API |
+| `payload/Causentry.apk` | native Android control UI app; not an Xposed/LSPosed module |
 
 Runtime state lives in `/data/adb/causentry/` (config, log, legacy restore list,
 UI token). Nothing is written inside protected apps.
@@ -64,27 +64,26 @@ CLI equivalent: `APP_PKG_NEW=com.x APP_FEATS_NEW=devOff,mock APP_HIDE_TEMPLATE_N
 
 ## Control UI (the app) — design rules
 
-The page shipped inside the APK follows the Android accessibility + Material list guidance:
+The APK uses native Android widgets and follows Android accessibility + Material list guidance:
 
 | Rule | Implementation |
 |---|---|
-| Touch targets >= 48dp, >= 8dp apart | every row/button/switch hit area is at least 48x48 CSS px (`--tap`) |
+| Touch targets >= 48dp, >= 8dp apart | every row/button/switch hit area is at least 48x48 dp |
 | List items: leading slot + 2 lines + trailing | monogram circle + app name + package + state chips + chevron |
 | One primary action per screen | sticky bottom bar with **Apply for this app** (destructive action next to it, behind a confirm dialog) |
-| Progressive disclosure | Apps is the only expanded card; Advanced / Hidden-app list / Actions collapse and show a summary in the header |
+| Progressive disclosure | app detail has per-app settings; home has app list, template editor, and actions |
 | Destructive actions ask first | Restore everything opens a confirmation dialog |
 | Never a dead end | loading skeletons, "no match" empty state and a "daemon not running" error state with the fix |
-| Feedback | toast for every queued action (queued / applied / failed) |
+| Feedback | Android toast for every queued action (queued / applied / failed) |
 | Contrast | WCAG AA verified for every muted label (measured, not guessed) |
-| Accessibility | role=switch + aria-checked + aria-label on switch rows, aria-live toast, aria-expanded collapsibles, focus-visible rings, prefers-reduced-motion honoured |
-| Language | follows the phone language (English / Indonesian), overridable in Advanced -> Language |
+| Accessibility | native Button, Switch, Spinner, CheckBox, EditText, ScrollView |
 
 ## Control UI (the app)
 
 Installing the zip is enough: at boot `apply.sh` installs `payload/Causentry.apk` as a
 launcher app (disable with `"uiApk": false`). The app:
 
-* shows the same interface as before, bundled inside the APK (`assets/index.html`),
+* shows a native Android interface built from platform widgets (no WebView),
 * talks to the root daemon through **its own private files dir** - the daemon drops
   `status.json` / `apps.json` there and executes the commands the app queues in `files/cmd/`,
 * therefore needs **no root prompt, no LSPosed, no Vector, no web server and no network**.

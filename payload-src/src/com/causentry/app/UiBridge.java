@@ -1,7 +1,5 @@
 package com.causentry.app;
 
-import android.webkit.JavascriptInterface;
-
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -13,7 +11,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Bridge between the UI page (bundled in assets) and the root daemon.
+ * Bridge between the native UI and the root daemon.
  *
  * The app never needs root: it reads the snapshot the daemon leaves in its own
  * private files dir and drops command files next to it. The daemon picks them up
@@ -31,19 +29,16 @@ public class UiBridge {
     }
 
     /** state snapshot written by the daemon (status.json) */
-    @JavascriptInterface
     public String status() {
         return read("status.json");
     }
 
     /** installed apps snapshot (apps.json), refreshed by the daemon */
-    @JavascriptInterface
     public String apps() {
         return read("apps.json");
     }
 
     /** installed app labels: {"com.example.app":"Example", ...} */
-    @JavascriptInterface
     public String labels() {
         JSONObject outJson = new JSONObject();
         try {
@@ -70,7 +65,6 @@ public class UiBridge {
     }
 
     /** the app's real launcher icon as a data URI (empty when unavailable) */
-    @JavascriptInterface
     public String icon(String pkg) {
         try {
             if (!isPackageName(pkg)) return "";
@@ -93,7 +87,6 @@ public class UiBridge {
     }
 
     /** queue a command for the daemon, e.g. {"action":"apply"} */
-    @JavascriptInterface
     public String command(String json) {
         try {
             if (json == null || json.length() > 32768) {
@@ -121,7 +114,6 @@ public class UiBridge {
     }
 
     /** run the self-check in this app process and store it for the UI/daemon */
-    @JavascriptInterface
     public String probe() {
         try {
             String json = SelfProbe.run(activity).toString();

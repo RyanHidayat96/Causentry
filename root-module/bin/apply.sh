@@ -136,8 +136,8 @@ if [ "$(jbool susfs)" = 1 ] && [ -n "$SUSFS" ] && "$SUSFS" support >/dev/null 2>
   log "susfs hiding refreshed"
 fi
 
-# 3b) control-UI app: payload/Causentry.apk doubles as a launcher (WebView over the
-#     loopback UI). Installed only when uiApk is enabled and not already present.
+# 3b) control-UI app: payload/Causentry.apk is a native Android launcher.
+#     Installed only when uiApk is enabled and not already present.
 if [ "$(jbool uiApk)" = 1 ] && [ -f "$DIR/Causentry.apk" ]; then
   if wait_package_manager 30 && control_apk_needs_install "$DIR/Causentry.apk"; then
     if install_control_apk "$DIR/Causentry.apk" >> "$LOG" 2>&1; then

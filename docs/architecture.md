@@ -8,9 +8,9 @@ Causentry currently ships as a universal root module plus a small Android contro
 - `root-module/bin/causentryd.sh`: foreground watcher. It toggles developer-options
   and mock-location state only while protected apps are active, refreshes app/status
   snapshots for the UI, and processes file-backed commands.
-- `payload-src/`: Java WebView APK. It bundles the same HTML UI and communicates with
-  the daemon through private app files, so the APK does not need root, network access,
-  or a JavaScript HTTP bridge.
+- `payload-src/`: Java native Android APK. It uses platform widgets and communicates
+  with the daemon through private app files, so the APK does not need root, network
+  access, WebView, or a JavaScript bridge.
 - `root-module/webroot/`: legacy localhost browser UI and CGI API protected by a
   per-install token.
 - `zygisk-src/`: native Zygisk backend. Stage 1 proves `system_server` injection and

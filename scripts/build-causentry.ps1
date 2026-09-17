@@ -163,7 +163,7 @@ if (-not $NoApk) {
   if ($LASTEXITCODE -ne 0) { Die "aapt2 compile failed" }
   & $aapt2 link -o (Join-Path $Build "apk\base.apk") -I $AJar `
       --manifest (Join-Path $Src "manifest\AndroidManifest.xml") `
-      -A (Join-Path $Src "assets") --java (Join-Path $Build "gen") `
+      --java (Join-Path $Build "gen") `
       --min-sdk-version 26 --target-sdk-version 35 --no-version-vectors (Join-Path $Build "res.zip")
   if ($LASTEXITCODE -ne 0) { Die "aapt2 link failed" }
 

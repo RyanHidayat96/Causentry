@@ -11,8 +11,8 @@ Core principles:
 - Fallbacks prefer reversible state changes. `hideMode=cloak` only stays active when
   the bundled Zygisk ART hook marker is live in `system_server`; otherwise the module keeps
   package lists saved and avoids destructive hiding.
-- The UI APK does not request network access and blocks WebView navigation outside its
-  bundled asset page.
+- The UI APK does not request network access and does not use WebView. It exchanges
+  only allowlisted JSON command files with the root daemon.
 
 Known tradeoff: `pm uninstall --user 0` can be irreversible for user-installed apps
 because Android may remove the APK. The module therefore treats that path as a fallback

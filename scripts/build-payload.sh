@@ -29,7 +29,7 @@ java -cp "$(win "$BT/lib/d8.jar")" com.android.tools.r8.D8 --release --min-api 2
 echo "== 4/6 aapt2 =="
 "$BT/aapt2.exe" compile --dir "$(win "$SRC/res")" -o "$(win "$B/res.zip")"
 "$BT/aapt2.exe" link -o "$(win "$B/apk/base.apk")" -I "$(win "$AJAR")" \
-  --manifest "$(win "$SRC/manifest/AndroidManifest.xml")" -A "$(win "$SRC/assets")" \
+  --manifest "$(win "$SRC/manifest/AndroidManifest.xml")" \
   --java "$(win "$B/gen")" --min-sdk-version 26 --target-sdk-version 35 --no-version-vectors "$(win "$B/res.zip")"
 echo "== 5/6 classes.dex =="
 python - "$(win "$B/apk/base.apk")" "$(win "$B/apk/dexed.apk")" "$(win "$B/dex/classes.dex")" <<'PYEOF'
