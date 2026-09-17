@@ -29,12 +29,13 @@ final class SystemServerBackend {
             writeMarker("zygisk.loaded", Integer.toString(Process.myPid()));
             writeMarker("zygisk.system_server", "ready\n" + Process.myPid());
             Log.i(TAG, "loaded in system_server pid=" + Process.myPid());
-            Thread hookThread = new Thread(SystemServerBackend::installWhenPackageManagerReady, "causentry-hooks");
-            hookThread.setDaemon(true);
-            hookThread.start();
         } catch (Throwable error) {
-            Log.e(TAG, "system_server initialization failed", error);
+            Log.e(TAG, "backend status unavailable", error);
         }
+        // A diagnostics write failure must not prevent the actual backend from starting.
+        Thread hookThread = new Thread(SystemServerBackend::installWhenPackageManagerReady, "causentry-hooks");
+        hookThread.setDaemon(true);
+        hookThread.start();
     }
 
     @SuppressLint("BlockedPrivateApi")

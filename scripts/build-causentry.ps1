@@ -217,8 +217,8 @@ if ($IncludeZygisk) {
   Say ""
   Say "== building Zygisk system_server backend =="
   $prepare = Join-Path $ScriptDir "prepare-zygote-deps.ps1"
-  if (Test-Path $prepare) { & $prepare }
-  if ($LASTEXITCODE -ne 0) { Die "preparing Zygisk dependencies failed" }
+  if (-not (Test-Path $prepare)) { Die "missing dependency preparation script: $prepare" }
+  try { & $prepare } catch { Die "preparing Zygisk dependencies failed: $($_.Exception.Message)" }
 
   $gradle = Find-Gradle
   $oldAndroidHome = $env:ANDROID_HOME

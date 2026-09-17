@@ -141,6 +141,14 @@ hide_mode() {
   case "$m" in none|cloak|hide|uninstall) echo "$m";; *) echo none;; esac
 }
 
+prepare_cloak_state_dir() {
+  local state_dir="${1:-/data/system/causentry}"
+  mkdir -p "$state_dir" || return 1
+  chown 1000:1000 "$state_dir" || return 1
+  chmod 755 "$state_dir" || return 1
+  chcon u:object_r:system_data_file:s0 "$state_dir"
+}
+
 zygisk_backend_installed() {
   for p in /data/adb/modules/causentry/zygisk/arm64-v8a.so \
            /data/adb/modules/causentry/zygisk/armeabi-v7a.so \
@@ -154,7 +162,8 @@ zygisk_backend_installed() {
 zygisk_pid_marker_alive() {
   f="$1"
   [ -s "$f" ] || return 1
-  pid=$(cat "$f" 2>/dev/null | tr -dc '0-9')
+  # The ready marker includes the hook count after the PID.
+  read -r pid marker_details < "$f"
   case "$pid" in ""|*[!0-9]*) return 1;; esac
   [ -d "/proc/$pid" ] || return 1
   tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q 'system_server'

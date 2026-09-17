@@ -33,10 +33,10 @@ uid_of() {
   done | head -1
 }
 
-mkdir -p "$OUT_DIR" 2>/dev/null
-chmod 755 "$OUT_DIR" 2>/dev/null
+prepare_cloak_state_dir || exit 1
 
 T="$(mktemp 2>/dev/null || echo "$DIR/.cloak.tmp")"
+trap 'rm -f "$T" "$OUT_DIR/.cloak.$$"' EXIT
 PKG_UIDS=$(cmd package list packages -U --user 0 2>/dev/null)
 printf '{"targetUids":[' > "$T"
 first=1
@@ -94,7 +94,11 @@ for t in $(jlist targets); do
 done
 printf ']}' >> "$T"
 
-cp -f "$T" "$OUT" 2>/dev/null && chmod 644 "$OUT" 2>/dev/null
+# Publish a complete policy so concurrent PackageManager calls never read half a save.
+cp -f "$T" "$OUT_DIR/.cloak.$$" \
+  && chmod 644 "$OUT_DIR/.cloak.$$" \
+  && chcon u:object_r:system_data_file:s0 "$OUT_DIR/.cloak.$$" \
+  && mv -f "$OUT_DIR/.cloak.$$" "$OUT" || exit 1
 
 # same file for the processes that cannot read /data/system:
 #   SettingsProvider (system_app) -> /data/local/tmp + the sdcard media dir
