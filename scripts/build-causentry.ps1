@@ -1,7 +1,8 @@
 #requires -version 5
 <#
-Causentry - build the payload APK and pack the KernelSU module zip.
-Pure PowerShell (no bash, no gradle). Run from anywhere.
+Causentry - build the payload APK, Zygisk backend, and KernelSU module zip.
+PowerShell drives the existing Android Gradle build for the system_server backend.
+Run from anywhere.
 
   .\scripts\build-causentry.ps1                 build everything -> release\*.zip
   .\scripts\build-causentry.ps1 -NoApk          repack the zip only (payload APK as-is)
@@ -81,6 +82,16 @@ function Find-Java {
   $cmd = Get-Command java -ErrorAction SilentlyContinue
   if ($cmd) { return $cmd.Source }
   Die "Java not found. Install a JDK (17+) or set JAVA_HOME."
+}
+
+function Find-Gradle {
+  $cmd = Get-Command gradle -ErrorAction SilentlyContinue
+  if ($cmd) { return $cmd.Source }
+  $wrapperRoot = Join-Path $env:USERPROFILE ".gradle\wrapper\dists"
+  $candidate = Get-ChildItem $wrapperRoot -Recurse -Filter gradle.bat -ErrorAction SilentlyContinue |
+    Sort-Object FullName -Descending | Select-Object -First 1
+  if ($candidate) { return $candidate.FullName }
+  Die "Gradle not found. Install Gradle 8+ or run once with the Android Gradle wrapper available."
 }
 
 if (-not $Version) { $Version = Read-Version }
@@ -201,6 +212,55 @@ if (-not $NoApk) {
   Say "[1/1] skipping payload build (using existing APK)"
 }
 
+# ---------------- Zygisk system_server backend ----------------
+if ($IncludeZygisk) {
+  Say ""
+  Say "== building Zygisk system_server backend =="
+  $prepare = Join-Path $ScriptDir "prepare-zygote-deps.ps1"
+  if (Test-Path $prepare) { & $prepare }
+  if ($LASTEXITCODE -ne 0) { Die "preparing Zygisk dependencies failed" }
+
+  $gradle = Find-Gradle
+  $oldAndroidHome = $env:ANDROID_HOME
+  $oldAndroidSdkRoot = $env:ANDROID_SDK_ROOT
+  $env:ANDROID_HOME = $Sdk
+  $env:ANDROID_SDK_ROOT = $Sdk
+  try {
+    Push-Location (Join-Path $Root "android")
+    & $gradle --no-daemon :zygote:assembleRelease
+    if ($LASTEXITCODE -ne 0) { Die "Gradle Zygisk backend build failed" }
+  } finally {
+    Pop-Location
+    $env:ANDROID_HOME = $oldAndroidHome
+    $env:ANDROID_SDK_ROOT = $oldAndroidSdkRoot
+  }
+
+  $zygoteZip = Join-Path $Root "android\zygote\build\outputs\magisk\release\Causentry-Zygisk.zip"
+  if (-not (Test-Path $zygoteZip)) { Die "Gradle completed but $zygoteZip is missing" }
+  $zygoteStage = Join-Path $Build "zygote-backend"
+  if (Test-Path $zygoteStage) { Remove-Item -Recurse -Force $zygoteStage }
+  Expand-Archive -LiteralPath $zygoteZip -DestinationPath $zygoteStage -Force
+
+  Copy-Item (Join-Path $zygoteStage "classes.dex") (Join-Path $Mod "classes.dex") -Force
+  New-Item -ItemType Directory -Force -Path (Join-Path $Mod "packages") | Out-Null
+  Copy-Item (Join-Path $zygoteStage "packages\android") (Join-Path $Mod "packages\android") -Force
+  $zygiskDest = Join-Path $Mod "zygisk"
+  New-Item -ItemType Directory -Force -Path $zygiskDest | Out-Null
+  Get-ChildItem $zygiskDest -Filter *.so -File -ErrorAction SilentlyContinue | Remove-Item -Force
+  Copy-Item (Join-Path $zygoteStage "zygisk\*") $zygiskDest -Force
+  $modulePropText = [IO.File]::ReadAllText($PropPath)
+  if ($modulePropText -notmatch '(?m)^entrypoint=') {
+    Add-Content -Path $PropPath -Value "entrypoint=com.causentry.zygote.ZygoteEntry"
+  }
+  if ($modulePropText -notmatch '(?m)^attachNativeLibs=') {
+    Add-Content -Path $PropPath -Value "attachNativeLibs=false"
+  }
+  $backendClasses = (Get-ChildItem (Join-Path $zygoteStage "zygisk") -Filter *.so -File).Count
+  Say "   backend ok : classes.dex + packages/android + $backendClasses Zygisk loader libraries" "Green"
+} else {
+  Say "   backend    : excluded by CAUSENTRY_EXCLUDE_ZYGISK=1" "DarkGray"
+}
+
 # ---------------- module zip ----------------
 Say ""
 Say "== packing module zip =="
@@ -254,6 +314,14 @@ $zipCheck = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
 try {
   if (-not $zipCheck.GetEntry("payload/Causentry.apk")) {
     Die "zip validation failed: payload/Causentry.apk is missing"
+  }
+  if ($IncludeZygisk) {
+    foreach ($required in @("classes.dex", "packages/android", "zygisk/arm64-v8a.so")) {
+      if (-not $zipCheck.GetEntry($required)) { Die "zip validation failed: $required is missing" }
+    }
+    if ($prop -notmatch '(?m)^entrypoint=com\.causentry\.zygote\.ZygoteEntry$') {
+      Die "zip validation failed: module.prop entrypoint is missing"
+    }
   }
 } finally { $zipCheck.Dispose() }
 

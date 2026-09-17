@@ -13,10 +13,12 @@ Causentry currently ships as a universal root module plus a small Android contro
   access, WebView, or a JavaScript bridge.
 - `root-module/webroot/`: legacy localhost browser UI and CGI API protected by a
   per-install token.
-- `zygisk-src/`: native Zygisk backend. Stage 1 proves `system_server` injection and
-  writes a live loading marker; the ART method hooks for package cloaking are the
-  next backend step.
+- `android/zygote/`: ZygoteLoader backend injected only into `system_server`. It
+  loads the pinned AndroidVMTools/PanamaPort ART hook runtime and filters Package
+  Manager queries using the daemon's target-scoped policy.
+- `zygisk-src/`: old native stage-1 diagnostic backend. It is not used by the
+  release packer when the Java ART backend is available.
 
-Long-lived privileged logic may move into the Rust `daemon/` crate later. Until then,
-the production path is the shell module runtime plus the bundled Zygisk backend. The
-module does not use Vector/LSPosed as a legacy fallback.
+Long-lived privileged logic may move into the Rust `daemon/` crate later. The
+production path is the shell module runtime plus the bundled `system_server` ART
+backend. The module does not use Vector/LSPosed as a legacy fallback.

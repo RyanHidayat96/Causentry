@@ -185,10 +185,10 @@ zygisk_backend_status() {
   fi
 }
 
-# "cloak" needs a live system_server hook backend. Stage-1 Zygisk only proves
-# loading; the ART hook layer must write zygisk.cloak.ready before cloak is usable.
+  # "cloak" needs a live system_server hook backend. Stage-1 Zygisk only proves
+  # loading; the ART hook layer must write zygisk.cloak.ready before cloak is usable.
 cloak_backend_ready() {
-  [ "$(jbool systemCloak)" = 1 ] && zygisk_cloak_ready
+  zygisk_cloak_ready
 }
 
 effective_hide_mode() {

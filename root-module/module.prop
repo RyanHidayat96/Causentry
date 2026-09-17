@@ -4,3 +4,5 @@ version=v1.1.0
 versionCode=110
 author=exery
 description=Universal detection hardening for developer options, mock location/fake GPS, root indicators, root paths, and PairIP/RASP targets. Default mode is system/kernel-side shell hardening; package cloaking uses the bundled Zygisk backend only.
+entrypoint=com.causentry.zygote.ZygoteEntry
+attachNativeLibs=false

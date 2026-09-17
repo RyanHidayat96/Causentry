@@ -9,7 +9,9 @@ android/.gradle/
 android/local.properties
 android/app/build/
 android/build/
+android/zygote/build/
 android/app/schemas/
+android/zygote/third_party/
 
 # Rust
 daemon/target/
@@ -21,6 +23,8 @@ root-module/payload/Causentry.apk
 root-module/bin/causentryd
 root-module/payload/*.idsig
 root-module/zygisk/*.so
+root-module/classes.dex
+root-module/packages/
 zygisk-src/build*/
 
 # OS/editor

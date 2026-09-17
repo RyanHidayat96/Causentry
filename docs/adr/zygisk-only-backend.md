@@ -3,17 +3,15 @@
 Decision: Causentry does not use Vector or LSPosed as a legacy fallback.
 
 Package cloaking is owned by the bundled Zygisk backend. The root daemon writes
-target-scoped policy into `/data/system/causentry/cloak.json`; Zygisk enters
-`system_server` and writes `/data/system/causentry/zygisk.loaded` with the live
-`system_server` pid.
+target-scoped policy into `/data/system/causentry/cloak.json`; ZygoteLoader enters
+`system_server`, and the bundled ART hook runtime filters Package Manager queries
+for the configured target UIDs. Readiness is proved by
+`/data/system/causentry/zygisk.cloak.ready`.
 
-Raw Zygisk loads code into `system_server`, but it does not hook arbitrary Java
-methods by itself. The next backend step must bundle an ART hook runtime inside
-Causentry, similar in shape to HMA-OSS using Zygisk as the loader and an internal
-hooking layer for PackageManager/AppOps/Settings methods. That hook layer must
-write `/data/system/causentry/zygisk.cloak.ready`; until then, cloak mode stays
-inactive even when Zygisk loading is active. Do not copy HMA-OSS AGPL code unless
-Causentry intentionally adopts compatible licensing.
+The implementation follows the loader shape used by HMA-OSS but uses pinned
+upstream AndroidVMTools/PanamaPort dependencies under their respective licenses,
+plus Causentry's own policy layer. HMA-OSS itself is not bundled and is not a
+fallback dependency.
 
 Rollback: disable/remove Causentry's Zygisk `.so` and reboot. Shell hardening,
 developer-option/mocking toggles, SUSFS, and the control UI continue to work; cloak

@@ -119,9 +119,11 @@ or use the module Action flow instead.
 - Target-scoped package invisibility requires the bundled Zygisk ART hook layer to be
   active in `system_server`.
   Without it, Causentry saves the list and avoids destructive fallback.
-- The native Zygisk backend under `zygisk-src/` is bundled when `.so` artifacts are
-  present (set `CAUSENTRY_EXCLUDE_ZYGISK=1` to omit it). Stage 1 reports loader
-  activity; Java method cloaking still needs the bundled ART hook runtime to be
-  completed.
+- The release build bundles the ZygoteLoader backend from `android/zygote/`:
+  `classes.dex`, `packages/android`, and the four ABI loader libraries. It hooks
+  Package Manager queries inside `system_server` and writes the ready marker when
+  the hook set is installed. `CAUSENTRY_EXCLUDE_ZYGISK=1` intentionally omits it.
+- `zygisk-src/` contains the older native stage-1 diagnostic implementation and is
+  not the release package-cloaking backend.
 - The watch daemon is currently implemented in shell (`bin/causentryd.sh`). Porting
   long-lived privileged logic into the Rust `daemon/` crate remains a roadmap item.
