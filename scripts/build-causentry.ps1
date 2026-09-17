@@ -241,7 +241,12 @@ if ($IncludeZygisk) {
   if (Test-Path $zygoteStage) { Remove-Item -Recurse -Force $zygoteStage }
   Expand-Archive -LiteralPath $zygoteZip -DestinationPath $zygoteStage -Force
 
-  Copy-Item (Join-Path $zygoteStage "classes.dex") (Join-Path $Mod "classes.dex") -Force
+  $zygoteDex = Get-ChildItem $zygoteStage -Filter "classes*.dex" -File
+  if (-not $zygoteDex) { Die "ZygoteLoader build has no classes*.dex" }
+  Get-ChildItem $Mod -Filter "classes*.dex" -File -ErrorAction SilentlyContinue | Remove-Item -Force
+  foreach ($dex in $zygoteDex) {
+    Copy-Item $dex.FullName (Join-Path $Mod $dex.Name) -Force
+  }
   New-Item -ItemType Directory -Force -Path (Join-Path $Mod "packages") | Out-Null
   Copy-Item (Join-Path $zygoteStage "packages\android") (Join-Path $Mod "packages\android") -Force
   $zygiskDest = Join-Path $Mod "zygisk"
@@ -249,6 +254,9 @@ if ($IncludeZygisk) {
   Get-ChildItem $zygiskDest -Filter *.so -File -ErrorAction SilentlyContinue | Remove-Item -Force
   Copy-Item (Join-Path $zygoteStage "zygisk\*") $zygiskDest -Force
   $modulePropText = [IO.File]::ReadAllText($PropPath)
+  if ($modulePropText -notmatch '(?m)^minSdkVersion=') {
+    Add-Content -Path $PropPath -Value "minSdkVersion=26"
+  }
   if ($modulePropText -notmatch '(?m)^entrypoint=') {
     Add-Content -Path $PropPath -Value "entrypoint=com.causentry.zygote.ZygoteEntry"
   }
@@ -256,7 +264,7 @@ if ($IncludeZygisk) {
     Add-Content -Path $PropPath -Value "attachNativeLibs=false"
   }
   $backendClasses = (Get-ChildItem (Join-Path $zygoteStage "zygisk") -Filter *.so -File).Count
-  Say "   backend ok : classes.dex + packages/android + $backendClasses Zygisk loader libraries" "Green"
+  Say ("   backend ok : {0} DEX file(s) + packages/android + {1} Zygisk loader libraries" -f $zygoteDex.Count, $backendClasses) "Green"
 } else {
   Say "   backend    : excluded by CAUSENTRY_EXCLUDE_ZYGISK=1" "DarkGray"
 }
@@ -321,6 +329,9 @@ try {
     }
     if ($prop -notmatch '(?m)^entrypoint=com\.causentry\.zygote\.ZygoteEntry$') {
       Die "zip validation failed: module.prop entrypoint is missing"
+    }
+    if ($prop -notmatch '(?m)^minSdkVersion=26$') {
+      Die "zip validation failed: module.prop minSdkVersion is missing"
     }
   }
 } finally { $zipCheck.Dispose() }

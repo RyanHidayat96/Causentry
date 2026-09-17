@@ -23,7 +23,7 @@ root-module/payload/Causentry.apk
 root-module/bin/causentryd
 root-module/payload/*.idsig
 root-module/zygisk/*.so
-root-module/classes.dex
+root-module/classes*.dex
 root-module/packages/
 zygisk-src/build*/
 
