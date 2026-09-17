@@ -32,14 +32,15 @@ final class PackageCloakHooks {
             if (hookBefore("com.android.server.pm.ComputerEngine", "getApplicationInfoInternal",
                     PackageCloakHooks::shouldHideStringQuery, null)) installed++;
             if (hookBefore("com.android.server.pm.ComputerEngine", "generatePackageInfo",
-                    PackageCloakHooks::shouldHideObjectQuery, null)) installed++;
+                    PackageCloakHooks::shouldHideGeneratedPackageInfo, null)) installed++;
             if (hookBefore("com.android.server.pm.ComputerEngine", "getPackageUidInternal",
-                    PackageCloakHooks::shouldHideStringQuery, -1)) installed++;
+                    PackageCloakHooks::shouldHidePackageUid, -1)) installed++;
             FramePredicate appFilter = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
                     ? PackageCloakHooks::shouldFilterApplicationApi34
                     : PackageCloakHooks::shouldFilterApplication;
             if (hookBefore("com.android.server.pm.AppsFilterImpl", "shouldFilterApplication",
                     appFilter, true)) installed++;
+            installed += AppZygoteHooks.install(systemServerLoader);
 
             if (installed >= 2) {
                 SystemServerBackend.markCloakReady(installed);
@@ -80,8 +81,10 @@ final class PackageCloakHooks {
     }
 
     private static Executable findExecutable(Class<?> clazz, String name) {
-        for (Executable executable : Reflection.getHiddenExecutables(clazz)) {
-            if (name.equals(executable.getName())) return executable;
+        for (Class<?> cursor = clazz; cursor != null; cursor = cursor.getSuperclass()) {
+            for (Executable executable : Reflection.getHiddenExecutables(cursor)) {
+                if (name.equals(executable.getName())) return executable;
+            }
         }
         return null;
     }
@@ -109,6 +112,17 @@ final class PackageCloakHooks {
         String packageName = firstString(frame);
         if (packageName == null) packageName = packageNameFromObjects(frame);
         return CloakPolicy.hides(uid, packageName);
+    }
+
+    private static boolean shouldHideGeneratedPackageInfo(EmulatedStackFrame frame) {
+        String packageName = objectPackageName(frame, 1);
+        if (packageName == null) packageName = packageNameFromObjects(frame);
+        return CloakPolicy.hides(Binder.getCallingUid(), packageName);
+    }
+
+    private static boolean shouldHidePackageUid(EmulatedStackFrame frame) {
+        String packageName = firstString(frame);
+        return CloakPolicy.hides(intArgument(frame, 4, Binder.getCallingUid()), packageName);
     }
 
     private static boolean shouldFilterApplication(EmulatedStackFrame frame) {

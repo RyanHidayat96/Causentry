@@ -6,6 +6,7 @@
 
 # ART hook targets are selected by their framework class and method names.
 -keep class com.causentry.zygote.PackageCloakHooks { *; }
+-keep class com.causentry.zygote.AppZygoteHooks { *; }
 -keep class com.causentry.zygote.SystemServerBackend { *; }
 -keep class com.causentry.zygote.CloakPolicy { *; }
 

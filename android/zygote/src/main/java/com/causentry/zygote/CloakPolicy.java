@@ -23,6 +23,7 @@ final class CloakPolicy {
     private static volatile long lastModified;
     private static volatile long lastRead;
     private static volatile Map<Integer, Set<String>> hiddenByUid = Collections.emptyMap();
+    private static volatile Set<String> appZygoteBlocked = Collections.emptySet();
 
     private CloakPolicy() {}
 
@@ -31,6 +32,14 @@ final class CloakPolicy {
         refresh(false);
         Set<String> hidden = hiddenByUid.get(uid);
         return hidden != null && hidden.contains(packageName);
+    }
+
+    static boolean blocksAppZygote(String packageName) {
+        if (packageName == null || packageName.isEmpty()) return false;
+        refresh(false);
+        if (appZygoteBlocked.contains(packageName)) return true;
+        int colon = packageName.indexOf(':');
+        return colon > 0 && appZygoteBlocked.contains(packageName.substring(0, colon));
     }
 
     static void refreshNow() {
@@ -53,6 +62,7 @@ final class CloakPolicy {
             JSONArray targets = root.optJSONArray("targets");
             JSONObject byTarget = root.optJSONObject("hiddenByTarget");
             Map<Integer, Set<String>> next = new HashMap<>();
+            Set<String> nextAppZygote = new HashSet<>();
 
             if (uids != null && targets != null && byTarget != null) {
                 int countTargets = Math.min(uids.length(), targets.length());
@@ -70,9 +80,19 @@ final class CloakPolicy {
                 }
             }
 
+            JSONArray appZygote = root.optJSONArray("appZygote");
+            if (appZygote != null) {
+                for (int i = 0; i < appZygote.length(); i++) {
+                    String name = appZygote.optString(i, "");
+                    if (!name.isEmpty()) nextAppZygote.add(name);
+                }
+            }
+
             hiddenByUid = Collections.unmodifiableMap(next);
+            appZygoteBlocked = Collections.unmodifiableSet(nextAppZygote);
             lastModified = modified;
-            Log.i(TAG, "policy refreshed targets=" + next.size());
+            Log.i(TAG, "policy refreshed targets=" + next.size()
+                    + " appZygote=" + nextAppZygote.size());
         } catch (Throwable error) {
             // Keep the last known-good policy. A malformed update must fail open.
             Log.w(TAG, "policy refresh skipped", error);
