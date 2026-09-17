@@ -3,7 +3,7 @@ DIR=${CAUSENTRY_DIR:-/data/adb/causentry}
 . "$DIR/lib.sh"
 # Causentry - per-app configuration writer.
 #
-#   APP_PKG_NEW=com.x APP_FEATS_NEW=devOff,mock APP_HIDE_TEMPLATE_NEW=default appcfg.sh set
+#   APP_PKG_NEW=com.x APP_FEATS_NEW=devOff,mock APP_HIDE_TEMPLATE_NEW=work appcfg.sh set
 #   APP_PKG_NEW=com.x                            appcfg.sh del
 #   appcfg.sh show com.x
 #
@@ -73,9 +73,9 @@ emit() {   # emit <targets> <denylist> <hardened> <appentries>
 
 case "${1:-show}" in
   set)
-    pkg="$APP_PKG_NEW"; feats="${APP_FEATS_NEW-devOff,mock}"; tpl="${APP_HIDE_TEMPLATE_NEW:-default}"
+    pkg="$APP_PKG_NEW"; feats="${APP_FEATS_NEW-devOff,mock}"; tpl="${APP_HIDE_TEMPLATE_NEW-}"
     valid_package_name "$pkg" || { echo "invalid package"; exit 1; }
-    valid_template_name "$tpl" || tpl=default
+    valid_template_name "$tpl" || tpl=""
     d=false; m=false; i=true
     case ",$feats," in *",devOff,"*) d=true;; esac
     case ",$feats," in *",mock,"*)   m=true;; esac

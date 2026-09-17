@@ -1,1 +1,1 @@
-{"targets":[],"denylist":[],"hideTemplates":{"default":[]},"autoDevOff":true,"hideMockLocation":true,"susfs":true,"hardened":[],"hideRootApps":false,"root_packages":[],"uiApk":true,"cloakPackages":[],"hideMode":"none","systemCloak":false}
+{"targets":[],"denylist":[],"hideTemplates":{},"autoDevOff":true,"hideMockLocation":true,"susfs":true,"hardened":[],"hideRootApps":false,"root_packages":[],"uiApk":true,"cloakPackages":[],"hideMode":"none","systemCloak":false}

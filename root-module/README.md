@@ -32,7 +32,7 @@ Pick an app in the control UI, choose its bypass, press **Apply for this app**:
 
 ```json
 "targets": ["com.example.target"],
-"apps": { "com.example.target": { "devOff": true, "mock": true, "hideTemplate": "default" } }
+"apps": { "com.example.target": { "devOff": true, "mock": true, "hideTemplate": "banking" } }
 ```
 
 * `devOff` - hide the developer-options flag only while that app runs
@@ -42,7 +42,10 @@ Pick an app in the control UI, choose its bypass, press **Apply for this app**:
 The daemon resolves the running app's own feature set on every activation, and restores
 the real flags as soon as no protected app is in the foreground.
 
-CLI equivalent: `APP_PKG_NEW=com.x APP_FEATS_NEW=devOff,mock APP_HIDE_TEMPLATE_NEW=default sh bin/appcfg.sh set`
+New installations start with no hidden-app template. Create one in **Templates** before
+assigning it to a protected app.
+
+CLI equivalent: `APP_PKG_NEW=com.x APP_FEATS_NEW=devOff,mock APP_HIDE_TEMPLATE_NEW=banking sh bin/appcfg.sh set`
 (`del` removes it again, `show` prints the current mapping).
 
 ## Configuration (`/data/adb/causentry/config.json`)
@@ -51,8 +54,8 @@ CLI equivalent: `APP_PKG_NEW=com.x APP_FEATS_NEW=devOff,mock APP_HIDE_TEMPLATE_N
 |---|---|
 | `targets` | protected apps; the watch daemon hides detection state while they run |
 | `hardened` | apps with PairIP/RASP: never injected, handled system side |
-| `denylist` | compatibility alias for `hideTemplates.default`; empty by default |
-| `hideTemplates` | named package lists hidden from target apps; each protected app chooses one template |
+| `denylist` | legacy global list; native UI writes it empty |
+| `hideTemplates` | named package lists hidden from target apps; starts empty and each protected app chooses one template |
 | `root_packages` | extra root-indicator candidates shown for quick add |
 | `autoDevOff` | hide the developer-options flag while a target runs |
 | `hideMockLocation` | force `mock_location=0`; package hiding follows the app's `hideTemplate` |

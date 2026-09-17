@@ -169,6 +169,8 @@ public class UiBridge {
         if ("save".equals(action)) {
             String template = obj.optString("templateName", "");
             if (!template.isEmpty() && !isTemplateName(template)) return false;
+            String templateDelete = obj.optString("templateDelete", "");
+            if (!templateDelete.isEmpty() && !isTemplateName(templateDelete)) return false;
             return csvPackages(obj.optString("targets", ""))
                     && csvPackages(obj.optString("hardened", ""))
                     && csvPackages(obj.optString("denylist", ""))
@@ -193,6 +195,7 @@ public class UiBridge {
     }
 
     private static boolean isTemplateName(String s) {
-        return s != null && s.matches("[A-Za-z0-9_.-]{1,48}");
+        return s != null && !"default".equalsIgnoreCase(s)
+                && s.matches("[A-Za-z0-9_.-]{1,48}");
     }
 }

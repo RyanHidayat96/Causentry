@@ -14,7 +14,7 @@ valid_package_name() {
 }
 
 valid_template_name() {
-  case "$1" in "") return 1;; esac
+  case "$1" in ""|[dD][eE][fF][aA][uU][lL][tT]) return 1;; esac
   case "$1" in *[!A-Za-z0-9_.-]*) return 1;; esac
   return 0
 }
@@ -92,34 +92,30 @@ hide_template_list() {
     | head -1 | tr ',' '\n' | sed 's/[", ]//g' | grep -v '^$')
   if [ -n "$out" ]; then
     printf '%s\n' "$out"
-  elif [ "$name" = "default" ]; then
-    jlist denylist
   fi
 }
 
-emit_hide_templates_json() {  # emit_hide_templates_json [replace-name] [replace-csv]
+emit_hide_templates_json() {  # emit_hide_templates_json [replace-name] [replace-csv] [remove-name]
   replace="$1"
   replace_csv="$2"
+  remove="$3"
   valid_template_name "$replace" || replace=""
+  valid_template_name "$remove" || remove=""
   tmp="$DIR/.hidetemplates.$$"
   hide_template_pairs > "$tmp" 2>/dev/null || : > "$tmp"
   printf '{'
   f=1
-  if [ "$replace" = "default" ]; then
-    json_string default; printf ':'; csv_package_json_array "$replace_csv"; f=0
-  elif ! grep -q '^"default":' "$tmp" 2>/dev/null; then
-    json_string default; printf ':'; list_package_json_array "$(jlist denylist | tr '\n' ' ')"; f=0
-  fi
   while IFS= read -r pair; do
     [ -n "$pair" ] || continue
     name=$(printf '%s' "$pair" | sed -nE 's/^"([^"]+)":.*/\1/p')
     valid_template_name "$name" || continue
+    [ -n "$remove" ] && [ "$name" = "$remove" ] && continue
     [ -n "$replace" ] && [ "$name" = "$replace" ] && continue
     [ $f -eq 1 ] || printf ','
     f=0
     printf '%s' "$pair"
   done < "$tmp"
-  if [ -n "$replace" ] && [ "$replace" != "default" ]; then
+  if [ -n "$replace" ]; then
     [ $f -eq 1 ] || printf ','
     f=0
     json_string "$replace"; printf ':'; csv_package_json_array "$replace_csv"
@@ -381,8 +377,7 @@ app_str() {     # app_str <pkg> <key> -> raw string value or ''
 
 app_hide_template() {
   v=$(app_str "$1" hideTemplate)
-  valid_template_name "$v" && { echo "$v"; return 0; }
-  echo default
+  valid_template_name "$v" && printf '%s\n' "$v"
 }
 
 app_feat_or() { # app_feat_or <pkg> <key> <global-key>

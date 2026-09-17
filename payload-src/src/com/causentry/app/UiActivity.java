@@ -49,6 +49,9 @@ public class UiActivity extends Activity {
     private static final int OK = Color.rgb(34, 197, 94);
     private static final int WARN = Color.rgb(245, 158, 11);
     private static final int DANGER = Color.rgb(239, 68, 68);
+    private static final int FILTER_USER = 0;
+    private static final int FILTER_ALL = 1;
+    private static final int FILTER_SYSTEM = 2;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private UiBridge bridge;
@@ -74,12 +77,12 @@ public class UiActivity extends Activity {
     private final List<String> rootSuggested = new ArrayList<>();
     private boolean detailMode;
     private String selectedPkg;
-    private String currentTemplate = "default";
+    private String currentTemplate = "";
     private String appSearch = "";
     private String hiddenSearch = "";
     private int homeTab = TAB_APPS;
-    private boolean showSystemApps;
-    private boolean showSystemHiddenApps;
+    private int appFilter = FILTER_USER;
+    private int hiddenFilter = FILTER_USER;
     private boolean rendering;
 
     private static final int TAB_APPS = 0;
@@ -238,8 +241,6 @@ public class UiActivity extends Activity {
                 if (isPackageName(p) && o != null) appConfig.put(p, o);
             }
         }
-        List<String> deny = new ArrayList<>();
-        addArray(deny, status.optJSONArray("denylist"));
         JSONObject tpl = config.optJSONObject("hideTemplates");
         if (tpl != null) {
             JSONArray names = tpl.names();
@@ -251,14 +252,17 @@ public class UiActivity extends Activity {
                 templates.put(name, uniquePkgs(list));
             }
         }
-        if (!templates.containsKey("default")) templates.put("default", uniquePkgs(deny));
-        if (!templates.containsKey(currentTemplate)) currentTemplate = "default";
+        if (!templates.containsKey(currentTemplate)) {
+            List<String> names = templateNames();
+            currentTemplate = names.isEmpty() ? "" : names.get(0);
+        }
         splitPackages(rootVisible, status.optString("rootApps", ""));
         splitPackages(rootSuggested, status.optString("rootSuggest", ""));
     }
 
     private void readApps() {
         apps.clear();
+        Map<String, AppEntry> byPkg = new HashMap<>();
         try {
             JSONObject json = new JSONObject(bridge.apps());
             JSONArray arr = json.optJSONArray("apps");
@@ -272,30 +276,29 @@ public class UiActivity extends Activity {
                 e.prot = o.optBoolean("protected") || targets.contains(pkg);
                 e.hardened = o.optBoolean("hardened") || hardened.contains(pkg);
                 e.hidden = o.optBoolean("hidden") || hiddenInAnyTemplate(pkg);
-                apps.add(e);
+                e.system = isSystemPackage(pkg);
+                byPkg.put(pkg, e);
             }
         } catch (Throwable ignored) {}
-        if (apps.isEmpty()) {
-            try {
-                List<android.content.pm.ApplicationInfo> installed = getPackageManager().getInstalledApplications(0);
-                for (android.content.pm.ApplicationInfo ai : installed) {
-                    if (ai == null || !isPackageName(ai.packageName)) continue;
-                    if ((ai.flags & android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0) continue;
-                    AppEntry e = new AppEntry();
+        try {
+            List<android.content.pm.ApplicationInfo> installed = getPackageManager().getInstalledApplications(0);
+            for (android.content.pm.ApplicationInfo ai : installed) {
+                if (ai == null || !isPackageName(ai.packageName)) continue;
+                AppEntry e = byPkg.get(ai.packageName);
+                if (e == null) {
+                    e = new AppEntry();
                     e.pkg = ai.packageName;
-                    e.prot = targets.contains(e.pkg);
-                    e.hardened = hardened.contains(e.pkg);
-                    e.hidden = hiddenInAnyTemplate(e.pkg);
-                    apps.add(e);
+                    byPkg.put(e.pkg, e);
                 }
-            } catch (Throwable ignored) {}
-        }
-        Collections.sort(apps, (a, b) -> {
-            int ar = (a.prot || targets.contains(a.pkg)) ? 0 : 1;
-            int br = (b.prot || targets.contains(b.pkg)) ? 0 : 1;
-            if (ar != br) return ar - br;
-            return label(a.pkg).compareToIgnoreCase(label(b.pkg));
-        });
+                e.prot = e.prot || targets.contains(e.pkg);
+                e.hardened = e.hardened || hardened.contains(e.pkg);
+                e.hidden = e.hidden || hiddenInAnyTemplate(e.pkg);
+                e.system = (ai.flags & (android.content.pm.ApplicationInfo.FLAG_SYSTEM
+                        | android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0;
+            }
+        } catch (Throwable ignored) {}
+        apps.addAll(byPkg.values());
+        Collections.sort(apps, this::compareApps);
     }
 
     private void render() {
@@ -317,7 +320,7 @@ public class UiActivity extends Activity {
         int c = !daemon ? DANGER : ("active".equals(state) ? OK : WARN);
         pill.setTextColor(c);
         pill.setBackground(round(Color.TRANSPARENT, c, 18));
-        boolean showBottom = detailMode || (!detailMode && homeTab == TAB_TEMPLATES);
+        boolean showBottom = detailMode || (!detailMode && homeTab == TAB_TEMPLATES && !templateNames().isEmpty());
         if (bottomBar != null) bottomBar.setVisibility(showBottom ? View.VISIBLE : View.GONE);
         bottomApply.setVisibility(showBottom ? View.VISIBLE : View.GONE);
     }
@@ -382,8 +385,6 @@ public class UiActivity extends Activity {
         b.setOnClickListener(v -> {
             if (homeTab != tab) {
                 homeTab = tab;
-                focusAppSearch = false;
-                focusHiddenSearch = false;
                 render();
             }
         });
@@ -391,34 +392,47 @@ public class UiActivity extends Activity {
     }
 
     private void addAppsGroup() {
-        addSectionHeader("Apps", protectedCount() + " protected / " + apps.size() + " apps");
+        addSectionHeader("Apps", protectedCount() + " protected / " + visibleAppCount(appFilter) + " apps");
         EditText search = edit("Search app name or package", appSearch);
         search.addTextChangedListener(new SimpleWatcher() {
             public void afterTextChanged(Editable s) {
                 if (!rendering) {
                     appSearch = s.toString();
-                    focusAppSearch = true;
-                    focusHiddenSearch = false;
-                    render();
+                    populateAppRows();
                 }
             }
         });
-        content.addView(wrap(search, 16, 0, 16, 10));
-        if (focusAppSearch) {
-            search.requestFocus();
-            search.setSelection(search.getText().length());
-        }
+        content.addView(wrap(search, 16, 0, 16, 8));
+        addAppFilterRow(true);
+        appRows = new LinearLayout(this);
+        appRows.setOrientation(LinearLayout.VERTICAL);
+        content.addView(appRows);
+        populateAppRows();
+    }
+
+    private void populateAppRows() {
+        if (appRows == null) return;
+        appRows.removeAllViews();
         String q = appSearch.trim().toLowerCase();
-        int shown = 0;
+        List<AppEntry> filtered = new ArrayList<>();
         for (AppEntry app : apps) {
+            if (!matchesAppFilter(app, appFilter)) continue;
             if (!q.isEmpty() && !(app.pkg + " " + label(app.pkg)).toLowerCase().contains(q)) continue;
-            addAppRow(app);
-            if (++shown >= 70) break;
+            filtered.add(app);
         }
-        if (shown == 0) addMuted("No app matches this search.");
+        Collections.sort(filtered, this::compareApps);
+        for (AppEntry app : filtered) addAppRow(app, appRows);
+        if (filtered.isEmpty()) addMuted(appRows, "No app matches this search.");
     }
 
     private void addTemplateGroup() {
+        List<String> names = templateNames();
+        if (names.isEmpty()) {
+            addSectionHeader("Templates", "No templates yet");
+            addMuted("Create a template to choose hidden apps.");
+            addTemplateCreateRow();
+            return;
+        }
         addSectionHeader("Templates", currentTemplate + " / " + templatePackages(currentTemplate).size() + " hidden");
         Spinner spinner = spinner(templateLabels(), templateIndex(currentTemplate));
         spinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
@@ -432,13 +446,31 @@ public class UiActivity extends Activity {
             public void onNothingSelected(android.widget.AdapterView<?> parent) {}
         });
         content.addView(wrap(spinner, 16, 0, 16, 6));
-        if (templateNames().size() > 1) addTemplateChips();
+        if (names.size() > 1) addTemplateChips();
+        addTemplateManageRow();
         addTemplateCreateRow();
         addHiddenSearch();
-        addHiddenRows();
-        addManualHiddenRow();
+        addAppFilterRow(false);
+        hiddenRows = new LinearLayout(this);
+        hiddenRows.setOrientation(LinearLayout.VERTICAL);
+        content.addView(hiddenRows);
+        populateHiddenRows();
         bottomApply.setText("Save hidden apps");
         bottomApply.setOnClickListener(v -> saveTemplates());
+    }
+
+    private void addTemplateManageRow() {
+        LinearLayout row = rowBase(false);
+        Button edit = button("Edit name", false);
+        Button delete = button("Delete", false);
+        delete.setTextColor(DANGER);
+        edit.setOnClickListener(v -> editCurrentTemplate());
+        delete.setOnClickListener(v -> confirmDeleteTemplate());
+        LinearLayout.LayoutParams editLp = new LinearLayout.LayoutParams(0, dp(48), 1);
+        editLp.setMargins(0, 0, dp(8), 0);
+        row.addView(edit, editLp);
+        row.addView(delete, new LinearLayout.LayoutParams(0, dp(48), 1));
+        content.addView(row);
     }
 
     private void addTemplateCreateRow() {
@@ -459,34 +491,11 @@ public class UiActivity extends Activity {
             public void afterTextChanged(Editable s) {
                 if (!rendering) {
                     hiddenSearch = s.toString();
-                    focusHiddenSearch = true;
-                    focusAppSearch = false;
-                    render();
+                    populateHiddenRows();
                 }
             }
         });
         content.addView(wrap(search, 16, 4, 16, 8));
-        if (focusHiddenSearch) {
-            search.requestFocus();
-            search.setSelection(search.getText().length());
-        }
-    }
-
-    private void addManualHiddenRow() {
-        LinearLayout manual = rowBase(false);
-        EditText pkg = edit("Manual package name", "");
-        Button addPkg = button("Add", false);
-        addPkg.setOnClickListener(v -> {
-            if (isPackageName(pkg.getText().toString())) {
-                toggleHidden(pkg.getText().toString());
-                pkg.setText("");
-            } else toast("Invalid package name");
-        });
-        LinearLayout.LayoutParams pkgLp = new LinearLayout.LayoutParams(0, dp(48), 1);
-        pkgLp.setMargins(0, 0, dp(8), 0);
-        manual.addView(pkg, pkgLp);
-        manual.addView(addPkg, new LinearLayout.LayoutParams(dp(88), dp(48)));
-        content.addView(manual);
     }
 
     private void addActionsGroup() {
@@ -521,22 +530,30 @@ public class UiActivity extends Activity {
                 cfg != null ? cfg.optBoolean("mock", false) : (targets.contains(selectedPkg) && status.optBoolean("hideMockLocation", true)));
         Switch isolate = switchRow("Block app-zygote self-checks", "Stops privileged per-app zygote checks",
                 cfg != null ? cfg.optBoolean("isolate", false) : (targets.contains(selectedPkg) && hardened.contains(selectedPkg)));
-        String tpl = cfg != null && isTemplateName(cfg.optString("hideTemplate")) ? cfg.optString("hideTemplate") : "default";
+        String tpl = cfg != null && isTemplateName(cfg.optString("hideTemplate")) ? cfg.optString("hideTemplate") : "";
+        List<String> names = templateNames();
         addGroupTitle("Hidden-app template");
-        Spinner sp = spinner(templateLabels(), templateIndex(tpl));
-        content.addView(wrap(sp, 16, 0, 16, 8));
-        TextView count = muted(tpl + ": " + templatePackages(tpl).size() + " hidden");
-        content.addView(wrap(count, 24, 0, 24, 12));
-        sp.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                List<String> names = templateNames();
-                if (position >= 0 && position < names.size()) {
-                    String name = names.get(position);
-                    count.setText(name + ": " + templatePackages(name).size() + " hidden");
+        final Spinner sp;
+        if (names.isEmpty()) {
+            sp = null;
+            addMuted("No hidden-app template. Create one in Templates.");
+        } else {
+            if (!names.contains(tpl)) tpl = names.get(0);
+            sp = spinner(templateLabels(), templateIndex(tpl));
+            content.addView(wrap(sp, 16, 0, 16, 8));
+            TextView count = muted(tpl + ": " + templatePackages(tpl).size() + " hidden");
+            content.addView(wrap(count, 24, 0, 24, 12));
+            sp.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+                public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                    List<String> names = templateNames();
+                    if (position >= 0 && position < names.size()) {
+                        String name = names.get(position);
+                        count.setText(name + ": " + templatePackages(name).size() + " hidden");
+                    }
                 }
-            }
-            public void onNothingSelected(android.widget.AdapterView<?> parent) {}
-        });
+                public void onNothingSelected(android.widget.AdapterView<?> parent) {}
+            });
+        }
         addValueRow("Kernel path hiding", status.optString("susfs", "unsupported"), null);
         bottomApply.setOnClickListener(v -> applyDetail(dev, mock, isolate, sp));
     }
@@ -561,7 +578,12 @@ public class UiActivity extends Activity {
     }
 
     private void applyDetail(Switch dev, Switch mock, Switch isolate, Spinner sp) {
-        String tpl = templateNames().get(Math.max(0, sp.getSelectedItemPosition()));
+        String tpl = "";
+        List<String> names = templateNames();
+        if (sp != null && !names.isEmpty()) {
+            int position = Math.max(0, sp.getSelectedItemPosition());
+            if (position < names.size()) tpl = names.get(position);
+        }
         List<String> feats = new ArrayList<>();
         if (dev.isChecked()) feats.add("devOff");
         if (mock.isChecked()) feats.add("mock");
@@ -577,16 +599,21 @@ public class UiActivity extends Activity {
     }
 
     private void saveTemplates() {
+        saveTemplate(currentTemplate, templatePackages(currentTemplate), "", "Saving and applying...");
+    }
+
+    private void saveTemplate(String name, List<String> packages, String deleteName, String message) {
         String op = op();
         JSONObject cmd = new JSONObject();
         try {
             cmd.put("action", "save");
             cmd.put("op", op);
             cmd.put("targets", join(targets));
-            cmd.put("denylist", join(templatePackages("default")));
+            cmd.put("denylist", "");
             cmd.put("hardened", join(hardened));
-            cmd.put("templateName", currentTemplate);
-            cmd.put("templatePackages", join(templatePackages(currentTemplate)));
+            cmd.put("templateName", name == null ? "" : name);
+            cmd.put("templatePackages", join(packages));
+            if (isTemplateName(deleteName)) cmd.put("templateDelete", deleteName);
             cmd.put("autoDevOff", 1);
             cmd.put("hideMockLocation", 1);
             cmd.put("alwaysHidden", status.optBoolean("alwaysHidden", false) ? 1 : 0);
@@ -594,7 +621,7 @@ public class UiActivity extends Activity {
             cmd.put("uiApk", status.optBoolean("uiApk", true) ? 1 : 0);
         } catch (Throwable ignored) {}
         command(cmd);
-        waitApply(op, "Saving and applying...");
+        waitApply(op, message);
     }
 
     private void waitApply(String token, String msg) {
@@ -618,10 +645,57 @@ public class UiActivity extends Activity {
     private void createTemplate(String name) {
         name = name == null ? "" : name.trim();
         if (!isTemplateName(name)) { toast("Invalid template name"); return; }
-        if (!templates.containsKey(name)) templates.put(name, new ArrayList<>());
+        if (templates.containsKey(name)) { toast("Template already exists"); return; }
+        templates.put(name, new ArrayList<>());
         currentTemplate = name;
         render();
-        toast("Template ready");
+        saveTemplate(name, Collections.emptyList(), "", "Creating template...");
+    }
+
+    private void editCurrentTemplate() {
+        if (!isTemplateName(currentTemplate)) return;
+        EditText name = edit("Template name", currentTemplate);
+        name.selectAll();
+        new AlertDialog.Builder(this)
+                .setTitle("Edit template name")
+                .setView(name)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save", (d, w) -> renameTemplate(name.getText().toString()))
+                .show();
+    }
+
+    private void renameTemplate(String name) {
+        String oldName = currentTemplate;
+        name = name == null ? "" : name.trim();
+        if (!isTemplateName(name)) { toast("Invalid template name"); return; }
+        if (name.equals(oldName)) return;
+        if (templates.containsKey(name)) { toast("Template already exists"); return; }
+        List<String> packages = templatePackages(oldName);
+        templates.remove(oldName);
+        templates.put(name, packages);
+        currentTemplate = name;
+        render();
+        saveTemplate(name, packages, oldName, "Renaming template...");
+    }
+
+    private void confirmDeleteTemplate() {
+        String name = currentTemplate;
+        if (!isTemplateName(name)) return;
+        new AlertDialog.Builder(this)
+                .setTitle("Delete template?")
+                .setMessage(name + " will be removed. Apps using it keep protection but no hidden-app template.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Delete", (d, w) -> deleteTemplate(name))
+                .show();
+    }
+
+    private void deleteTemplate(String name) {
+        if (!templates.containsKey(name)) return;
+        templates.remove(name);
+        List<String> names = templateNames();
+        currentTemplate = names.isEmpty() ? "" : names.get(0);
+        render();
+        saveTemplate("", Collections.emptyList(), name, "Deleting template...");
     }
 
     private void addTemplateChips() {
@@ -642,42 +716,65 @@ public class UiActivity extends Activity {
         content.addView(hsv);
     }
 
-    private void addHiddenRows() {
+    private void populateHiddenRows() {
+        if (hiddenRows == null) return;
+        hiddenRows.removeAllViews();
         Set<String> out = new LinkedHashSet<>();
         out.addAll(templatePackages(currentTemplate));
         out.addAll(rootVisible);
         out.addAll(rootSuggested);
         for (AppEntry a : apps) out.add(a.pkg);
         String q = hiddenSearch.trim().toLowerCase();
-        int shown = 0;
+        List<String> filtered = new ArrayList<>();
         for (String pkg : out) {
             if (!isPackageName(pkg)) continue;
+            if (!matchesHiddenFilter(pkg, hiddenFilter)) continue;
             if (!q.isEmpty() && !(pkg + " " + label(pkg)).toLowerCase().contains(q)) continue;
-            CheckBox cb = new CheckBox(this);
-            cb.setText(label(pkg) + "\n" + pkg);
-            cb.setTextColor(FG);
-            cb.setTextSize(15);
-            cb.setChecked(templatePackages(currentTemplate).contains(pkg));
-            cb.setPadding(dp(24), dp(8), dp(24), dp(8));
-            cb.setOnClickListener(v -> toggleHidden(pkg));
-            content.addView(cb, new LinearLayout.LayoutParams(-1, dp(64)));
-            addDivider();
-            if (++shown >= 80) break;
+            filtered.add(pkg);
         }
+        Collections.sort(filtered, this::comparePackages);
+        for (String pkg : filtered) addHiddenAppRow(pkg);
+        if (filtered.isEmpty()) addMuted(hiddenRows, "No app matches this search.");
+    }
+
+    private void addHiddenAppRow(String pkg) {
+        LinearLayout row = rowBase(true);
+        row.setOnClickListener(v -> toggleHidden(pkg));
+        CheckBox cb = new CheckBox(this);
+        cb.setChecked(templatePackages(currentTemplate).contains(pkg));
+        cb.setOnClickListener(v -> toggleHidden(pkg));
+        row.addView(cb, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(40), dp(40));
+        iconLp.setMargins(0, 0, dp(12), 0);
+        row.addView(icon(pkg, 40), iconLp);
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        TextView name = tv(15, FG, Typeface.NORMAL);
+        name.setText(label(pkg));
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        TextView pack = tv(11, MUTED, Typeface.NORMAL);
+        pack.setText(pkg);
+        pack.setSingleLine(true);
+        pack.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        texts.addView(name);
+        texts.addView(pack);
+        row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
+        if (isSystemPackage(pkg)) addChip(row, "SYSTEM", MUTED);
+        hiddenRows.addView(row);
+        addDivider(hiddenRows);
     }
 
     private void toggleHidden(String pkg) {
         List<String> list = new ArrayList<>(templatePackages(currentTemplate));
         if (list.contains(pkg)) list.remove(pkg); else list.add(pkg);
         templates.put(currentTemplate, uniquePkgs(list));
-        render();
+        populateHiddenRows();
     }
 
-    private void addAppRow(AppEntry app) {
+    private void addAppRow(AppEntry app, LinearLayout parent) {
         LinearLayout row = rowBase(true);
         row.setOnClickListener(v -> {
-            focusAppSearch = false;
-            focusHiddenSearch = false;
             selectedPkg = app.pkg;
             detailMode = true;
             render();
@@ -697,10 +794,11 @@ public class UiActivity extends Activity {
         row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
         if (app.prot || targets.contains(app.pkg)) addChip(row, "PROTECTED", OK);
         else if (hiddenInAnyTemplate(app.pkg)) addChip(row, "HIDDEN", WARN);
+        if (app.system) addChip(row, "SYSTEM", MUTED);
         TextView arrow = tv(24, MUTED, Typeface.NORMAL); arrow.setText(">");
         row.addView(arrow);
-        content.addView(row);
-        addDivider();
+        parent.addView(row);
+        addDivider(parent);
     }
 
     private Switch switchRow(String name, String desc, boolean checked) {
@@ -729,6 +827,46 @@ public class UiActivity extends Activity {
         addDivider();
     }
 
+    private void addAppFilterRow(boolean appsTab) {
+        LinearLayout row = rowBase(false);
+        int selected = appsTab ? appFilter : hiddenFilter;
+        CheckBox all = filterBox("All apps", selected == FILTER_ALL);
+        CheckBox user = filterBox("User apps", selected == FILTER_USER);
+        CheckBox system = filterBox("System apps", selected == FILTER_SYSTEM);
+        all.setOnClickListener(v -> selectFilter(appsTab, FILTER_ALL, all, user, system));
+        user.setOnClickListener(v -> selectFilter(appsTab, FILTER_USER, all, user, system));
+        system.setOnClickListener(v -> selectFilter(appsTab, FILTER_SYSTEM, all, user, system));
+        row.addView(all, new LinearLayout.LayoutParams(0, dp(52), 1));
+        row.addView(user, new LinearLayout.LayoutParams(0, dp(52), 1));
+        row.addView(system, new LinearLayout.LayoutParams(0, dp(52), 1));
+        content.addView(row);
+        addDivider();
+    }
+
+    private CheckBox filterBox(String text, boolean checked) {
+        CheckBox box = new CheckBox(this);
+        box.setText(text);
+        box.setTextColor(FG);
+        box.setTextSize(13);
+        box.setGravity(Gravity.CENTER_VERTICAL);
+        box.setMinHeight(dp(48));
+        box.setChecked(checked);
+        return box;
+    }
+
+    private void selectFilter(boolean appsTab, int selected, CheckBox all, CheckBox user, CheckBox system) {
+        all.setChecked(selected == FILTER_ALL);
+        user.setChecked(selected == FILTER_USER);
+        system.setChecked(selected == FILTER_SYSTEM);
+        if (appsTab) {
+            appFilter = selected;
+            populateAppRows();
+        } else {
+            hiddenFilter = selected;
+            populateHiddenRows();
+        }
+    }
+
     private void addGroupTitle(String s) {
         TextView v = tv(13, MUTED, Typeface.BOLD);
         v.setText(s.toUpperCase());
@@ -752,7 +890,9 @@ public class UiActivity extends Activity {
         content.addView(row);
     }
 
-    private void addMuted(String s) { content.addView(wrap(muted(s), 24, 8, 24, 12)); }
+    private void addMuted(String s) { addMuted(content, s); }
+
+    private void addMuted(LinearLayout parent, String s) { parent.addView(wrap(muted(s), 24, 8, 24, 12)); }
 
     private TextView muted(String s) { TextView v = tv(13, MUTED, Typeface.NORMAL); v.setText(s); return v; }
 
@@ -774,11 +914,15 @@ public class UiActivity extends Activity {
     }
 
     private void addDivider() {
+        addDivider(content);
+    }
+
+    private void addDivider(LinearLayout parent) {
         View d = new View(this);
         d.setBackgroundColor(LINE);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 1);
         lp.setMargins(dp(24), 0, dp(24), 0);
-        content.addView(d, lp);
+        parent.addView(d, lp);
     }
 
     private TextView tv(int sp, int color, int style) {
@@ -807,6 +951,7 @@ public class UiActivity extends Activity {
         e.setTextColor(FG);
         e.setHintTextColor(MUTED);
         e.setTextSize(15);
+        e.setMinHeight(dp(52));
         e.setPadding(dp(16), 0, dp(16), 0);
         e.setBackground(round(SURFACE, 0, 12));
         return e;
@@ -914,14 +1059,42 @@ public class UiActivity extends Activity {
         return n;
     }
 
+    private int visibleAppCount(int filter) {
+        int n = 0;
+        for (AppEntry app : apps) if (matchesAppFilter(app, filter)) n++;
+        return n;
+    }
+
+    private boolean matchesAppFilter(AppEntry app, int filter) {
+        if (filter == FILTER_ALL) return true;
+        return filter == FILTER_SYSTEM ? app.system : !app.system;
+    }
+
+    private boolean matchesHiddenFilter(String pkg, int filter) {
+        if (filter == FILTER_ALL) return true;
+        boolean system = isSystemPackage(pkg);
+        return filter == FILTER_SYSTEM ? system : !system;
+    }
+
+    private int compareApps(AppEntry a, AppEntry b) {
+        boolean aActive = a.prot || targets.contains(a.pkg);
+        boolean bActive = b.prot || targets.contains(b.pkg);
+        if (aActive != bActive) return aActive ? -1 : 1;
+        int byName = label(a.pkg).compareToIgnoreCase(label(b.pkg));
+        return byName != 0 ? byName : a.pkg.compareToIgnoreCase(b.pkg);
+    }
+
+    private int comparePackages(String a, String b) {
+        boolean aActive = templatePackages(currentTemplate).contains(a);
+        boolean bActive = templatePackages(currentTemplate).contains(b);
+        if (aActive != bActive) return aActive ? -1 : 1;
+        int byName = label(a).compareToIgnoreCase(label(b));
+        return byName != 0 ? byName : a.compareToIgnoreCase(b);
+    }
+
     private List<String> templateNames() {
         ArrayList<String> names = new ArrayList<>(templates.keySet());
-        Collections.sort(names, (a, b) -> {
-            if ("default".equals(a)) return -1;
-            if ("default".equals(b)) return 1;
-            return a.compareToIgnoreCase(b);
-        });
-        if (names.isEmpty()) names.add("default");
+        Collections.sort(names, String::compareToIgnoreCase);
         return names;
     }
 
@@ -941,6 +1114,16 @@ public class UiActivity extends Activity {
     private boolean hiddenInAnyTemplate(String pkg) {
         for (List<String> list : templates.values()) if (list.contains(pkg)) return true;
         return false;
+    }
+
+    private boolean isSystemPackage(String pkg) {
+        try {
+            android.content.pm.ApplicationInfo ai = getPackageManager().getApplicationInfo(pkg, 0);
+            return (ai.flags & (android.content.pm.ApplicationInfo.FLAG_SYSTEM
+                    | android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0;
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private List<String> uniquePkgs(List<String> in) {
@@ -976,7 +1159,8 @@ public class UiActivity extends Activity {
     }
 
     private static boolean isTemplateName(String s) {
-        return s != null && s.matches("[A-Za-z0-9_.-]{1,48}");
+        return s != null && !"default".equalsIgnoreCase(s)
+                && s.matches("[A-Za-z0-9_.-]{1,48}");
     }
 
     private abstract static class SimpleWatcher implements TextWatcher {

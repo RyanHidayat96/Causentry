@@ -184,6 +184,7 @@ process_cmds() {
       save)
         targets=$(getf targets); denylist=$(getf denylist); hardened=$(getf hardened)
         templateName=$(getf templateName); templatePackages=$(getf templatePackages)
+        templateDelete=$(getf templateDelete)
         op=$(getf op)
         ad=$(getf autoDevOff); hm=$(getf hideMockLocation); ah=$(getf alwaysHidden)
         sf=$(getf susfs); hr=0; ui=$(getf uiApk)
@@ -203,7 +204,7 @@ process_cmds() {
         {
           printf '{"targets":'; tojson_arr "$targets"
           printf ',"denylist":'; tojson_arr "$denylist"
-          printf ',"hideTemplates":'; emit_hide_templates_json "$templateName" "$templatePackages"
+          printf ',"hideTemplates":'; emit_hide_templates_json "$templateName" "$templatePackages" "$templateDelete"
           printf ',"hardened":'; tojson_arr "$hardened"
           printf ',"apps":{'; emit_saved_entries; printf '}'
           printf ',"autoDevOff":'; bj "$ad"; printf ',"hideMockLocation":'; bj "$hm"

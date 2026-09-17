@@ -196,6 +196,7 @@ case "$action" in
     hardened="$(getp hardened)"
     templateName="$(getp templateName)"
     templatePackages="$(getp templatePackages)"
+    templateDelete="$(getp templateDelete)"
     autoDevOff="$(getp autoDevOff)"; [ "$autoDevOff" = 1 ] || autoDevOff=0
     hideMockLocation="$(getp hideMockLocation)"; [ "$hideMockLocation" = 1 ] || hideMockLocation=0
     alwaysHidden="$(getp alwaysHidden)"; [ "$alwaysHidden" = 1 ] || alwaysHidden=0
@@ -230,7 +231,7 @@ case "$action" in
     {
       printf '{"targets":';          tojson_arr "$targets"
       printf ',"denylist":';         tojson_arr "$denylist"
-      printf ',"hideTemplates":';    emit_hide_templates_json "$templateName" "$templatePackages"
+      printf ',"hideTemplates":';    emit_hide_templates_json "$templateName" "$templatePackages" "$templateDelete"
       printf ',"hardened":';         tojson_arr "$hardened"
       printf ',"apps":{';            emit_app_entries "$APPS_T"; printf '}'
       printf ',"autoDevOff":';       bool_json "$autoDevOff"
