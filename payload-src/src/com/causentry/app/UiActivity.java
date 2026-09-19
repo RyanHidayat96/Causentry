@@ -75,7 +75,13 @@ public class UiActivity extends Activity {
     private final Map<String, List<String>> templates = new HashMap<>();
     private final List<String> rootVisible = new ArrayList<>();
     private final List<String> rootSuggested = new ArrayList<>();
+    private boolean pendingTemplateSave;
+    private String pendingTemplateOp = "";
+    private String pendingTemplateName = "";
+    private List<String> pendingTemplatePackages = new ArrayList<>();
+    private String pendingTemplateDelete = "";
     private boolean detailMode;
+    private boolean templateDetail;
     private String selectedPkg;
     private String currentTemplate = "";
     private String appSearch = "";
@@ -115,6 +121,7 @@ public class UiActivity extends Activity {
         if (isPackageName(app)) {
             selectedPkg = app;
             detailMode = true;
+            templateDetail = false;
         }
         render();
         command(json("action", "refresh"));
@@ -136,6 +143,7 @@ public class UiActivity extends Activity {
         if (isPackageName(app)) {
             selectedPkg = app;
             detailMode = true;
+            templateDetail = false;
             readAll();
             render();
         }
@@ -146,6 +154,12 @@ public class UiActivity extends Activity {
         if (detailMode) {
             detailMode = false;
             selectedPkg = null;
+            render();
+            return;
+        }
+        if (templateDetail) {
+            templateDetail = false;
+            hiddenSearch = "";
             render();
             return;
         }
@@ -211,7 +225,7 @@ public class UiActivity extends Activity {
     }
 
     private void readAll() {
-        try { status = new JSONObject(bridge.status()); } catch (Throwable t) { status = new JSONObject(); }
+        readStatus();
         config = status.optJSONObject("config");
         if (config == null) config = new JSONObject();
         labels.clear();
@@ -225,6 +239,10 @@ public class UiActivity extends Activity {
         } catch (Throwable ignored) {}
         readLists();
         readApps();
+    }
+
+    private void readStatus() {
+        try { status = new JSONObject(bridge.status()); } catch (Throwable t) { status = new JSONObject(); }
     }
 
     private void readLists() {
@@ -252,9 +270,10 @@ public class UiActivity extends Activity {
                 templates.put(name, uniquePkgs(list));
             }
         }
+        applyPendingTemplateSave();
         if (!templates.containsKey(currentTemplate)) {
-            List<String> names = templateNames();
-            currentTemplate = names.isEmpty() ? "" : names.get(0);
+            currentTemplate = "";
+            templateDetail = false;
         }
         splitPackages(rootVisible, status.optString("rootApps", ""));
         splitPackages(rootSuggested, status.optString("rootSuggest", ""));
@@ -304,8 +323,13 @@ public class UiActivity extends Activity {
     private void render() {
         rendering = true;
         content.removeAllViews();
+        if (templateDetail && !templates.containsKey(currentTemplate)) {
+            templateDetail = false;
+            currentTemplate = "";
+        }
         updateToolbar();
         if (detailMode && isPackageName(selectedPkg)) renderDetail();
+        else if (templateDetail) renderTemplateDetail();
         else renderHome();
         rendering = false;
     }
@@ -313,14 +337,16 @@ public class UiActivity extends Activity {
     private void updateToolbar() {
         boolean daemon = status.optBoolean("daemon", false);
         String state = status.optString("state", "idle");
-        back.setVisibility(detailMode ? View.VISIBLE : View.GONE);
-        title.setText(detailMode ? label(selectedPkg) : "Causentry");
-        subtitle.setText(detailMode ? selectedPkg : "");
+        boolean showingDetail = detailMode || templateDetail;
+        back.setVisibility(showingDetail ? View.VISIBLE : View.GONE);
+        title.setText(detailMode ? label(selectedPkg) : (templateDetail ? currentTemplate : "Causentry"));
+        subtitle.setText(detailMode ? selectedPkg
+                : (templateDetail ? templatePackages(currentTemplate).size() + " hidden apps" : ""));
         pill.setText(!daemon ? "STOPPED" : ("active".equals(state) ? "ACTIVE" : "STANDBY"));
         int c = !daemon ? DANGER : ("active".equals(state) ? OK : WARN);
         pill.setTextColor(c);
         pill.setBackground(round(Color.TRANSPARENT, c, 18));
-        boolean showBottom = detailMode || (!detailMode && homeTab == TAB_TEMPLATES && !templateNames().isEmpty());
+        boolean showBottom = detailMode || templateDetail;
         if (bottomBar != null) bottomBar.setVisibility(showBottom ? View.VISIBLE : View.GONE);
         bottomApply.setVisibility(showBottom ? View.VISIBLE : View.GONE);
     }
@@ -427,28 +453,54 @@ public class UiActivity extends Activity {
 
     private void addTemplateGroup() {
         List<String> names = templateNames();
+        addSectionHeader("Templates", names.isEmpty() ? "No templates yet" : names.size() + " saved");
         if (names.isEmpty()) {
-            addSectionHeader("Templates", "No templates yet");
             addMuted("Create a template to choose hidden apps.");
-            addTemplateCreateRow();
-            return;
+        } else {
+            for (String name : names) addTemplateRow(name);
         }
-        addSectionHeader("Templates", currentTemplate + " / " + templatePackages(currentTemplate).size() + " hidden");
-        Spinner spinner = spinner(templateLabels(), templateIndex(currentTemplate));
-        spinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                List<String> names = templateNames();
-                if (position >= 0 && position < names.size() && !names.get(position).equals(currentTemplate)) {
-                    currentTemplate = names.get(position);
-                    render();
-                }
-            }
-            public void onNothingSelected(android.widget.AdapterView<?> parent) {}
-        });
-        content.addView(wrap(spinner, 16, 0, 16, 6));
-        if (names.size() > 1) addTemplateChips();
-        addTemplateManageRow();
+        addGroupTitle("Create template");
         addTemplateCreateRow();
+    }
+
+    private void addTemplateRow(String name) {
+        LinearLayout row = rowBase(true);
+        row.setContentDescription("Open template " + name);
+        row.setOnClickListener(v -> {
+            currentTemplate = name;
+            templateDetail = true;
+            hiddenSearch = "";
+            render();
+        });
+        TextView badge = tv(16, ACCENT, Typeface.BOLD);
+        badge.setText(name.substring(0, 1).toUpperCase());
+        badge.setGravity(Gravity.CENTER);
+        badge.setBackground(round(SURFACE, ACCENT, 20));
+        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(dp(40), dp(40));
+        badgeLp.setMargins(0, 0, dp(12), 0);
+        row.addView(badge, badgeLp);
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        TextView title = tv(16, FG, Typeface.NORMAL);
+        title.setText(name);
+        title.setSingleLine(true);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        TextView summary = tv(12, MUTED, Typeface.NORMAL);
+        int count = templatePackages(name).size();
+        summary.setText(count + (count == 1 ? " app hidden" : " apps hidden"));
+        texts.addView(title);
+        texts.addView(summary);
+        row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView arrow = tv(24, MUTED, Typeface.NORMAL);
+        arrow.setText(">");
+        row.addView(arrow);
+        content.addView(row);
+        addDivider();
+    }
+
+    private void renderTemplateDetail() {
+        addSectionHeader("Apps to hide", templatePackages(currentTemplate).size() + " selected");
+        addTemplateManageRow();
         addHiddenSearch();
         addAppFilterRow(false);
         hiddenRows = new LinearLayout(this);
@@ -604,11 +656,14 @@ public class UiActivity extends Activity {
     }
 
     private void saveTemplates() {
+        if (!templates.containsKey(currentTemplate)) return;
         saveTemplate(currentTemplate, templatePackages(currentTemplate), "", "Saving and applying...");
     }
 
     private void saveTemplate(String name, List<String> packages, String deleteName, String message) {
         String op = op();
+        List<String> savedPackages = packages == null ? new ArrayList<>() : uniquePkgs(packages);
+        stagePendingTemplateSave(op, name, savedPackages, deleteName);
         JSONObject cmd = new JSONObject();
         try {
             cmd.put("action", "save");
@@ -616,7 +671,7 @@ public class UiActivity extends Activity {
             cmd.put("targets", join(targets));
             cmd.put("hardened", join(hardened));
             cmd.put("templateName", name == null ? "" : name);
-            cmd.put("templatePackages", join(packages));
+            cmd.put("templatePackages", join(savedPackages));
             if (isTemplateName(deleteName)) cmd.put("templateDelete", deleteName);
             cmd.put("autoDevOff", status.optBoolean("autoDevOff", true) ? 1 : 0);
             cmd.put("hideMockLocation", status.optBoolean("hideMockLocation", true) ? 1 : 0);
@@ -634,10 +689,19 @@ public class UiActivity extends Activity {
         Runnable r = new Runnable() {
             public void run() {
                 tries[0]++;
-                readAll();
+                readStatus();
                 boolean done = token.equals(status.optString("applyToken", "")) && !status.optBoolean("applyBusy", false);
                 if (done) {
-                    if (status.optInt("applyRc", 1) == 0) {
+                    boolean success = status.optInt("applyRc", 1) == 0;
+                    readAll();
+                    if (success && !pendingTemplateSaveReflected(token)) {
+                        if (tries[0] == 120) toast("Saved. Waiting for state refresh");
+                        handler.postDelayed(this, tries[0] < 120 ? 500 : 2000);
+                        return;
+                    }
+                    clearPendingTemplateSave(token);
+                    readAll();
+                    if (success) {
                         toast(templateCloakNeeded() && !status.optBoolean("cloakReady", false)
                                 ? "Saved. Package hiding unavailable: Zygisk hook inactive" : "Done");
                     } else toast("Apply failed");
@@ -647,6 +711,44 @@ public class UiActivity extends Activity {
             }
         };
         handler.postDelayed(r, 500);
+    }
+
+    private void stagePendingTemplateSave(String token, String name, List<String> packages, String deleteName) {
+        pendingTemplateOp = token;
+        pendingTemplateName = isTemplateName(name) ? name : "";
+        pendingTemplatePackages = packages == null ? new ArrayList<>() : uniquePkgs(packages);
+        pendingTemplateDelete = isTemplateName(deleteName) ? deleteName : "";
+        pendingTemplateSave = isTemplateName(pendingTemplateName) || isTemplateName(pendingTemplateDelete);
+    }
+
+    private void applyPendingTemplateSave() {
+        if (!pendingTemplateSave) return;
+        if (isTemplateName(pendingTemplateDelete)) templates.remove(pendingTemplateDelete);
+        if (isTemplateName(pendingTemplateName)) {
+            templates.put(pendingTemplateName, new ArrayList<>(pendingTemplatePackages));
+        }
+    }
+
+    private boolean pendingTemplateSaveReflected(String token) {
+        if (!token.equals(pendingTemplateOp) || !pendingTemplateSave) return true;
+        JSONObject remote = config.optJSONObject("hideTemplates");
+        if (remote == null) return false;
+        if (isTemplateName(pendingTemplateDelete) && remote.has(pendingTemplateDelete)) return false;
+        if (!isTemplateName(pendingTemplateName)) return true;
+        JSONArray packages = remote.optJSONArray(pendingTemplateName);
+        if (packages == null) return false;
+        List<String> remotePackages = new ArrayList<>();
+        addArray(remotePackages, packages);
+        return new LinkedHashSet<>(pendingTemplatePackages).equals(new LinkedHashSet<>(uniquePkgs(remotePackages)));
+    }
+
+    private void clearPendingTemplateSave(String token) {
+        if (!token.equals(pendingTemplateOp)) return;
+        pendingTemplateSave = false;
+        pendingTemplateOp = "";
+        pendingTemplateName = "";
+        pendingTemplatePackages = new ArrayList<>();
+        pendingTemplateDelete = "";
     }
 
     private void waitCommand(String token, String template, String success, boolean removing) {
@@ -693,7 +795,8 @@ public class UiActivity extends Activity {
         if (!isTemplateName(name)) { toast("Invalid template name"); return; }
         if (templates.containsKey(name)) { toast("Template already exists"); return; }
         templates.put(name, new ArrayList<>());
-        currentTemplate = name;
+        currentTemplate = "";
+        templateDetail = false;
         render();
         saveTemplate(name, Collections.emptyList(), "", "Creating template...");
     }
@@ -738,8 +841,8 @@ public class UiActivity extends Activity {
     private void deleteTemplate(String name) {
         if (!templates.containsKey(name)) return;
         templates.remove(name);
-        List<String> names = templateNames();
-        currentTemplate = names.isEmpty() ? "" : names.get(0);
+        currentTemplate = "";
+        templateDetail = false;
         render();
         saveTemplate("", Collections.emptyList(), name, "Deleting template...");
     }
