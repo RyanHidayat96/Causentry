@@ -27,6 +27,13 @@ final class CloakPolicy {
 
     private CloakPolicy() {}
 
+    static boolean hasHiddenPackages(int uid) {
+        if (uid < 10000) return false;
+        refresh(false);
+        Set<String> hidden = hiddenByUid.get(uid);
+        return hidden != null && !hidden.isEmpty();
+    }
+
     static boolean hides(int uid, String packageName) {
         if (packageName == null || uid < 10000) return false;
         refresh(false);
