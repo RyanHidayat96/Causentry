@@ -57,9 +57,17 @@ public class UiActivity extends Activity {
     private static final int FILTER_ALL = 1;
     private static final int FILTER_SYSTEM = 2;
 
+    // ---- layout tokens: ONE gutter and ONE vertical rhythm for the whole app ----
+    private static final int GUTTER = 20;        // page gutter, dp - everything aligns to this
+    private static final int SECTION_TOP = 18;   // space above a section label
+    private static final int SECTION_BOTTOM = 8; // space below a section label
+    private static final int ROW_MIN = 56;       // min height of a list row
+
     private final Handler handler = new Handler(Looper.getMainLooper());
     private UiBridge bridge;
     private LinearLayout content;
+    private ScrollView shellScroll;
+    private LinearLayout titles;
     private LinearLayout appRows;
     private LinearLayout hiddenRows;
     private FrameLayout bottomBar;
@@ -121,14 +129,39 @@ public class UiActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(true);
         buildShell();
         readAll();
-        String app = getIntent() == null ? "" : getIntent().getStringExtra("app");
+        applyIntent(getIntent());
+        render();
+        command(json("action", "refresh"));
+    }
+
+    /**
+     * Deep links so the UI can be driven without taps (adb `input tap` is unreliable on this
+     * device): `--es app <pkg>` detail view, `--ei tab 0..2` home tab, `--es template <name>`.
+     */
+    private void applyIntent(android.content.Intent intent) {
+        if (intent == null) return;
+        if (intent.hasExtra("tab")) {
+            int t = intent.getIntExtra("tab", TAB_APPS);
+            if (t >= TAB_APPS && t <= TAB_ACTIONS) {
+                homeTab = t;
+                detailMode = false;
+                templateDetail = false;
+                selectedPkg = null;
+            }
+        }
+        String app = intent.getStringExtra("app");
         if (isPackageName(app)) {
             selectedPkg = app;
             detailMode = true;
             templateDetail = false;
         }
-        render();
-        command(json("action", "refresh"));
+        String tpl = intent.getStringExtra("template");
+        if (isTemplateName(tpl) && templates.containsKey(tpl)) {
+            currentTemplate = tpl;
+            templateDetail = true;
+            detailMode = false;
+        }
+        if (intent.getBooleanExtra("top", false) && shellScroll != null) shellScroll.scrollTo(0, 0);
     }
 
     @Override
@@ -143,14 +176,9 @@ public class UiActivity extends Activity {
     protected void onNewIntent(android.content.Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        String app = intent == null ? "" : intent.getStringExtra("app");
-        if (isPackageName(app)) {
-            selectedPkg = app;
-            detailMode = true;
-            templateDetail = false;
-            readAll();
-            render();
-        }
+        readAll();
+        applyIntent(intent);
+        render();
     }
 
     @Override
@@ -188,7 +216,7 @@ public class UiActivity extends Activity {
         back.setOnClickListener(v -> onBackPressed());
         toolbar.addView(back, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-        LinearLayout titles = new LinearLayout(this);
+        titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
         titles.setGravity(Gravity.CENTER_VERTICAL);
         title = tv(20, FG, Typeface.BOLD);
@@ -213,15 +241,17 @@ public class UiActivity extends Activity {
         });
         toolbar.addView(refresh, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-        ScrollView scroll = new ScrollView(this);
+        shellScroll = new ScrollView(this);
+        shellScroll.setFillViewport(true);
         content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        scroll.addView(content, new ScrollView.LayoutParams(-1, -2));
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        content.setPadding(0, dp(4), 0, dp(12));
+        shellScroll.addView(content, new ScrollView.LayoutParams(-1, -2));
+        root.addView(shellScroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
         bottomApply = button("Apply for this app", true);
         bottomBar = new FrameLayout(this);
-        bottomBar.setPadding(dp(16), dp(8), dp(16), navigationBarHeight() + dp(8));
+        bottomBar.setPadding(dp(GUTTER), dp(8), dp(GUTTER), navigationBarHeight() + dp(8));
         bottomBar.addView(bottomApply, new FrameLayout.LayoutParams(-1, dp(52)));
         bottomBar.setVisibility(View.GONE);
         root.addView(bottomBar, new LinearLayout.LayoutParams(-1, navigationBarHeight() + dp(68)));
@@ -325,6 +355,7 @@ public class UiActivity extends Activity {
     }
 
     private void render() {
+        String before = viewKey();
         rendering = true;
         content.removeAllViews();
         if (templateDetail && !templates.containsKey(currentTemplate)) {
@@ -336,6 +367,14 @@ public class UiActivity extends Activity {
         else if (templateDetail) renderTemplateDetail();
         else renderHome();
         rendering = false;
+        // switching tab / page must start the page at the top, never mid-scroll
+        if (shellScroll != null && !viewKey().equals(before)) shellScroll.scrollTo(0, 0);
+    }
+
+    private String viewKey() {
+        if (detailMode && isPackageName(selectedPkg)) return "d:" + selectedPkg;
+        if (templateDetail) return "t:" + currentTemplate;
+        return "h:" + homeTab;
     }
 
     private void updateToolbar() {
@@ -343,6 +382,8 @@ public class UiActivity extends Activity {
         String state = status.optString("state", "idle");
         boolean showingDetail = detailMode || templateDetail;
         back.setVisibility(showingDetail ? View.VISIBLE : View.GONE);
+        // keep the title on the same 20dp gutter as the page body
+        if (titles != null) titles.setPadding(showingDetail ? 0 : dp(12), 0, dp(4), 0);
         title.setText(detailMode ? label(selectedPkg) : (templateDetail ? currentTemplate : "Causentry"));
         subtitle.setText(detailMode ? selectedPkg
                 : (templateDetail ? templatePackages(currentTemplate).size() + " hidden apps" : ""));
@@ -366,7 +407,7 @@ public class UiActivity extends Activity {
     private void addOverviewStrip() {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(dp(16), dp(6), dp(16), dp(6));
+        row.setPadding(dp(GUTTER), dp(8), dp(GUTTER), dp(4));
         boolean daemon = status.optBoolean("daemon", false);
         LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(0, dp(52), 1);
         lp1.setMargins(0, 0, dp(8), 0);
@@ -407,7 +448,7 @@ public class UiActivity extends Activity {
         tabs.addView(homeTab("Apps", TAB_APPS), lp1);
         tabs.addView(homeTab("Templates", TAB_TEMPLATES), lp2);
         tabs.addView(homeTab("Actions", TAB_ACTIONS), new LinearLayout.LayoutParams(0, dp(48), 1));
-        content.addView(wrap(tabs, 16, 10, 16, 8));
+        content.addView(wrap(tabs, GUTTER, 10, GUTTER, 4));
     }
 
     private Button homeTab(String text, int tab) {
@@ -415,7 +456,10 @@ public class UiActivity extends Activity {
         Button item = new Button(this);
         item.setText(text);
         item.setAllCaps(false);
-        item.setTextSize(14);
+        item.setTextSize(13);
+        item.setSingleLine(true);
+        item.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        item.setPadding(dp(2), 0, dp(2), 0);
         item.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         item.setTextColor(selected ? Color.rgb(6, 18, 31) : FG);
         item.setBackground(round(selected ? ACCENT : Color.TRANSPARENT, 0, 7));
@@ -440,7 +484,7 @@ public class UiActivity extends Activity {
                 }
             }
         });
-        content.addView(wrap(search, 16, 0, 16, 8));
+        content.addView(wrap(search, GUTTER, 0, GUTTER, 8));
         addAppFilterRow(true);
         appRows = new LinearLayout(this);
         appRows.setOrientation(LinearLayout.VERTICAL);
@@ -503,9 +547,7 @@ public class UiActivity extends Activity {
         texts.addView(title);
         texts.addView(summary);
         row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView arrow = tv(24, MUTED, Typeface.NORMAL);
-        arrow.setText(">");
-        row.addView(arrow);
+        row.addView(chevron());
         content.addView(row);
         addDivider();
     }
@@ -559,7 +601,7 @@ public class UiActivity extends Activity {
                 }
             }
         });
-        content.addView(wrap(search, 16, 4, 16, 8));
+        content.addView(wrap(search, GUTTER, 4, GUTTER, 8));
     }
 
     private void addActionsGroup() {
@@ -581,7 +623,7 @@ public class UiActivity extends Activity {
         Button restore = button("Restore everything", false);
         restore.setTextColor(DANGER);
         restore.setOnClickListener(v -> confirmRestore());
-        content.addView(wrap(restore, 16, 0, 16, 18));
+        content.addView(wrap(restore, GUTTER, 8, GUTTER, 18));
     }
 
     private void renderDetail() {
@@ -607,10 +649,10 @@ public class UiActivity extends Activity {
             options.addAll(templateLabels());
             int templatePosition = names.indexOf(tpl);
             sp = spinner(options, templatePosition < 0 ? 0 : templatePosition + 1);
-            content.addView(wrap(sp, 16, 0, 16, 8));
+            content.addView(wrap(sp, GUTTER, 0, GUTTER, 8));
             TextView count = muted(templatePosition < 0 ? "No hidden-app template selected"
                     : tpl + ": " + templatePackages(tpl).size() + " hidden");
-            content.addView(wrap(count, 24, 0, 24, 12));
+            content.addView(wrap(count, GUTTER, 0, GUTTER, 12));
             sp.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
                 public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
                     List<String> names = templateNames();
@@ -625,7 +667,7 @@ public class UiActivity extends Activity {
         if (!status.optBoolean("cloakReady", false)) {
             TextView unavailable = tv(13, WARN, Typeface.NORMAL);
             unavailable.setText("Package hiding unavailable: Zygisk system hook is inactive. Templates are saved but target apps can still list their packages.");
-            content.addView(wrap(unavailable, 24, 0, 24, 12));
+            content.addView(wrap(unavailable, GUTTER, 0, GUTTER, 12));
         }
         addValueRow("Kernel path hiding", status.optString("susfs", "unsupported"), null);
         bottomApply.setOnClickListener(v -> applyDetail(dev, mock, isolate, sp));
@@ -960,8 +1002,7 @@ public class UiActivity extends Activity {
         if (app.prot || targets.contains(app.pkg)) addChip(row, "PROTECTED", OK);
         else if (hiddenInAnyTemplate(app.pkg)) addChip(row, "HIDDEN", WARN);
         if (app.system) addChip(row, "SYSTEM", MUTED);
-        TextView arrow = tv(24, MUTED, Typeface.NORMAL); arrow.setText(">");
-        row.addView(arrow);
+        row.addView(chevron());
         parent.addView(row);
         addDivider(parent);
     }
@@ -1033,9 +1074,10 @@ public class UiActivity extends Activity {
     }
 
     private void addGroupTitle(String s) {
-        TextView v = tv(13, MUTED, Typeface.BOLD);
+        TextView v = tv(12, MUTED, Typeface.BOLD);
         v.setText(s.toUpperCase());
-        v.setPadding(dp(20), dp(14), dp(20), dp(6));
+        v.setLetterSpacing(0.08f);
+        v.setPadding(dp(GUTTER), dp(SECTION_TOP), dp(GUTTER), dp(SECTION_BOTTOM));
         content.addView(v);
     }
 
@@ -1043,21 +1085,29 @@ public class UiActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(20), dp(12), dp(20), dp(6));
-        TextView n = tv(13, MUTED, Typeface.BOLD);
+        row.setPadding(dp(GUTTER), dp(SECTION_TOP), dp(GUTTER), dp(SECTION_BOTTOM));
+        TextView n = tv(12, MUTED, Typeface.BOLD);
+        n.setLetterSpacing(0.08f);
         n.setText(name.toUpperCase());
         TextView s = tv(12, MUTED, Typeface.NORMAL);
         s.setText(summary);
         s.setSingleLine(true);
+        s.setEllipsize(android.text.TextUtils.TruncateAt.END);
         s.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
-        row.addView(n, new LinearLayout.LayoutParams(0, -2, 1));
-        row.addView(s);
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(0, -2, 1);
+        slp.setMargins(dp(12), 0, 0, 0);
+        row.addView(n);
+        row.addView(s, slp);
         content.addView(row);
     }
 
     private void addMuted(String s) { addMuted(content, s); }
 
-    private void addMuted(LinearLayout parent, String s) { parent.addView(wrap(muted(s), 24, 8, 24, 12)); }
+    private void addMuted(LinearLayout parent, String s) {
+        TextView v = muted(s);
+        v.setLineSpacing(dp(3), 1f);
+        parent.addView(wrap(v, GUTTER, 2, GUTTER, 12));
+    }
 
     private TextView muted(String s) { TextView v = tv(13, MUTED, Typeface.NORMAL); v.setText(s); return v; }
 
@@ -1065,10 +1115,18 @@ public class UiActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(20), dp(7), dp(20), dp(7));
-        row.setMinimumHeight(dp(56));
-        if (clickable) row.setBackgroundColor(BG);
+        row.setPadding(dp(GUTTER), dp(8), dp(GUTTER), dp(8));
+        row.setMinimumHeight(dp(ROW_MIN));
+        if (clickable) row.setBackground(rippleBg());
         return row;
+    }
+
+    /** transparent row background with a soft ripple so taps feel responsive */
+    private android.graphics.drawable.Drawable rippleBg() {
+        android.graphics.drawable.GradientDrawable mask = new android.graphics.drawable.GradientDrawable();
+        mask.setColor(Color.WHITE);
+        return new android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(Color.argb(40, 255, 255, 255)), null, mask);
     }
 
     private View wrap(View child, int l, int t, int r, int b) {
@@ -1086,7 +1144,7 @@ public class UiActivity extends Activity {
         View d = new View(this);
         d.setBackgroundColor(LINE);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 1);
-        lp.setMargins(dp(24), 0, dp(24), 0);
+        lp.setMargins(dp(GUTTER), 0, dp(GUTTER), 0);
         parent.addView(d, lp);
     }
 
@@ -1104,7 +1162,8 @@ public class UiActivity extends Activity {
         b.setAllCaps(false);
         b.setTextColor(primary ? Color.rgb(6, 18, 31) : FG);
         b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        b.setBackground(primary ? round(ACCENT, ACCENT, 12) : round(SURFACE, 0, 12));
+        b.setTextSize(15);
+        b.setBackground(primary ? round(ACCENT, ACCENT, 12) : round(SURFACE, LINE, 12));
         return b;
     }
 
@@ -1133,18 +1192,27 @@ public class UiActivity extends Activity {
         return s;
     }
 
+    /** one consistent chevron for every tappable row */
+    private TextView chevron() {
+        TextView a = tv(20, MUTED, Typeface.NORMAL);
+        a.setText("\u203a");
+        a.setPadding(dp(10), 0, 0, 0);
+        return a;
+    }
+
     private TextView chip(String text, int color) {
         TextView c = tv(11, color, Typeface.BOLD);
         c.setText(text);
         c.setGravity(Gravity.CENTER);
-        c.setPadding(dp(8), dp(3), dp(8), dp(3));
-        c.setBackground(round(Color.TRANSPARENT, color, 10));
+        c.setPadding(dp(10), dp(4), dp(10), dp(4));
+        c.setLetterSpacing(0.04f);
+        c.setBackground(round(Color.TRANSPARENT, color, 12));
         return c;
     }
 
     private void addChip(LinearLayout row, String text, int color) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-        lp.setMargins(dp(8), 0, dp(8), 0);
+        lp.setMargins(dp(6), 0, dp(6), 0);
         row.addView(chip(text, color), lp);
     }
 
