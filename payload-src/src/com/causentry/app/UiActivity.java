@@ -2,8 +2,10 @@ package com.causentry.app;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
@@ -13,6 +15,8 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -394,27 +398,35 @@ public class UiActivity extends Activity {
     private void addHomeTabs() {
         LinearLayout tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
-        tabs.setPadding(dp(16), dp(2), dp(16), dp(6));
-        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(0, dp(42), 1);
+        tabs.setPadding(dp(4), dp(4), dp(4), dp(4));
+        tabs.setBackground(round(SURFACE, LINE, 10));
+        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(0, dp(48), 1);
         lp1.setMargins(0, 0, dp(8), 0);
-        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0, dp(42), 1);
+        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0, dp(48), 1);
         lp2.setMargins(0, 0, dp(8), 0);
-        tabs.addView(tabButton("Apps", TAB_APPS), lp1);
-        tabs.addView(tabButton("Templates", TAB_TEMPLATES), lp2);
-        tabs.addView(tabButton("Actions", TAB_ACTIONS), new LinearLayout.LayoutParams(0, dp(42), 1));
-        content.addView(tabs);
+        tabs.addView(homeTab("Apps", TAB_APPS), lp1);
+        tabs.addView(homeTab("Templates", TAB_TEMPLATES), lp2);
+        tabs.addView(homeTab("Actions", TAB_ACTIONS), new LinearLayout.LayoutParams(0, dp(48), 1));
+        content.addView(wrap(tabs, 16, 10, 16, 8));
     }
 
-    private Button tabButton(String text, int tab) {
-        Button b = button(text, homeTab == tab);
-        b.setTextColor(homeTab == tab ? Color.rgb(6, 18, 31) : FG);
-        b.setOnClickListener(v -> {
+    private Button homeTab(String text, int tab) {
+        boolean selected = homeTab == tab;
+        Button item = new Button(this);
+        item.setText(text);
+        item.setAllCaps(false);
+        item.setTextSize(14);
+        item.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        item.setTextColor(selected ? Color.rgb(6, 18, 31) : FG);
+        item.setBackground(round(selected ? ACCENT : Color.TRANSPARENT, 0, 7));
+        item.setContentDescription("Open " + text);
+        item.setOnClickListener(v -> {
             if (homeTab != tab) {
                 homeTab = tab;
                 render();
             }
         });
-        return b;
+        return item;
     }
 
     private void addAppsGroup() {
@@ -590,18 +602,22 @@ public class UiActivity extends Activity {
             sp = null;
             addMuted("No hidden-app template. Create one in Templates.");
         } else {
-            if (!names.contains(tpl)) tpl = names.get(0);
-            sp = spinner(templateLabels(), templateIndex(tpl));
+            List<String> options = new ArrayList<>();
+            options.add("No template");
+            options.addAll(templateLabels());
+            int templatePosition = names.indexOf(tpl);
+            sp = spinner(options, templatePosition < 0 ? 0 : templatePosition + 1);
             content.addView(wrap(sp, 16, 0, 16, 8));
-            TextView count = muted(tpl + ": " + templatePackages(tpl).size() + " hidden");
+            TextView count = muted(templatePosition < 0 ? "No hidden-app template selected"
+                    : tpl + ": " + templatePackages(tpl).size() + " hidden");
             content.addView(wrap(count, 24, 0, 24, 12));
             sp.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
                 public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
                     List<String> names = templateNames();
-                    if (position >= 0 && position < names.size()) {
-                        String name = names.get(position);
+                    if (position > 0 && position <= names.size()) {
+                        String name = names.get(position - 1);
                         count.setText(name + ": " + templatePackages(name).size() + " hidden");
-                    }
+                    } else count.setText("No hidden-app template selected");
                 }
                 public void onNothingSelected(android.widget.AdapterView<?> parent) {}
             });
@@ -639,7 +655,7 @@ public class UiActivity extends Activity {
         List<String> names = templateNames();
         if (sp != null && !names.isEmpty()) {
             int position = Math.max(0, sp.getSelectedItemPosition());
-            if (position < names.size()) tpl = names.get(position);
+            if (position > 0 && position <= names.size()) tpl = names.get(position - 1);
         }
         List<String> feats = new ArrayList<>();
         if (dev.isChecked()) feats.add("devOff");
@@ -1184,9 +1200,142 @@ public class UiActivity extends Activity {
     private String op() { return "native-" + System.currentTimeMillis(); }
 
     private void showLog() {
-        new AlertDialog.Builder(this).setTitle("Causentry log")
-                .setMessage(status.optString("log", "No log yet"))
-                .setPositiveButton("OK", null).show();
+        final Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setCanceledOnTouchOutside(true);
+
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.VERTICAL);
+        shell.setBackground(round(SURFACE, LINE, 12));
+
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(20), dp(16), dp(8), dp(12));
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        TextView heading = tv(20, FG, Typeface.BOLD);
+        heading.setText("Activity log");
+        final TextView summary = tv(12, MUTED, Typeface.NORMAL);
+        titles.addView(heading);
+        titles.addView(summary);
+        header.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
+
+        ImageButton refresh = new ImageButton(this);
+        refresh.setImageResource(android.R.drawable.ic_popup_sync);
+        refresh.setColorFilter(FG);
+        refresh.setBackgroundColor(Color.TRANSPARENT);
+        refresh.setContentDescription("Refresh log");
+        header.addView(refresh, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        shell.addView(header);
+        addDivider(shell);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        final LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(rows, new ScrollView.LayoutParams(-1, -2));
+        shell.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        LinearLayout footer = new LinearLayout(this);
+        footer.setPadding(dp(16), dp(8), dp(16), dp(16));
+        Button close = button("Close", false);
+        close.setOnClickListener(v -> dialog.dismiss());
+        footer.addView(close, new LinearLayout.LayoutParams(-1, dp(48)));
+        shell.addView(footer);
+
+        Runnable refreshRows = () -> {
+            readAll();
+            String log = status.optString("log", "");
+            summary.setText(logLineCount(log) + " entries, newest first");
+            populateLogRows(rows, log);
+            scroll.post(() -> scroll.scrollTo(0, 0));
+        };
+        refresh.setOnClickListener(v -> refreshRows.run());
+        refreshRows.run();
+
+        dialog.setContentView(shell);
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.setDimAmount(0.72f);
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            int width = (int) (getResources().getDisplayMetrics().widthPixels * 0.92f);
+            int height = (int) (getResources().getDisplayMetrics().heightPixels * 0.78f);
+            window.setLayout(width, height);
+            window.setGravity(Gravity.CENTER);
+        }
+    }
+
+    private void populateLogRows(LinearLayout rows, String log) {
+        rows.removeAllViews();
+        int count = 0;
+        String[] lines = logLines(log);
+        for (int i = lines.length - 1; i >= 0; i--) {
+            String line = lines[i];
+            if (line.trim().isEmpty()) continue;
+            addLogRow(rows, line.trim());
+            count++;
+        }
+        if (count == 0) addMuted(rows, "No log entries yet.");
+    }
+
+    private void addLogRow(LinearLayout parent, String line) {
+        String timestamp = "";
+        String message = line;
+        if (message.matches("^\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}.*")) {
+            timestamp = message.substring(0, 14);
+            message = message.substring(14).trim();
+        }
+        String source = "";
+        if (message.startsWith("[")) {
+            int end = message.indexOf(']');
+            if (end > 1 && end < 32) {
+                source = message.substring(1, end);
+                message = message.substring(end + 1).trim();
+            }
+        }
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(dp(20), dp(10), dp(20), dp(10));
+        LinearLayout meta = new LinearLayout(this);
+        meta.setGravity(Gravity.CENTER_VERTICAL);
+        TextView time = tv(11, timestamp.isEmpty() ? MUTED : ACCENT, Typeface.BOLD);
+        time.setText(timestamp.isEmpty() ? "OUTPUT" : timestamp);
+        meta.addView(time, new LinearLayout.LayoutParams(0, -2, 1));
+        if (!source.isEmpty()) addChip(meta, source.toUpperCase(), ACCENT);
+        row.addView(meta);
+
+        TextView text = tv(13, logMessageColor(message), Typeface.NORMAL);
+        text.setTypeface(Typeface.MONOSPACE);
+        text.setLineSpacing(dp(2), 1f);
+        text.setText(message.isEmpty() ? "-" : message);
+        row.addView(text, new LinearLayout.LayoutParams(-1, -2));
+        parent.addView(row);
+        addDivider(parent);
+    }
+
+    private int logLineCount(String log) {
+        if (log == null || log.trim().isEmpty()) return 0;
+        int count = 0;
+        for (String line : logLines(log)) {
+            if (!line.trim().isEmpty()) count++;
+        }
+        return count;
+    }
+
+    private String[] logLines(String log) {
+        String text = log == null ? "" : log.replace("\r\n", "\n");
+        if (text.indexOf('\n') >= 0) return text.split("\n");
+        return text.split("(?=\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} )");
+    }
+
+    private int logMessageColor(String message) {
+        String lower = message.toLowerCase();
+        if (lower.contains("fail") || lower.contains("error")) return DANGER;
+        if (lower.contains("skipped") || lower.contains("inactive")) return WARN;
+        return FG;
     }
 
     private void confirmRestore() {

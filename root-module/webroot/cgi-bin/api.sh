@@ -97,7 +97,7 @@ case "$action" in
     printf ',"uiApk":%s,"uiAppInstalled":%s' "$uiapk" "$uiapk"
     printf ',"applyBusy":%s,"applyDone":%s,"applyRc":%s,"applyToken":' "$apply_busy" "$apply_done" "$apply_rc"; json_string "$apply_token"
     printf ',"config":%s' "$(tr -d '\n' < "$CONF" 2>/dev/null || echo '{}')"
-    printf ',"log":'; json_string "$(tail -25 "$DIR/causentry.log" 2>/dev/null)"
+    printf ',"log":'; json_log_string
     printf '}'
     ;;
   rootsuggest)

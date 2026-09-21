@@ -36,6 +36,17 @@ json_string() {
   printf '"%s"' "$(json_escape "$1")"
 }
 
+json_log_string() {
+  printf '"'
+  first=1
+  tail -25 "$LOG" 2>/dev/null | while IFS= read -r line || [ -n "$line" ]; do
+    [ "$first" = 1 ] || printf '\\n'
+    first=0
+    json_escape "$line"
+  done
+  printf '"'
+}
+
 bool_json() {
   case "$1" in 1|true|TRUE|yes|on) printf true;; *) printf false;; esac
 }

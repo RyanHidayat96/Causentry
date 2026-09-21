@@ -145,7 +145,7 @@ snapshot() {
     printf '"applyBusy":%s,"applyDone":%s,"applyRc":%s,"applyToken":' "$apply_busy" "$apply_done" "$apply_rc"; json_string "$apply_token"; printf ','
     printf '"commandRc":%s,"commandToken":' "$command_rc"; json_string "$command_token"; printf ','
     printf '"config":%s,' "$(tr -d '\n' < "$CONF" 2>/dev/null || echo '{}')"
-    printf '"log":'; json_string "$(tail -25 "$DIR/causentry.log" 2>/dev/null)"; printf '}'
+    printf '"log":'; json_log_string; printf '}'
   } > "$T"
   put "$T" "$APP_DIR/status.json"
   [ "$T" = "$DIR/.status.tmp" ] && mv -f "$T" "$DIR/status.json.tmp" 2>/dev/null || rm -f "$T" 2>/dev/null
