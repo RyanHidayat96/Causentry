@@ -171,13 +171,18 @@ zygisk_backend_installed() {
 }
 
 zygisk_pid_marker_alive() {
+  zygisk_pid_marker_alive_for "$1" system_server
+}
+
+zygisk_pid_marker_alive_for() {
   f="$1"
+  expected_process="$2"
   [ -s "$f" ] || return 1
   # The ready marker includes the hook count after the PID.
   read -r pid marker_details < "$f"
   case "$pid" in ""|*[!0-9]*) return 1;; esac
   [ -d "/proc/$pid" ] || return 1
-  tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q 'system_server'
+  tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -Fq "$expected_process"
 }
 
 zygisk_backend_loaded() {
@@ -191,6 +196,11 @@ zygisk_loader_active() {
 
 zygisk_cloak_ready() {
   zygisk_pid_marker_alive /data/system/causentry/zygisk.cloak.ready
+}
+
+zygisk_settings_provider_ready() {
+  zygisk_pid_marker_alive_for /data/system/causentry/zygisk.settings.ready \
+    com.android.providers.settings
 }
 
 zygisk_backend_status() {
@@ -340,26 +350,29 @@ root_cache_invalidate() {
   rm -f "$DIR/.rootapps.cache" "$DIR/.rootsuggest.cache" "$DIR/.rootapps.cache.ts"
 }
 
-# A per-app toggle only changes config targets/features. Re-running the full apply
-# path here makes the UI feel stuck because it also re-hides every detection
-# package and reapplies boot/global settings. Keep this hot path narrow, but still
-# refresh cloak metadata and restart the target process so the next launch observes
-# the new policy from its first checks.
-per_app_refresh() {
-  pkg="$1"
-  mode="${2:-app}"
-  log "per-app refresh: mode=$mode pkg=${pkg:-?}"
+# Rebuild only target-scoped package policy. Configuring an app or changing one
+# template must not re-run boot props, SUSFS, or control-APK installation.
+refresh_cloak_policy() {
   policy_rc=0
-  # Always generate policy. A template change must be durable before the hook
-  # comes online; gating this on readiness left cloak.json stale.
   if [ -x "$DIR/cloak.sh" ]; then
     sh "$DIR/cloak.sh" || policy_rc=1
   fi
   if cloak_backend_ready; then
-    log "per-app refresh: cloak policy updated (backend ready)"
+    log "cloak policy refreshed (backend ready)"
   else
-    log "per-app refresh: cloak policy updated; hook inactive"
+    log "cloak policy refreshed; hook inactive"
   fi
+  return "$policy_rc"
+}
+
+# A per-app toggle also restarts only that target, so its first process observes
+# the new policy. Template edits deliberately use refresh_cloak_policy() alone.
+per_app_refresh() {
+  pkg="$1"
+  mode="${2:-app}"
+  log "per-app refresh: mode=$mode pkg=${pkg:-?}"
+  refresh_cloak_policy
+  policy_rc=$?
   if valid_package_name "$pkg"; then
     am force-stop "$pkg" >/dev/null 2>&1 && log "force-stopped target after config change: $pkg"
   fi
@@ -436,9 +449,9 @@ read_dev_flags() {   # emits global=/secure=/mock= only when every read worked
   printf 'global=%s\nsecure=%s\nmock=%s\n' "$g" "$s" "${m:-0}"
 }
 
-save_dev_flags() {   # save_dev_flags <file> -> 0/1
+save_dev_flags() {   # save_dev_flags <file> [restore-dev=1] -> 0/1
   out=$(read_dev_flags) || return 1
-  printf '%s' "$out" > "$1"
+  printf '%s\nrestore_dev=%s\n' "$out" "${2:-1}" > "$1"
   cp -f "$1" "$DIR/devsaved.last" 2>/dev/null    # survives state cleanups
   return 0
 }
@@ -448,8 +461,12 @@ restore_dev_flags() {   # restore_dev_flags <file> -> 0/1
   g=$(sed -n 's/^global=//p' "$1"); s=$(sed -n 's/^secure=//p' "$1"); m=$(sed -n 's/^mock=//p' "$1")
   valid_flag "$g" || return 1
   valid_flag "$s" || return 1
-  settings put global development_settings_enabled "$g"
-  settings put secure development_settings_enabled "$s"
+  restore_dev=$(sed -n 's/^restore_dev=//p' "$1" | head -1)
+  # Older state files predate provider-side cloaking and must still restore dev mode.
+  [ "$restore_dev" = 0 ] || {
+    settings put global development_settings_enabled "$g"
+    settings put secure development_settings_enabled "$s"
+  }
   valid_flag "$m" && settings put secure mock_location "$m"
   return 0
 }

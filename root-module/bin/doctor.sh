@@ -17,6 +17,7 @@ echo "  resetprop       : ${rp:-absent}   -> boot property spoofing"
 echo "  ksu_susfs       : ${sf:-absent}   -> kernel-level path hiding  (variant: $(susfs_variant))"
 echo "  zygisk loader   : $(zygisk_backend_status)   -> system_server loader"
 echo "  cloak hook      : $(cloak_backend_ready && echo ready || echo inactive)   -> package cloak"
+echo "  settings hook   : $(zygisk_settings_provider_ready && echo ready || echo fallback-global)   -> per-target developer mode"
 echo
 echo "STATE"
 echo "  config          : $([ -f "$DIR/config.json" ] && echo ok || echo MISSING)"

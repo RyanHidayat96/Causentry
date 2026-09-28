@@ -17,6 +17,8 @@ CMD_DIR=$APP_DIR/cmd
 NL='
 '
 CHANGE_MARK=$DIR/.uirpc.changed
+COMMAND_LOCK=$DIR/uirpc.command.lock
+ROOT_REFRESH_PID=$DIR/.root-cache-refresh.pid
 
 app_uid() { stat -c %u "/data/data/$APP_PKG" 2>/dev/null; }
 
@@ -35,9 +37,14 @@ ensure_app_dirs() {
 put() {  # put <tmpfile> <dest>
   uid=$(app_uid)
   mkdir -p "$APP_DIR" 2>/dev/null
-  cp -f "$1" "$2" 2>/dev/null || return 1
-  chmod 600 "$2" 2>/dev/null
-  [ -n "$uid" ] && chown "$uid:$uid" "$2" 2>/dev/null
+  out_tmp="$2.tmp.$$"
+  cp -f "$1" "$out_tmp" 2>/dev/null || return 1
+  chmod 600 "$out_tmp" 2>/dev/null
+  [ -n "$uid" ] && chown "$uid:$uid" "$out_tmp" 2>/dev/null
+  mv -f "$out_tmp" "$2" 2>/dev/null || {
+    rm -f "$out_tmp" 2>/dev/null
+    return 1
+  }
   return 0
 }
 
@@ -62,6 +69,41 @@ list_has_line() {
 }
 
 mark_changed() { date +%s > "$CHANGE_MARK" 2>/dev/null; }
+
+acquire_command_lock() {
+  if mkdir "$COMMAND_LOCK" 2>/dev/null; then
+    echo "$$" > "$COMMAND_LOCK/pid" 2>/dev/null
+    return 0
+  fi
+  owner=$(cat "$COMMAND_LOCK/pid" 2>/dev/null)
+  if [ -z "$owner" ] || [ ! -d "/proc/$owner" ]; then
+    rm -f "$COMMAND_LOCK/pid" 2>/dev/null
+    rmdir "$COMMAND_LOCK" 2>/dev/null
+    if mkdir "$COMMAND_LOCK" 2>/dev/null; then
+      echo "$$" > "$COMMAND_LOCK/pid" 2>/dev/null
+      return 0
+    fi
+  fi
+  return 1
+}
+
+release_command_lock() {
+  owner=$(cat "$COMMAND_LOCK/pid" 2>/dev/null)
+  [ "$owner" = "$$" ] || return 0
+  rm -f "$COMMAND_LOCK/pid" 2>/dev/null
+  rmdir "$COMMAND_LOCK" 2>/dev/null
+}
+
+schedule_root_cache_refresh() {
+  root_cache_valid && return 0
+  pid=$(cat "$ROOT_REFRESH_PID" 2>/dev/null)
+  [ -n "$pid" ] && [ -d "/proc/$pid" ] && return 0
+  (
+    root_cache_refresh
+    mark_changed
+  ) >/dev/null 2>&1 &
+  echo "$!" > "$ROOT_REFRESH_PID" 2>/dev/null
+}
 
 complete_command() {
   token="$1"
@@ -120,8 +162,11 @@ snapshot() {
   apply_token=$(cat "$DIR/.apply.done.token" 2>/dev/null)
   command_rc=$(cat "$DIR/.command.rc" 2>/dev/null); case "$command_rc" in ""|*[!0-9]*) command_rc=0;; esac
   command_token=$(cat "$DIR/.command.done.token" 2>/dev/null)
-  rootapps=$(root_apps_cached | tr '\n' ',')
-  suggests=$(root_suggest_cached | tr '\n' ',')
+  # Root-app discovery calls PackageManager. Never put it on the command/status
+  # hot path; publish cached data and refresh it in the background instead.
+  schedule_root_cache_refresh
+  rootapps=$(cat "$DIR/.rootapps.cache" 2>/dev/null | tr '\n' ',')
+  suggests=$(cat "$DIR/.rootsuggest.cache" 2>/dev/null | tr '\n' ',')
   {
     printf '{"state":'; json_string "$state"
     printf ',"daemon":%s,"ts":%s,"age":%s' "$dalive" "$(date +%s)" "$dage"
@@ -180,6 +225,7 @@ apps_snapshot() {
 
 process_cmds() {
   [ -d "$CMD_DIR" ] || return 0
+  acquire_command_lock || return 0
   for f in "$CMD_DIR"/*.json; do
     [ -f "$f" ] || continue
     line=$(cat "$f" 2>/dev/null | tr -d '\n')
@@ -194,13 +240,24 @@ process_cmds() {
     }
     case "$act" in
       save)
-        targets=$(getf targets); denylist=$(getf denylist); hardened=$(getf hardened)
-        printf '%s' "$line" | grep -q '"denylist"' || denylist=$(jlist denylist | tr '\n' ',')
         templateName=$(getf templateName); templatePackages=$(getf templatePackages)
         templateDelete=$(getf templateDelete)
-        op=$(getf op)
-        ad=$(getf autoDevOff); hm=$(getf hideMockLocation); ah=$(getf alwaysHidden)
-        sf=$(getf susfs); hr=0; ui=$(getf uiApk)
+        op=$(getf op); scope=$(getf scope)
+        if [ "$scope" = template ]; then
+          # This command represents one template mutation, not a stale full-config
+          # replacement from the UI. Read every unrelated value at execution time.
+          targets=$(jlist targets | tr '\n' ',')
+          denylist=$(jlist denylist | tr '\n' ',')
+          hardened=$(jlist hardened | tr '\n' ',')
+          ad=$(jbool autoDevOff); hm=$(jbool hideMockLocation); ah=$(jbool alwaysHidden)
+          sf=$(jbool susfs); ui=$(jbool uiApk)
+        else
+          targets=$(getf targets); denylist=$(getf denylist); hardened=$(getf hardened)
+          printf '%s' "$line" | grep -q '"denylist"' || denylist=$(jlist denylist | tr '\n' ',')
+          ad=$(getf autoDevOff); hm=$(getf hideMockLocation); ah=$(getf alwaysHidden)
+          sf=$(getf susfs); ui=$(getf uiApk)
+        fi
+        hr=0
         tojson_arr() { printf '['; fl=1; for i in $(echo "$1" | tr ',' ' '); do valid_package_name "$i" || continue; [ $fl -eq 1 ] || printf ','; fl=0; json_string "$i"; done; printf ']'; }
         bj() { bool_json "$1"; }
         APPS_T="$DIR/.uirpc-appentries"
@@ -235,7 +292,12 @@ process_cmds() {
         if mv -f "$CONF_NEW" "$CONF" 2>/dev/null; then
           chmod 644 "$CONF"
           log "config saved (control-UI app)"
-          schedule_apply app "$op"
+          if [ "$scope" = template ]; then
+            refresh_cloak_policy >> "$LOG" 2>&1
+            complete_command "$op" "$?"
+          else
+            schedule_apply app "$op"
+          fi
           mark_changed
         else
           rm -f "$CONF_NEW"
@@ -284,13 +346,13 @@ process_cmds() {
         complete_command "$op" "$rc"
         ;;
     esac
-    snapshot
   done
+  release_command_lock
 }
 
 case "${1:-serve}" in
   snapshot) snapshot ;;
   apps)     apps_snapshot ;;
-  cmds)     process_cmds ;;
+  cmds)     process_cmds; snapshot ;;
   serve)    process_cmds; snapshot ;;
 esac

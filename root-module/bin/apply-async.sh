@@ -21,6 +21,15 @@ mark_changed() {
   date +%s > "$MARK" 2>/dev/null
 }
 
+publish_snapshot() {
+  [ -x "$DIR/uirpc.sh" ] || return 0
+  if command -v setsid >/dev/null 2>&1; then
+    setsid /system/bin/sh "$DIR/uirpc.sh" snapshot >/dev/null 2>&1 < /dev/null &
+  else
+    /system/bin/sh "$DIR/uirpc.sh" snapshot >/dev/null 2>&1 < /dev/null &
+  fi
+}
+
 log_async() {
   echo "$(date '+%m-%d %H:%M:%S') [apply-async] $*" >> "$LOG" 2>/dev/null
 }
@@ -80,5 +89,6 @@ while true; do
   [ -n "$current_token" ] && printf '%s' "$current_token" > "$DIR/.apply.done.token" 2>/dev/null
   log_async "apply finish mode=$MODE rc=$rc"
   mark_changed
+  publish_snapshot
   [ -f "$PENDING" ] || exit "$rc"
 done

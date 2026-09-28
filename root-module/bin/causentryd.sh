@@ -19,6 +19,8 @@ WATCHDOG_INTERVAL=${CAUSENTRY_WATCHDOG_INTERVAL:-5}
 UI_SERVE_INTERVAL=${CAUSENTRY_UI_SERVE_INTERVAL:-5}
 APP_SCAN_INTERVAL=${CAUSENTRY_APP_SCAN_INTERVAL:-120}
 ENSURE_UI_INTERVAL=${CAUSENTRY_ENSURE_UI_INTERVAL:-60}
+UI_CMD_DIR=/data/data/com.causentry.app/files/cmd
+UI_WATCH_PID=
 
 touch_heartbeat() { date +%s > "$DIR/heartbeat" 2>/dev/null; }
 
@@ -47,8 +49,44 @@ chmod 600 "$DIR/daemon.pid" 2>/dev/null
 
 cleanup() {
   [ -n "$WATCHDOG_PID" ] && kill "$WATCHDOG_PID" 2>/dev/null
+  stop_ui_command_watcher
 }
 trap cleanup INT TERM EXIT
+
+is_ui_command_watcher() {
+  pid="$1"
+  [ -n "$pid" ] && [ -d "/proc/$pid" ] || return 1
+  cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
+  case "$cmd" in *inotifyd*"$UI_CMD_DIR"*) return 0;; esac
+  return 1
+}
+
+stop_ui_command_watcher() {
+  pid=${UI_WATCH_PID:-$(cat "$DIR/.uirpc-watch.pid" 2>/dev/null)}
+  is_ui_command_watcher "$pid" && kill "$pid" 2>/dev/null
+  rm -f "$DIR/.uirpc-watch.pid" 2>/dev/null
+  UI_WATCH_PID=
+}
+
+start_ui_command_watcher() {
+  [ -x "$DIR/uirpc-wake.sh" ] || return 0
+  [ -d "$UI_CMD_DIR" ] || return 0
+  pid=$(cat "$DIR/.uirpc-watch.pid" 2>/dev/null)
+  if is_ui_command_watcher "$pid"; then
+    UI_WATCH_PID=$pid
+    return 0
+  fi
+  rm -f "$DIR/.uirpc-watch.pid" 2>/dev/null
+  command -v inotifyd >/dev/null 2>&1 || return 0
+  # UiBridge publishes a completed command by renaming cmd-*.tmp to cmd-*.json.
+  # For a watched directory, Toybox calls that "moved in" (`m`), not `y`
+  # ("moved out"). Watching the wrong direction silently fell back to the
+  # five-second watchdog.
+  inotifyd "$DIR/uirpc-wake.sh" "$UI_CMD_DIR":mn >/dev/null 2>&1 &
+  UI_WATCH_PID=$!
+  echo "$UI_WATCH_PID" > "$DIR/.uirpc-watch.pid" 2>/dev/null
+  log "UI command watcher started (pid $UI_WATCH_PID)"
+}
 
 any_target_running() {
   # kept for reference; the live gate is target_in_foreground (see lib.sh)
@@ -56,6 +94,13 @@ any_target_running() {
     if pidof "$t" >/dev/null 2>&1; then return 0; fi
   done
   return 1
+}
+
+developer_options_backend() { # developer_options_backend <want-dev> -> provider|global|off
+  case "$1" in
+    1) zygisk_settings_provider_ready && echo provider || echo global ;;
+    *) echo off ;;
+  esac
 }
 
 evaluate() {
@@ -67,11 +112,12 @@ evaluate() {
       [ "$(cat "$STATE" 2>/dev/null)" = "active" ] && deactivate
       return 0
     fi
-    desired="$fg:$want_dev:$want_mock"
+    dev_backend=$(developer_options_backend "$want_dev")
+    desired="$fg:$want_dev:$want_mock:$dev_backend"
     current=$(cat "$ACTIVE" 2>/dev/null)
     if [ "$(cat "$STATE" 2>/dev/null)" != "active" ] || [ "$current" != "$desired" ]; then
       [ "$(cat "$STATE" 2>/dev/null)" = "active" ] && deactivate
-      activate "$fg" "$want_dev" "$want_mock"
+      activate "$fg" "$want_dev" "$want_mock" "$dev_backend"
     fi
   else
     [ "$(cat "$STATE" 2>/dev/null)" = "idle" ] || deactivate
@@ -109,23 +155,28 @@ activate() {
   [ -n "$fg" ] || return 0
   want_dev="${2:-$(app_feat_or "$fg" devOff autoDevOff)}"
   want_mock="${3:-$(app_feat_or "$fg" mock hideMockLocation)}"
+  dev_backend="${4:-$(developer_options_backend "$want_dev")}"
   [ "$want_dev" = 1 ] || [ "$want_mock" = 1 ] || return 0
-  if [ ! -f "$SAVED" ]; then
-    wait_settings 15 || { log "cloak skipped: settings service not ready (flags not readable)"; return 0; }
-    if ! save_dev_flags "$SAVED"; then
-      log "cloak skipped: could not read the current dev flags safely"
-      return 0
+  needs_global_dev=0
+  [ "$want_dev" = 1 ] && [ "$dev_backend" != provider ] && needs_global_dev=1
+  if [ "$needs_global_dev" = 1 ] || [ "$want_mock" = 1 ]; then
+    if [ ! -f "$SAVED" ]; then
+      wait_settings 15 || { log "cloak skipped: settings service not ready (flags not readable)"; return 0; }
+      if ! save_dev_flags "$SAVED" "$needs_global_dev"; then
+        log "cloak skipped: could not read the current dev flags safely"
+        return 0
+      fi
+      log "saved original flags ($(tr '\n' ' ' < "$SAVED"))"
     fi
-    log "saved original flags ($(tr '\n' ' ' < "$SAVED"))"
   fi
-  if [ "$want_dev" = 1 ]; then
+  if [ "$needs_global_dev" = 1 ]; then
     settings put global development_settings_enabled 0
     settings put secure development_settings_enabled 0
   fi
   [ "$want_mock" = 1 ] && settings put secure mock_location 0
-  echo "$fg:$want_dev:$want_mock" > "$ACTIVE"
+  echo "$fg:$want_dev:$want_mock:$dev_backend" > "$ACTIVE"
   echo active > "$STATE"
-  log "cloak ON ($fg devOff=$want_dev mock=$want_mock)"
+  log "cloak ON ($fg devOff=$want_dev via=$dev_backend mock=$want_mock)"
 }
 
 deactivate() {
@@ -147,6 +198,7 @@ log "power profile: watchdog=${WATCHDOG_INTERVAL}s ui=${UI_SERVE_INTERVAL}s appS
 # initial sync with reality (foreground only)
 locked_evaluate
 ensure_ui
+start_ui_command_watcher
 touch_heartbeat
 
 # watchdog: keeps the state honest even if events were missed
@@ -170,6 +222,7 @@ touch_heartbeat
     n=$((n+WATCHDOG_INTERVAL))
     touch_heartbeat
     [ $((n % ENSURE_UI_INTERVAL)) -eq 0 ] && ensure_ui
+    start_ui_command_watcher
     # control-UI app: run its pending commands + refresh the state snapshot
     if [ -f "$DIR/uirpc.sh" ] && [ $((n % UI_SERVE_INTERVAL)) -eq 0 ]; then
       timeout 8 sh "$DIR/uirpc.sh" serve >/dev/null 2>&1

@@ -14,8 +14,8 @@ import java.util.Set;
  * Bridge between the native UI and the root daemon.
  *
  * The app never needs root: it reads the snapshot the daemon leaves in its own
- * private files dir and drops command files next to it. The daemon picks them up
- * on its next cycle (about 5 seconds).
+ * private files dir and drops command files next to it. Commands are published
+ * by an atomic rename so the daemon never reads a partially written request.
  */
 public class UiBridge {
 
@@ -100,12 +100,18 @@ public class UiBridge {
             if (!dir.exists() && !dir.mkdirs()) {
                 return "{\"ok\":false,\"error\":\"cannot create command dir\"}";
             }
-            File f = new File(dir, "cmd-" + System.currentTimeMillis() + ".json");
-            FileOutputStream out = new FileOutputStream(f);
+            String id = "cmd-" + System.nanoTime();
+            File tmp = new File(dir, id + ".tmp");
+            File f = new File(dir, id + ".json");
+            FileOutputStream out = new FileOutputStream(tmp);
             try {
                 out.write(obj.toString().getBytes("UTF-8"));
             } finally {
                 out.close();
+            }
+            if (!tmp.renameTo(f)) {
+                tmp.delete();
+                return "{\"ok\":false,\"error\":\"cannot publish command\"}";
             }
             return "{\"ok\":true}";
         } catch (Exception e) {
@@ -167,6 +173,8 @@ public class UiBridge {
             if (!template.isEmpty() && !isTemplateName(template)) return false;
         }
         if ("save".equals(action)) {
+            String scope = obj.optString("scope", "");
+            if (!scope.isEmpty() && !"template".equals(scope)) return false;
             String template = obj.optString("templateName", "");
             if (!template.isEmpty() && !isTemplateName(template)) return false;
             String templateDelete = obj.optString("templateDelete", "");

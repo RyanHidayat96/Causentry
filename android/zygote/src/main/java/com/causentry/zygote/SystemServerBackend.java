@@ -65,6 +65,18 @@ final class SystemServerBackend {
         }
     }
 
+    static void markSettingsProviderReady(int hookCount) {
+        try {
+            if (!STATE_DIR.exists() && !STATE_DIR.mkdirs()) {
+                throw new IllegalStateException("cannot create " + STATE_DIR);
+            }
+            writeMarker("zygisk.settings.ready", Integer.toString(Process.myPid()) + " " + hookCount);
+            Log.i(TAG, "settings provider cloak ready hooks=" + hookCount);
+        } catch (Throwable error) {
+            Log.e(TAG, "failed to write settings-ready marker", error);
+        }
+    }
+
     private static void writeMarker(String name, String value) throws Exception {
         File target = new File(STATE_DIR, name);
         File temporary = new File(STATE_DIR, "." + name + ".tmp");

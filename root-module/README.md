@@ -35,12 +35,15 @@ Pick an app in the control UI, choose its bypass, press **Apply for this app**:
 "apps": { "com.example.target": { "devOff": true, "mock": true, "hideTemplate": "banking" } }
 ```
 
-* `devOff` - hide the developer-options flag only while that app runs
+* `devOff` - hide developer-options reads for that app without changing the device
+  setting when the bundled SettingsProvider hook is active
 * `mock`   - force `mock_location=0` and apply the target-scoped hidden-app template while it runs
 * apps without an entry fall back to the global toggles (`autoDevOff`, `hideMockLocation`)
 
-The daemon resolves the running app's own feature set on every activation, and restores
-the real flags as soon as no protected app is in the foreground.
+The daemon resolves each app's own feature set. Mock-location is restored as soon as
+no protected app is in the foreground. Developer mode uses a caller-scoped
+SettingsProvider response when its Zygisk hook is live; otherwise it falls back to
+the foreground-only global flag toggle.
 
 New installations start with no hidden-app template. Create one in **Templates** before
 assigning it to a protected app.
@@ -57,7 +60,7 @@ CLI equivalent: `APP_PKG_NEW=com.x APP_FEATS_NEW=devOff,mock APP_HIDE_TEMPLATE_N
 | `denylist` | legacy global list; native UI writes it empty |
 | `hideTemplates` | named package lists hidden from target apps; starts empty and each protected app chooses one template |
 | `root_packages` | extra root-indicator candidates shown for quick add |
-| `autoDevOff` | hide the developer-options flag while a target runs |
+| `autoDevOff` | enable developer-mode hiding for targets without an explicit app setting |
 | `hideMockLocation` | force `mock_location=0`; package hiding follows the app's `hideTemplate` |
 | `alwaysHidden` | keep flags hidden permanently (dev menu stays hidden too) |
 | `susfs` | kernel-level path hiding when SUSFS is available |
@@ -91,6 +94,11 @@ launcher app (disable with `"uiApk": false`). The app:
   `status.json` / `apps.json` there and executes the commands the app queues in `files/cmd/`,
 * therefore needs **no root prompt, no LSPosed, no Vector, no web server and no network**.
 
+Saving a hidden-app template is a narrow operation: it atomically saves the template
+and refreshes only `cloak.json`. It does not re-run boot-property spoofing, SUSFS, or
+the APK-install check. Use **Re-sync** only when a full module apply is intended. The
+APK shows `WAITING` until the daemon confirms completion.
+
 `127.0.0.1:8899` (busybox httpd) still exists for the browser and for automation
 (`webroot/cgi-bin/api.sh`), and the daemon restarts it if it dies - but nothing depends
 on it: if busybox is missing the app keeps working.
@@ -117,12 +125,13 @@ or use the module Action flow instead.
 - Physical package hiding is deprecated. The normal path keeps Magisk, fake-GPS apps,
   and other selected packages installed and visible to the user.
 - Target-scoped package invisibility requires the bundled Zygisk ART hook layer to be
-  active in `system_server`.
+  active in `system_server`; developer-mode cloaking additionally uses the framework
+  SettingsProvider hook.
   Without it, Causentry saves the list and avoids destructive fallback.
 - The release build bundles the ZygoteLoader backend from `android/zygote/`:
   `classes.dex`, `packages/android`, and the four ABI loader libraries. It hooks
-  Package Manager queries inside `system_server` and writes the ready marker when
-  the hook set is installed. `CAUSENTRY_EXCLUDE_ZYGISK=1` intentionally omits it.
+  Package Manager queries inside `system_server` and developer-options reads in
+  SettingsProvider. `CAUSENTRY_EXCLUDE_ZYGISK=1` intentionally omits it.
 - `zygisk-src/` contains the older native stage-1 diagnostic implementation and is
   not the release package-cloaking backend.
 - The watch daemon is currently implemented in shell (`bin/causentryd.sh`). Porting

@@ -247,8 +247,15 @@ if ($IncludeZygisk) {
   foreach ($dex in $zygoteDex) {
     Copy-Item $dex.FullName (Join-Path $Mod $dex.Name) -Force
   }
-  New-Item -ItemType Directory -Force -Path (Join-Path $Mod "packages") | Out-Null
-  Copy-Item (Join-Path $zygoteStage "packages\android") (Join-Path $Mod "packages\android") -Force
+  $zygotePackages = Join-Path $zygoteStage "packages"
+  $modulePackages = Join-Path $Mod "packages"
+  $packageMarkers = Get-ChildItem $zygotePackages -File -ErrorAction SilentlyContinue
+  if (-not $packageMarkers) { Die "ZygoteLoader build has no package markers" }
+  New-Item -ItemType Directory -Force -Path $modulePackages | Out-Null
+  Get-ChildItem $modulePackages -File -ErrorAction SilentlyContinue | Remove-Item -Force
+  foreach ($marker in $packageMarkers) {
+    Copy-Item $marker.FullName (Join-Path $modulePackages $marker.Name) -Force
+  }
   $zygiskDest = Join-Path $Mod "zygisk"
   New-Item -ItemType Directory -Force -Path $zygiskDest | Out-Null
   Get-ChildItem $zygiskDest -Filter *.so -File -ErrorAction SilentlyContinue | Remove-Item -Force
@@ -264,7 +271,7 @@ if ($IncludeZygisk) {
     Add-Content -Path $PropPath -Value "attachNativeLibs=false"
   }
   $backendClasses = (Get-ChildItem (Join-Path $zygoteStage "zygisk") -Filter *.so -File).Count
-  Say ("   backend ok : {0} DEX file(s) + packages/android + {1} Zygisk loader libraries" -f $zygoteDex.Count, $backendClasses) "Green"
+  Say ("   backend ok : {0} DEX file(s) + {1} package marker(s) + {2} Zygisk loader libraries" -f $zygoteDex.Count, $packageMarkers.Count, $backendClasses) "Green"
 } else {
   Say "   backend    : excluded by CAUSENTRY_EXCLUDE_ZYGISK=1" "DarkGray"
 }
@@ -324,7 +331,7 @@ try {
     Die "zip validation failed: payload/Causentry.apk is missing"
   }
   if ($IncludeZygisk) {
-    foreach ($required in @("classes.dex", "packages/android", "zygisk/arm64-v8a.so")) {
+    foreach ($required in @("classes.dex", "packages/android", "packages/com.android.providers.settings", "zygisk/arm64-v8a.so")) {
       if (-not $zipCheck.GetEntry($required)) { Die "zip validation failed: $required is missing" }
     }
     if ($prop -notmatch '(?m)^entrypoint=com\.causentry\.zygote\.ZygoteEntry$') {

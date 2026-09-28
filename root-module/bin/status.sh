@@ -17,3 +17,4 @@ echo "hidden pkgs  : $([ -f "$DIR/hidden_packages" ] && tr '\n' ' ' < "$DIR/hidd
 echo "susfs        : $(susfs_variant)"
 echo "zygisk       : $(zygisk_backend_status)"
 echo "cloak hook   : $(cloak_backend_ready && echo ready || echo inactive)"
+echo "settings hook: $(zygisk_settings_provider_ready && echo ready || echo fallback-global)"

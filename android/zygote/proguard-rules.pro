@@ -9,6 +9,8 @@
 -keep class com.causentry.zygote.AppZygoteHooks { *; }
 -keep class com.causentry.zygote.SystemServerBackend { *; }
 -keep class com.causentry.zygote.CloakPolicy { *; }
+-keep class com.causentry.zygote.SettingsProviderBackend { *; }
+-keep class com.causentry.zygote.SettingsProviderHooks { *; }
 
 # Pinned AndroidVMTools / PanamaPort uses reflection and hidden ART members.
 -dontwarn com.v7878.**

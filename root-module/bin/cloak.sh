@@ -92,6 +92,17 @@ for t in $(jlist targets); do
   first=0
   json_string "$t" >> "$T"
 done
+printf '],"developerOptionsUids":[' >> "$T"
+first=1
+for t in $(jlist targets); do
+  valid_package_name "$t" || continue
+  [ "$(app_feat_or "$t" devOff autoDevOff)" = 1 ] || continue
+  u=$(uid_of "$t")
+  [ -n "$u" ] || continue
+  [ $first -eq 1 ] || printf ',' >> "$T"
+  first=0
+  printf '%s' "$u" >> "$T"
+done
 printf ']}' >> "$T"
 
 # Publish a complete policy so concurrent PackageManager calls never read half a save.

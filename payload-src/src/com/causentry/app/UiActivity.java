@@ -9,6 +9,7 @@ import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.FileObserver;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
@@ -81,6 +82,7 @@ public class UiActivity extends Activity {
     private JSONObject config = new JSONObject();
     private final List<AppEntry> apps = new ArrayList<>();
     private final Map<String, String> labels = new HashMap<>();
+    private final Map<String, Boolean> systemPackages = new HashMap<>();
     private final Map<String, JSONObject> appConfig = new HashMap<>();
     private final List<String> targets = new ArrayList<>();
     private final List<String> hardened = new ArrayList<>();
@@ -102,6 +104,18 @@ public class UiActivity extends Activity {
     private int appFilter = FILTER_USER;
     private int hiddenFilter = FILTER_USER;
     private boolean rendering;
+    private boolean catalogLoaded;
+    private boolean operationInFlight;
+    private String operationLabel = "";
+    private FileObserver snapshotObserver;
+    private Runnable activeWait;
+    private boolean waitTickQueued;
+    private final Runnable waitTick = new Runnable() {
+        @Override public void run() {
+            waitTickQueued = false;
+            if (activeWait != null) activeWait.run();
+        }
+    };
 
     private static final int TAB_APPS = 0;
     private static final int TAB_TEMPLATES = 1;
@@ -124,6 +138,7 @@ public class UiActivity extends Activity {
             return;
         }
         bridge = new UiBridge(this);
+        startSnapshotObserver();
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
         if (Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(true);
@@ -170,6 +185,27 @@ public class UiActivity extends Activity {
         readAll();
         render();
         command(json("action", "refresh"));
+    }
+
+    @Override
+    protected void onDestroy() {
+        clearActiveWait();
+        if (snapshotObserver != null) {
+            snapshotObserver.stopWatching();
+            snapshotObserver = null;
+        }
+        super.onDestroy();
+    }
+
+    private void startSnapshotObserver() {
+        snapshotObserver = new FileObserver(getFilesDir().getAbsolutePath(),
+                FileObserver.CLOSE_WRITE | FileObserver.MOVED_TO) {
+            @Override public void onEvent(int event, String path) {
+                if (!"status.json".equals(path)) return;
+                handler.post(() -> triggerActiveWait());
+            }
+        };
+        snapshotObserver.startWatching();
     }
 
     @Override
@@ -235,6 +271,7 @@ public class UiActivity extends Activity {
         refresh.setBackgroundColor(Color.TRANSPARENT);
         refresh.setColorFilter(FG);
         refresh.setOnClickListener(v -> {
+            invalidateCatalog();
             readAll();
             render();
             command(json("action", "refresh"));
@@ -262,7 +299,15 @@ public class UiActivity extends Activity {
         readStatus();
         config = status.optJSONObject("config");
         if (config == null) config = new JSONObject();
+        ensureCatalog();
+        readLists();
+        readApps();
+    }
+
+    private void ensureCatalog() {
+        if (catalogLoaded) return;
         labels.clear();
+        systemPackages.clear();
         try {
             JSONObject got = new JSONObject(bridge.labels());
             JSONArray names = got.names();
@@ -271,8 +316,21 @@ public class UiActivity extends Activity {
                 labels.put(k, got.optString(k, k));
             }
         } catch (Throwable ignored) {}
-        readLists();
-        readApps();
+        try {
+            List<android.content.pm.ApplicationInfo> installed =
+                    getPackageManager().getInstalledApplications(0);
+            for (android.content.pm.ApplicationInfo ai : installed) {
+                if (ai == null || !isPackageName(ai.packageName)) continue;
+                systemPackages.put(ai.packageName, (ai.flags
+                        & (android.content.pm.ApplicationInfo.FLAG_SYSTEM
+                        | android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0);
+            }
+        } catch (Throwable ignored) {}
+        catalogLoaded = true;
+    }
+
+    private void invalidateCatalog() {
+        catalogLoaded = false;
     }
 
     private void readStatus() {
@@ -333,23 +391,19 @@ public class UiActivity extends Activity {
                 byPkg.put(pkg, e);
             }
         } catch (Throwable ignored) {}
-        try {
-            List<android.content.pm.ApplicationInfo> installed = getPackageManager().getInstalledApplications(0);
-            for (android.content.pm.ApplicationInfo ai : installed) {
-                if (ai == null || !isPackageName(ai.packageName)) continue;
-                AppEntry e = byPkg.get(ai.packageName);
+        for (Map.Entry<String, Boolean> installed : systemPackages.entrySet()) {
+            String pkg = installed.getKey();
+            AppEntry e = byPkg.get(pkg);
                 if (e == null) {
                     e = new AppEntry();
-                    e.pkg = ai.packageName;
+                    e.pkg = pkg;
                     byPkg.put(e.pkg, e);
                 }
                 e.prot = e.prot || targets.contains(e.pkg);
                 e.hardened = e.hardened || hardened.contains(e.pkg);
                 e.hidden = e.hidden || hiddenInAnyTemplate(e.pkg);
-                e.system = (ai.flags & (android.content.pm.ApplicationInfo.FLAG_SYSTEM
-                        | android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0;
-            }
-        } catch (Throwable ignored) {}
+                e.system = installed.getValue();
+        }
         apps.addAll(byPkg.values());
         Collections.sort(apps, this::compareApps);
     }
@@ -367,6 +421,7 @@ public class UiActivity extends Activity {
         else if (templateDetail) renderTemplateDetail();
         else renderHome();
         rendering = false;
+        updateOperationButton();
         // switching tab / page must start the page at the top, never mid-scroll
         if (shellScroll != null && !viewKey().equals(before)) shellScroll.scrollTo(0, 0);
     }
@@ -387,13 +442,68 @@ public class UiActivity extends Activity {
         title.setText(detailMode ? label(selectedPkg) : (templateDetail ? currentTemplate : "Causentry"));
         subtitle.setText(detailMode ? selectedPkg
                 : (templateDetail ? templatePackages(currentTemplate).size() + " hidden apps" : ""));
-        pill.setText(!daemon ? "STOPPED" : ("active".equals(state) ? "ACTIVE" : "STANDBY"));
-        int c = !daemon ? DANGER : ("active".equals(state) ? OK : WARN);
+        pill.setText(operationInFlight ? "WAITING"
+                : (!daemon ? "STOPPED" : ("active".equals(state) ? "ACTIVE" : "STANDBY")));
+        int c = operationInFlight ? ACCENT : (!daemon ? DANGER : ("active".equals(state) ? OK : WARN));
         pill.setTextColor(c);
         pill.setBackground(round(Color.TRANSPARENT, c, 18));
         boolean showBottom = detailMode || templateDetail;
         if (bottomBar != null) bottomBar.setVisibility(showBottom ? View.VISIBLE : View.GONE);
         bottomApply.setVisibility(showBottom ? View.VISIBLE : View.GONE);
+    }
+
+    private boolean canStartOperation() {
+        if (!operationInFlight) return true;
+        toast("Waiting for current change");
+        return false;
+    }
+
+    private void beginOperation(String label) {
+        clearActiveWait();
+        operationInFlight = true;
+        operationLabel = label;
+        updateToolbar();
+        updateOperationButton();
+        toast(label);
+    }
+
+    private void setOperationLabel(String label) {
+        operationLabel = label;
+        updateOperationButton();
+    }
+
+    private void finishOperation() {
+        clearActiveWait();
+        operationInFlight = false;
+        operationLabel = "";
+        updateToolbar();
+        updateOperationButton();
+    }
+
+    private void updateOperationButton() {
+        if (bottomApply == null) return;
+        bottomApply.setEnabled(!operationInFlight);
+        bottomApply.setAlpha(operationInFlight ? 0.72f : 1f);
+        if (operationInFlight && !operationLabel.isEmpty()) bottomApply.setText(operationLabel);
+    }
+
+    private void clearActiveWait() {
+        activeWait = null;
+        waitTickQueued = false;
+        handler.removeCallbacks(waitTick);
+    }
+
+    private void scheduleActiveWaitCheck(long delayMs) {
+        if (activeWait == null || waitTickQueued) return;
+        waitTickQueued = true;
+        handler.postDelayed(waitTick, delayMs);
+    }
+
+    private void triggerActiveWait() {
+        if (activeWait == null) return;
+        handler.removeCallbacks(waitTick);
+        waitTickQueued = false;
+        scheduleActiveWaitCheck(0);
     }
 
     private void renderHome() {
@@ -609,9 +719,9 @@ public class UiActivity extends Activity {
         LinearLayout buttons = rowBase(false);
         Button apply = button("Re-sync", false);
         apply.setOnClickListener(v -> {
+            if (!canStartOperation()) return;
             String op = op();
-            command(json("action", "apply", "op", op));
-            waitApply(op, "Applying...");
+            if (command(json("action", "apply", "op", op))) waitApply(op, "Applying...");
         });
         Button log = button("Log", false);
         log.setOnClickListener(v -> showLog());
@@ -693,6 +803,7 @@ public class UiActivity extends Activity {
     }
 
     private void applyDetail(Switch dev, Switch mock, Switch isolate, Spinner sp) {
+        if (!canStartOperation()) return;
         String tpl = "";
         List<String> names = templateNames();
         if (sp != null && !names.isEmpty()) {
@@ -705,15 +816,18 @@ public class UiActivity extends Activity {
         if (isolate.isChecked()) feats.add("isolate");
         String op = op();
         if (feats.isEmpty() && templatePackages(tpl).isEmpty()) {
-            command(json("action", "delapp", "pkg", selectedPkg, "op", op));
-            waitCommand(op, "", "Protection removed", true);
+            if (command(json("action", "delapp", "pkg", selectedPkg, "op", op))) {
+                waitCommand(op, "", "Protection removed", true);
+            }
         } else {
-            command(json("action", "setapp", "pkg", selectedPkg, "features", join(feats), "template", tpl, "op", op));
-            waitCommand(op, tpl, "Applied: " + label(selectedPkg), false);
+            if (command(json("action", "setapp", "pkg", selectedPkg, "features", join(feats), "template", tpl, "op", op))) {
+                waitCommand(op, tpl, "Applied: " + label(selectedPkg), false);
+            }
         }
     }
 
     private void saveTemplates() {
+        if (!canStartOperation()) return;
         if (!templates.containsKey(currentTemplate)) return;
         saveTemplate(currentTemplate, templatePackages(currentTemplate), "", "Saving and applying...");
     }
@@ -725,50 +839,80 @@ public class UiActivity extends Activity {
         JSONObject cmd = new JSONObject();
         try {
             cmd.put("action", "save");
+            cmd.put("scope", "template");
             cmd.put("op", op);
-            cmd.put("targets", join(targets));
-            cmd.put("hardened", join(hardened));
             cmd.put("templateName", name == null ? "" : name);
             cmd.put("templatePackages", join(savedPackages));
             if (isTemplateName(deleteName)) cmd.put("templateDelete", deleteName);
-            cmd.put("autoDevOff", status.optBoolean("autoDevOff", true) ? 1 : 0);
-            cmd.put("hideMockLocation", status.optBoolean("hideMockLocation", true) ? 1 : 0);
-            cmd.put("alwaysHidden", status.optBoolean("alwaysHidden", false) ? 1 : 0);
-            cmd.put("susfs", status.optBoolean("susfsOn", true) ? 1 : 0);
-            cmd.put("uiApk", status.optBoolean("uiApk", true) ? 1 : 0);
         } catch (Throwable ignored) {}
-        command(cmd);
-        waitApply(op, message);
+        if (command(cmd)) waitTemplateSave(op, message);
+        else {
+            clearPendingTemplateSave(op);
+            readAll();
+            render();
+        }
     }
 
     private void waitApply(String token, String msg) {
-        toast(msg);
+        beginOperation(msg);
         final int[] tries = {0};
         Runnable r = new Runnable() {
             public void run() {
+                if (activeWait != this) return;
                 tries[0]++;
                 readStatus();
-                boolean done = token.equals(status.optString("applyToken", "")) && !status.optBoolean("applyBusy", false);
+                boolean done = token.equals(status.optString("applyToken", ""))
+                        && !status.optBoolean("applyBusy", false);
                 if (done) {
                     boolean success = status.optInt("applyRc", 1) == 0;
                     readAll();
+                    finishOperation();
+                    toast(success ? "Applied" : "Apply failed");
+                    render();
+                } else {
+                    if (tries[0] == 12) setOperationLabel("Applying protection...");
+                    if (tries[0] == 60) setOperationLabel("Still applying...");
+                    scheduleActiveWaitCheck(tries[0] < 60 ? 500 : 2000);
+                }
+            }
+        };
+        activeWait = r;
+        scheduleActiveWaitCheck(0);
+    }
+
+    private void waitTemplateSave(String token, String msg) {
+        beginOperation(msg);
+        final int[] tries = {0};
+        Runnable r = new Runnable() {
+            public void run() {
+                if (activeWait != this) return;
+                tries[0]++;
+                readStatus();
+                boolean done = token.equals(status.optString("commandToken", ""));
+                if (done) {
+                    boolean success = status.optInt("commandRc", 1) == 0;
+                    readAll();
                     if (success && !pendingTemplateSaveReflected(token)) {
-                        if (tries[0] == 120) toast("Saved. Waiting for state refresh");
-                        handler.postDelayed(this, tries[0] < 120 ? 500 : 2000);
+                        setOperationLabel("Refreshing saved state...");
+                        scheduleActiveWaitCheck(tries[0] < 60 ? 500 : 2000);
                         return;
                     }
                     clearPendingTemplateSave(token);
-                    readAll();
+                    finishOperation();
                     if (success) {
                         toast(templateCloakNeeded() && !status.optBoolean("cloakReady", false)
                                 ? "Saved. Package hiding unavailable: Zygisk hook inactive" : "Done");
-                    } else toast("Apply failed");
+                    } else toast("Save failed");
                     render();
-                } else if (tries[0] < 120) handler.postDelayed(this, 500);
-                else toast("Queued - still applying");
+                } else {
+                    if (tries[0] == 12) setOperationLabel("Saving policy...");
+                    if (tries[0] == 60) setOperationLabel("Still saving...");
+                    scheduleActiveWaitCheck(tries[0] < 60 ? 500 : 2000);
+                }
             }
         };
-        handler.postDelayed(r, 500);
+        activeWait = r;
+        scheduleActiveWaitCheck(0);
     }
 
     private void stagePendingTemplateSave(String token, String name, List<String> packages, String deleteName) {
@@ -810,16 +954,22 @@ public class UiActivity extends Activity {
     }
 
     private void waitCommand(String token, String template, String success, boolean removing) {
-        toast("Saving...");
+        beginOperation("Saving...");
         final int[] tries = {0};
         Runnable r = new Runnable() {
             public void run() {
+                if (activeWait != this) return;
                 tries[0]++;
-                readAll();
+                readStatus();
                 boolean reported = token.equals(status.optString("commandToken", ""));
-                boolean legacyApplied = !status.has("commandToken") && tries[0] >= 12
-                        && legacyCommandApplied(template, removing);
+                boolean legacyApplied = false;
+                if (!reported && !status.has("commandToken") && tries[0] >= 12) {
+                    readAll();
+                    legacyApplied = legacyCommandApplied(template, removing);
+                }
                 if (reported || legacyApplied) {
+                    readAll();
+                    finishOperation();
                     if (legacyApplied || status.optInt("commandRc", 1) == 0) {
                         toast(!templatePackages(template).isEmpty() && !status.optBoolean("cloakReady", false)
                                 ? "Saved. Package hiding unavailable: Zygisk hook inactive" : success);
@@ -827,11 +977,15 @@ public class UiActivity extends Activity {
                         selectedPkg = null;
                         render();
                     } else toast("Save failed");
-                } else if (tries[0] < 40) handler.postDelayed(this, 500);
-                else toast("Queued - waiting for daemon");
+                } else {
+                    if (tries[0] == 12) setOperationLabel("Applying policy...");
+                    if (tries[0] == 60) setOperationLabel("Still applying...");
+                    scheduleActiveWaitCheck(tries[0] < 60 ? 500 : 2000);
+                }
             }
         };
-        handler.postDelayed(r, 500);
+        activeWait = r;
+        scheduleActiveWaitCheck(0);
     }
 
     private boolean legacyCommandApplied(String template, boolean removing) {
@@ -849,6 +1003,7 @@ public class UiActivity extends Activity {
     }
 
     private void createTemplate(String name) {
+        if (!canStartOperation()) return;
         name = name == null ? "" : name.trim();
         if (!isTemplateName(name)) { toast("Invalid template name"); return; }
         if (templates.containsKey(name)) { toast("Template already exists"); return; }
@@ -872,6 +1027,7 @@ public class UiActivity extends Activity {
     }
 
     private void renameTemplate(String name) {
+        if (!canStartOperation()) return;
         String oldName = currentTemplate;
         name = name == null ? "" : name.trim();
         if (!isTemplateName(name)) { toast("Invalid template name"); return; }
@@ -897,6 +1053,7 @@ public class UiActivity extends Activity {
     }
 
     private void deleteTemplate(String name) {
+        if (!canStartOperation()) return;
         if (!templates.containsKey(name)) return;
         templates.remove(name);
         currentTemplate = "";
@@ -1256,7 +1413,14 @@ public class UiActivity extends Activity {
         return parts.length == 0 ? String.valueOf(pkg) : parts[parts.length - 1];
     }
 
-    private void command(JSONObject obj) { try { bridge.command(obj.toString()); } catch (Throwable ignored) {} }
+    private boolean command(JSONObject obj) {
+        try {
+            JSONObject result = new JSONObject(bridge.command(obj.toString()));
+            if (result.optBoolean("ok", false)) return true;
+        } catch (Throwable ignored) {}
+        toast("Could not queue change");
+        return false;
+    }
 
     private JSONObject json(String... kv) {
         JSONObject o = new JSONObject();
@@ -1483,10 +1647,14 @@ public class UiActivity extends Activity {
     }
 
     private boolean isSystemPackage(String pkg) {
+        Boolean cached = systemPackages.get(pkg);
+        if (cached != null) return cached;
         try {
             android.content.pm.ApplicationInfo ai = getPackageManager().getApplicationInfo(pkg, 0);
-            return (ai.flags & (android.content.pm.ApplicationInfo.FLAG_SYSTEM
+            boolean system = (ai.flags & (android.content.pm.ApplicationInfo.FLAG_SYSTEM
                     | android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0;
+            systemPackages.put(pkg, system);
+            return system;
         } catch (Throwable ignored) {
             return false;
         }

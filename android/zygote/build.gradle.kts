@@ -53,11 +53,17 @@ android {
 }
 
 zygisk {
-    packages(ZygoteLoader.PACKAGE_SYSTEM_SERVER)
+    // PackageManager visibility hooks belong in system_server. SettingsProvider is
+    // included separately so developer-mode reads can be answered per caller UID
+    // before a protected app has a chance to cache the real value.
+    packages(
+        ZygoteLoader.PACKAGE_SYSTEM_SERVER,
+        "com.android.providers.settings",
+    )
     id = "causentry"
     name = "Causentry"
     author = "exery"
-    description = "Causentry system_server package-cloak backend"
+    description = "Causentry system-side package and Settings cloak backend"
     entrypoint = "com.causentry.zygote.ZygoteEntry"
     archiveName = "Causentry-Zygisk"
     isAddVariantToArchiveName = false

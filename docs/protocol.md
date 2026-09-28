@@ -3,7 +3,14 @@
 The active control protocol is intentionally small and local.
 
 - APK UI: the daemon writes `status.json`, `apps.json`, `root_apps.txt`, and logs into
-  the APK private files directory. The UI queues JSON command files in `files/cmd/`.
+  the APK private files directory. The UI writes a temporary command then atomically
+  renames it into `files/cmd/`; the daemon consumes it through `inotifyd` when
+  available, with the 5-second watchdog as a fallback.
+- Snapshots are also published by atomic rename. The native UI watches `status.json`
+  only while an operation is pending, so a save receives completion promptly without
+  continuously rebuilding the visible screen or interrupting text input.
+- Template saves rebuild only the target-scoped `cloak.json` policy. **Re-sync** is
+  the explicit full apply path for boot props, SUSFS, and control-APK maintenance.
 - Browser UI: `root-module/webroot/cgi-bin/api.sh` exposes the same actions over
   `127.0.0.1:8899` only, guarded by `/data/adb/causentry/ui.token`.
 - Commands are allowlisted by action and package names are validated before mutation.

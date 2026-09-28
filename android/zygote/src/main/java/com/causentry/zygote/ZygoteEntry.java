@@ -9,7 +9,7 @@ import com.v7878.r8.annotations.DoNotShrink;
 import com.v7878.r8.annotations.DoNotShrinkType;
 import com.v7878.zygisk.ZygoteLoader;
 
-/** Entry point invoked by ZygoteLoader in system_server only. */
+/** Entry point invoked by ZygoteLoader only in Causentry's system-side processes. */
 @SuppressWarnings("all")
 @DoNotObfuscateType
 @DoNotShrinkType
@@ -26,13 +26,20 @@ public class ZygoteEntry {
     @DoNotObfuscate
     @DoNotShrink
     public static void main() throws Throwable {
-        Log.i(TAG, "Injected into " + ZygoteLoader.getPackageName()
+        String packageName = ZygoteLoader.getPackageName();
+        String processName = ZygoteLoader.getProcessName();
+        Log.i(TAG, "Injected into " + packageName + "/" + processName
                 + " uid=" + Process.myUid() + " pid=" + Process.myPid());
         try {
-            SystemServerBackend.start();
-            Log.i(TAG, "Done");
+            if (ZygoteLoader.PACKAGE_SYSTEM_SERVER.equals(packageName)) {
+                SystemServerBackend.start();
+            } else if (SettingsProviderBackend.PACKAGE_NAME.equals(packageName)) {
+                SettingsProviderBackend.start();
+            } else {
+                Log.w(TAG, "Ignoring unconfigured package " + packageName);
+            }
         } catch (Throwable error) {
-            Log.e(TAG, "system_server backend failed", error);
+            Log.e(TAG, "backend failed for " + packageName, error);
         }
     }
 }
