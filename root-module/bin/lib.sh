@@ -199,8 +199,11 @@ zygisk_cloak_ready() {
 }
 
 zygisk_settings_provider_ready() {
-  zygisk_pid_marker_alive_for /data/system/causentry/zygisk.settings.ready \
-    com.android.providers.settings
+  # MIUI hosts SettingsProvider inside system_server; AOSP commonly starts its
+  # dedicated provider process. The hook marker is valid in either host.
+  zygisk_pid_marker_alive_for /data/system/causentry/zygisk.settings.ready system_server \
+    || zygisk_pid_marker_alive_for /data/system/causentry/zygisk.settings.ready \
+      com.android.providers.settings
 }
 
 zygisk_backend_status() {

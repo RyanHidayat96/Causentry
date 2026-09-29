@@ -29,7 +29,8 @@ import java.util.Set;
  */
 final class SettingsProviderHooks {
     private static final String TAG = "CausentryZygote";
-    private static final String PROVIDER = "com.android.providers.settings.SettingsProvider";
+    private static final String PROVIDER_PACKAGE = "com.android.providers.settings";
+    private static final String PROVIDER_CLASS = PROVIDER_PACKAGE + ".SettingsProvider";
     private static final Set<String> HIDDEN_DEVELOPER_SETTINGS = Collections.unmodifiableSet(
             new HashSet<>(Arrays.asList(
                     "development_settings_enabled",
@@ -110,7 +111,7 @@ final class SettingsProviderHooks {
         ClassLoader packageLoader = providerPackageLoader();
         if (packageLoader != null) {
             try {
-                return Class.forName(PROVIDER, true, packageLoader);
+                return Class.forName(PROVIDER_CLASS, true, packageLoader);
             } catch (ClassNotFoundException ignored) {
                 // The package can still be isolated in its own loader.
             }
@@ -118,12 +119,12 @@ final class SettingsProviderHooks {
         ClassLoader context = Thread.currentThread().getContextClassLoader();
         if (context != null) {
             try {
-                return Class.forName(PROVIDER, true, context);
+                return Class.forName(PROVIDER_CLASS, true, context);
             } catch (ClassNotFoundException ignored) {
                 // ZygoteLoader normally sets this to the target app loader.
             }
         }
-        return Class.forName(PROVIDER, true, SettingsProviderHooks.class.getClassLoader());
+        return Class.forName(PROVIDER_CLASS, true, SettingsProviderHooks.class.getClassLoader());
     }
 
     private static ClassLoader providerPackageLoader() {
@@ -135,7 +136,7 @@ final class SettingsProviderHooks {
             Method systemContext = activityThread.getDeclaredMethod("getSystemContext");
             Object context = systemContext.invoke(thread);
             if (!(context instanceof Context)) return null;
-            Context provider = ((Context) context).createPackageContext(PROVIDER,
+            Context provider = ((Context) context).createPackageContext(PROVIDER_PACKAGE,
                     Context.CONTEXT_INCLUDE_CODE | Context.CONTEXT_IGNORE_SECURITY);
             return provider.getClassLoader();
         } catch (Throwable ignored) {
