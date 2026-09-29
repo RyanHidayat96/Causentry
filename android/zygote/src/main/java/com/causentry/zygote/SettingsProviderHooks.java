@@ -1,5 +1,6 @@
 package com.causentry.zygote;
 
+import android.content.Context;
 import android.os.Binder;
 import android.os.Bundle;
 import android.provider.Settings;
@@ -13,6 +14,8 @@ import com.v7878.vmtools.Hooks;
 
 import java.lang.reflect.Executable;
 import java.lang.invoke.MethodHandle;
+import java.util.Arrays;
+import java.util.Collections;
 import java.lang.reflect.Method;
 import java.util.HashSet;
 import java.util.Set;
@@ -27,11 +30,17 @@ import java.util.Set;
 final class SettingsProviderHooks {
     private static final String TAG = "CausentryZygote";
     private static final String PROVIDER = "com.android.providers.settings.SettingsProvider";
-    private static final String DEVELOPMENT_SETTINGS_ENABLED = "development_settings_enabled";
+    private static final Set<String> HIDDEN_DEVELOPER_SETTINGS = Collections.unmodifiableSet(
+            new HashSet<>(Arrays.asList(
+                    "development_settings_enabled",
+                    "adb_enabled",
+                    "adb_wifi_enabled")));
+    private static volatile int installedHooks;
 
     private SettingsProviderHooks() {}
 
-    static int install() {
+    static synchronized int install() {
+        if (installedHooks > 0) return installedHooks;
         try {
             CloakPolicy.refreshNow();
             Class<?> provider = findProviderClass();
@@ -55,7 +64,12 @@ final class SettingsProviderHooks {
                     }
                 }
             }
+            installedHooks = installed;
             return installed;
+        } catch (ClassNotFoundException unavailable) {
+            // AOSP can host this provider outside system_server. Its package marker
+            // will load this backend in the provider process instead.
+            return 0;
         } catch (Throwable error) {
             Log.e(TAG, "settings provider hook initialization failed", error);
             return 0;
@@ -63,9 +77,10 @@ final class SettingsProviderHooks {
     }
 
     private static void interceptCall(MethodHandle original, EmulatedStackFrame frame) throws Throwable {
-        if (readsDeveloperOptions(frame) && CloakPolicy.hidesDeveloperOptions(Binder.getCallingUid())) {
+        String key = hiddenDeveloperSetting(frame);
+        if (key != null && CloakPolicy.hidesDeveloperOptions(Binder.getCallingUid())) {
             Bundle result = new Bundle();
-            result.putString(Settings.NameValueTable.NAME, DEVELOPMENT_SETTINGS_ENABLED);
+            result.putString(Settings.NameValueTable.NAME, key);
             result.putString(Settings.NameValueTable.VALUE, "0");
             frame.accessor().setValue(EmulatedStackFrame.RETURN_VALUE_IDX, result);
             return;
@@ -74,7 +89,7 @@ final class SettingsProviderHooks {
     }
 
     /** Supports both legacy call(method, key, extras) and modern call(pkg, method, key, extras). */
-    private static boolean readsDeveloperOptions(EmulatedStackFrame frame) {
+    private static String hiddenDeveloperSetting(EmulatedStackFrame frame) {
         EmulatedStackFrame.StackFrameAccessor accessor = frame.accessor();
         boolean getMethodSeen = false;
         for (int i = 1; i < frame.type().parameterCount(); i++) {
@@ -86,12 +101,20 @@ final class SettingsProviderHooks {
                 getMethodSeen = true;
                 continue;
             }
-            if (getMethodSeen) return DEVELOPMENT_SETTINGS_ENABLED.equals(text);
+            if (getMethodSeen && HIDDEN_DEVELOPER_SETTINGS.contains(text)) return text;
         }
-        return false;
+        return null;
     }
 
     private static Class<?> findProviderClass() throws ClassNotFoundException {
+        ClassLoader packageLoader = providerPackageLoader();
+        if (packageLoader != null) {
+            try {
+                return Class.forName(PROVIDER, true, packageLoader);
+            } catch (ClassNotFoundException ignored) {
+                // The package can still be isolated in its own loader.
+            }
+        }
         ClassLoader context = Thread.currentThread().getContextClassLoader();
         if (context != null) {
             try {
@@ -101,5 +124,22 @@ final class SettingsProviderHooks {
             }
         }
         return Class.forName(PROVIDER, true, SettingsProviderHooks.class.getClassLoader());
+    }
+
+    private static ClassLoader providerPackageLoader() {
+        try {
+            Class<?> activityThread = Class.forName("android.app.ActivityThread");
+            Method current = activityThread.getDeclaredMethod("currentActivityThread");
+            Object thread = current.invoke(null);
+            if (thread == null) return null;
+            Method systemContext = activityThread.getDeclaredMethod("getSystemContext");
+            Object context = systemContext.invoke(thread);
+            if (!(context instanceof Context)) return null;
+            Context provider = ((Context) context).createPackageContext(PROVIDER,
+                    Context.CONTEXT_INCLUDE_CODE | Context.CONTEXT_IGNORE_SECURITY);
+            return provider.getClassLoader();
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 }

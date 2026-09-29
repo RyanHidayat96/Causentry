@@ -14,10 +14,12 @@ Causentry currently ships as a universal root module plus a small Android contro
   access, WebView, or a JavaScript bridge.
 - `root-module/webroot/`: legacy localhost browser UI and CGI API protected by a
   per-install token.
-- `android/zygote/`: ZygoteLoader backend injected only into `system_server` and
-  the framework SettingsProvider. It loads the pinned AndroidVMTools/PanamaPort ART
-  hook runtime, filters Package Manager queries, and returns developer mode OFF for
-  configured caller UIDs before a target process can cache the real setting.
+- `android/zygote/`: ZygoteLoader backend injected into `system_server` and, where
+  the ROM uses one, the framework SettingsProvider. It loads the pinned
+  AndroidVMTools/PanamaPort ART hook runtime, filters Package Manager queries, and
+  returns developer-mode, USB-debugging, and wireless-ADB settings as OFF for
+  configured caller UIDs. MIUI hosts SettingsProvider in `system_server`, so that
+  backend installs the same hook there.
 - `zygisk-src/`: old native stage-1 diagnostic backend. It is not used by the
   release packer when the Java ART backend is available.
 

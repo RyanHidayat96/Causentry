@@ -1,5 +1,6 @@
 package com.causentry.zygote;
 
+import android.os.FileObserver;
 import android.util.Log;
 
 import org.json.JSONArray;
@@ -26,8 +27,11 @@ final class CloakPolicy {
     private static final long REFRESH_MS = 1000L;
 
     private static volatile long lastModified;
+    private static volatile long lastLength;
     private static volatile long lastRead;
     private static volatile String lastPolicyPath = "";
+    private static volatile boolean policyDirty = true;
+    private static volatile FileObserver policyObserver;
     private static volatile Map<Integer, Set<String>> hiddenByUid = Collections.emptyMap();
     private static volatile Set<String> appZygoteBlocked = Collections.emptySet();
     private static volatile Set<Integer> developerOptionsUids = Collections.emptySet();
@@ -66,17 +70,39 @@ final class CloakPolicy {
         refresh(true);
     }
 
+    private static synchronized void ensurePolicyObserver() {
+        if (policyObserver != null) return;
+        File directory = POLICIES[0].getParentFile();
+        if (directory == null || !directory.isDirectory()) return;
+        try {
+            FileObserver observer = new FileObserver(directory.getAbsolutePath(),
+                    FileObserver.CLOSE_WRITE | FileObserver.MOVED_TO) {
+                @Override public void onEvent(int event, String path) {
+                    if (POLICIES[0].getName().equals(path)) policyDirty = true;
+                }
+            };
+            observer.startWatching();
+            policyObserver = observer;
+        } catch (Throwable error) {
+            Log.w(TAG, "policy watcher unavailable", error);
+        }
+    }
+
     private static void refresh(boolean force) {
+        ensurePolicyObserver();
         long now = System.currentTimeMillis();
-        if (!force && now - lastRead < REFRESH_MS) return;
+        boolean dirty = policyDirty;
+        if (!force && !dirty && now - lastRead < REFRESH_MS) return;
         lastRead = now;
 
         Throwable lastError = null;
         for (File policy : POLICIES) {
             long modified = policy.lastModified();
             if (modified <= 0L) continue;
+            long length = policy.length();
             String path = policy.getAbsolutePath();
-            if (!force && path.equals(lastPolicyPath) && modified == lastModified) return;
+            if (!force && !dirty && path.equals(lastPolicyPath)
+                    && modified == lastModified && length == lastLength) return;
 
             try (FileInputStream input = new FileInputStream(policy)) {
                 byte[] bytes = new byte[(int) Math.min(policy.length(), 1024 * 1024)];
@@ -89,20 +115,21 @@ final class CloakPolicy {
                 Set<String> nextAppZygote = new HashSet<>();
                 Set<Integer> nextDeveloperOptions = new HashSet<>();
 
-                if (uids != null && targets != null && byTarget != null) {
-                    int countTargets = Math.min(uids.length(), targets.length());
-                    for (int i = 0; i < countTargets; i++) {
-                        int uid = uids.optInt(i, -1);
-                        String target = targets.optString(i, "");
-                        JSONArray packages = byTarget.optJSONArray(target);
-                        if (uid < 10000 || packages == null) continue;
-                        Set<String> hidden = new HashSet<>();
-                        for (int p = 0; p < packages.length(); p++) {
-                            String name = packages.optString(p, "");
-                            if (!name.isEmpty()) hidden.add(name);
-                        }
-                        next.put(uid, Collections.unmodifiableSet(hidden));
+                if (uids == null || targets == null || byTarget == null
+                        || uids.length() != targets.length()) {
+                    throw new IllegalArgumentException("invalid target UID policy");
+                }
+                for (int i = 0; i < targets.length(); i++) {
+                    int uid = uids.optInt(i, -1);
+                    String target = targets.optString(i, "");
+                    JSONArray packages = byTarget.optJSONArray(target);
+                    if (uid < 10000 || packages == null) continue;
+                    Set<String> hidden = new HashSet<>();
+                    for (int p = 0; p < packages.length(); p++) {
+                        String name = packages.optString(p, "");
+                        if (!name.isEmpty()) hidden.add(name);
                     }
+                    next.put(uid, Collections.unmodifiableSet(hidden));
                 }
 
                 JSONArray appZygote = root.optJSONArray("appZygote");
@@ -125,7 +152,9 @@ final class CloakPolicy {
                 appZygoteBlocked = Collections.unmodifiableSet(nextAppZygote);
                 developerOptionsUids = Collections.unmodifiableSet(nextDeveloperOptions);
                 lastModified = modified;
+                lastLength = length;
                 lastPolicyPath = path;
+                policyDirty = false;
                 Log.i(TAG, "policy refreshed targets=" + next.size()
                         + " appZygote=" + nextAppZygote.size()
                         + " developerOptions=" + nextDeveloperOptions.size()

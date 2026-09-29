@@ -145,7 +145,11 @@ schedule_apps_snapshot() {
 snapshot() {
   [ -d "/data/data/$APP_PKG" ] || return 0
   ensure_app_dirs
-  T=$(mktemp 2>/dev/null || echo "$DIR/.status.tmp")
+  T=$(mktemp 2>/dev/null || echo "$DIR/.status.$$.tmp")
+  SNAP_CONF=$(mktemp 2>/dev/null || echo "$DIR/.status-config.$$.tmp")
+  cp -f "$CONF" "$SNAP_CONF" 2>/dev/null || printf '{}' > "$SNAP_CONF"
+  CONF_LIVE=$CONF
+  CONF=$SNAP_CONF
   state=$(cat "$DIR/runtime.state" 2>/dev/null); [ -z "$state" ] && state=unknown
   dpid=$(cat "$DIR/daemon.pid" 2>/dev/null); dalive=false
   [ -n "$dpid" ] && [ -d "/proc/$dpid" ] && dalive=true
@@ -193,8 +197,11 @@ snapshot() {
     printf '"log":'; json_log_string; printf '}'
   } > "$T"
   put "$T" "$APP_DIR/status.json"
-  [ "$T" = "$DIR/.status.tmp" ] && mv -f "$T" "$DIR/status.json.tmp" 2>/dev/null || rm -f "$T" 2>/dev/null
-  return 0
+  rc=$?
+  CONF=$CONF_LIVE
+  rm -f "$SNAP_CONF" 2>/dev/null
+  rm -f "$T" 2>/dev/null
+  return "$rc"
 }
 
 apps_snapshot() {
@@ -327,10 +334,20 @@ process_cmds() {
         pkg=$(getf pkg); feats=$(getf features); template=$(getf template); op=$(getf op); rc=1
         if valid_package_name "$pkg"; then
           APP_PKG_NEW="$pkg" APP_FEATS_NEW="$feats" APP_HIDE_TEMPLATE_NEW="$template" sh "$DIR/appcfg.sh" set >> "$LOG" 2>&1
-          rc=$?
-          [ "$rc" -eq 0 ] && per_app_refresh "$pkg" app >> "$LOG" 2>&1
-          rc=$?
-          [ "$rc" -eq 0 ] && mark_changed
+          config_rc=$?
+          if [ "$config_rc" -eq 0 ]; then
+            per_app_refresh "$pkg" app >> "$LOG" 2>&1
+            policy_rc=$?
+            reconcile_runtime_after_config_change >> "$LOG" 2>&1
+            runtime_rc=$?
+            mark_changed
+            # Keep apps.json current for legacy readers too. Native UI derives its
+            # badges from status.json immediately, so this scan never blocks Save.
+            schedule_apps_snapshot
+            [ "$policy_rc" -eq 0 ] && [ "$runtime_rc" -eq 0 ] && rc=0
+          else
+            rc=$config_rc
+          fi
         fi
         complete_command "$op" "$rc"
         ;;
@@ -338,10 +355,19 @@ process_cmds() {
         pkg=$(getf pkg); op=$(getf op); rc=1
         if valid_package_name "$pkg"; then
           APP_PKG_NEW="$pkg" sh "$DIR/appcfg.sh" del >> "$LOG" 2>&1
-          rc=$?
-          [ "$rc" -eq 0 ] && per_app_refresh "$pkg" app >> "$LOG" 2>&1
-          rc=$?
-          [ "$rc" -eq 0 ] && mark_changed
+          config_rc=$?
+          if [ "$config_rc" -eq 0 ]; then
+            per_app_refresh "$pkg" app >> "$LOG" 2>&1
+            policy_rc=$?
+            reconcile_runtime_after_config_change >> "$LOG" 2>&1
+            runtime_rc=$?
+            mark_changed
+            # See setapp: refresh inventory asynchronously after a state mutation.
+            schedule_apps_snapshot
+            [ "$policy_rc" -eq 0 ] && [ "$runtime_rc" -eq 0 ] && rc=0
+          else
+            rc=$config_rc
+          fi
         fi
         complete_command "$op" "$rc"
         ;;

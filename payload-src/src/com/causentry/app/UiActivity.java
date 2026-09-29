@@ -3,6 +3,7 @@ package com.causentry.app;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
@@ -27,6 +28,7 @@ import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.Switch;
@@ -77,6 +79,8 @@ public class UiActivity extends Activity {
     private TextView subtitle;
     private TextView pill;
     private ImageButton back;
+    private ImageButton refresh;
+    private ProgressBar operationSpinner;
 
     private JSONObject status = new JSONObject();
     private JSONObject config = new JSONObject();
@@ -266,7 +270,8 @@ public class UiActivity extends Activity {
         pill.setPadding(dp(10), dp(4), dp(10), dp(4));
         toolbar.addView(pill);
 
-        ImageButton refresh = new ImageButton(this);
+        FrameLayout refreshSlot = new FrameLayout(this);
+        refresh = new ImageButton(this);
         refresh.setImageResource(android.R.drawable.ic_popup_sync);
         refresh.setBackgroundColor(Color.TRANSPARENT);
         refresh.setColorFilter(FG);
@@ -276,7 +281,17 @@ public class UiActivity extends Activity {
             render();
             command(json("action", "refresh"));
         });
-        toolbar.addView(refresh, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        refreshSlot.addView(refresh, new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER));
+        operationSpinner = new ProgressBar(this, null, android.R.attr.progressBarStyleSmall);
+        operationSpinner.setIndeterminate(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            operationSpinner.setIndeterminateTintList(ColorStateList.valueOf(ACCENT));
+        }
+        operationSpinner.setContentDescription("Applying");
+        operationSpinner.setVisibility(View.GONE);
+        refreshSlot.addView(operationSpinner,
+                new FrameLayout.LayoutParams(dp(32), dp(32), Gravity.CENTER));
+        toolbar.addView(refreshSlot, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
         shellScroll = new ScrollView(this);
         shellScroll.setFillViewport(true);
@@ -340,8 +355,12 @@ public class UiActivity extends Activity {
     private void readLists() {
         targets.clear(); hardened.clear(); appConfig.clear(); templates.clear();
         rootVisible.clear(); rootSuggested.clear();
-        addArray(targets, status.optJSONArray("targets"));
-        addArray(hardened, status.optJSONArray("hardened"));
+        // Use the embedded config as source of truth. A concurrent command can
+        // otherwise make a status snapshot's summary fields one revision older.
+        JSONArray configuredTargets = config.optJSONArray("targets");
+        JSONArray configuredHardened = config.optJSONArray("hardened");
+        addArray(targets, configuredTargets != null ? configuredTargets : status.optJSONArray("targets"));
+        addArray(hardened, configuredHardened != null ? configuredHardened : status.optJSONArray("hardened"));
         JSONObject appsObj = config.optJSONObject("apps");
         if (appsObj != null) {
             JSONArray names = appsObj.names();
@@ -384,9 +403,12 @@ public class UiActivity extends Activity {
                 if (!isPackageName(pkg)) continue;
                 AppEntry e = new AppEntry();
                 e.pkg = pkg;
-                e.prot = o.optBoolean("protected") || targets.contains(pkg);
-                e.hardened = o.optBoolean("hardened") || hardened.contains(pkg);
-                e.hidden = o.optBoolean("hidden") || hiddenInAnyTemplate(pkg);
+                // apps.json is an asynchronous package inventory. Its state bits can
+                // be one refresh behind a setapp/delapp command, so derive every
+                // badge from the freshly published status/config snapshot instead.
+                e.prot = targets.contains(pkg);
+                e.hardened = hardened.contains(pkg);
+                e.hidden = hiddenByPolicy(pkg);
                 e.system = isSystemPackage(pkg);
                 byPkg.put(pkg, e);
             }
@@ -399,9 +421,9 @@ public class UiActivity extends Activity {
                     e.pkg = pkg;
                     byPkg.put(e.pkg, e);
                 }
-                e.prot = e.prot || targets.contains(e.pkg);
-                e.hardened = e.hardened || hardened.contains(e.pkg);
-                e.hidden = e.hidden || hiddenInAnyTemplate(e.pkg);
+                e.prot = targets.contains(e.pkg);
+                e.hardened = hardened.contains(e.pkg);
+                e.hidden = hiddenByPolicy(e.pkg);
                 e.system = installed.getValue();
         }
         apps.addAll(byPkg.values());
@@ -447,6 +469,13 @@ public class UiActivity extends Activity {
         int c = operationInFlight ? ACCENT : (!daemon ? DANGER : ("active".equals(state) ? OK : WARN));
         pill.setTextColor(c);
         pill.setBackground(round(Color.TRANSPARENT, c, 18));
+        if (refresh != null) {
+            refresh.setEnabled(!operationInFlight);
+            refresh.setVisibility(operationInFlight ? View.INVISIBLE : View.VISIBLE);
+        }
+        if (operationSpinner != null) {
+            operationSpinner.setVisibility(operationInFlight ? View.VISIBLE : View.GONE);
+        }
         boolean showBottom = detailMode || templateDetail;
         if (bottomBar != null) bottomBar.setVisibility(showBottom ? View.VISIBLE : View.GONE);
         bottomApply.setVisibility(showBottom ? View.VISIBLE : View.GONE);
@@ -740,7 +769,7 @@ public class UiActivity extends Activity {
         JSONObject cfg = appConfig.get(selectedPkg);
         bottomApply.setText("Apply for this app");
         addAppHeader(selectedPkg);
-        Switch dev = switchRow("Hide developer options", "The app sees dev-mode OFF while it runs",
+        Switch dev = switchRow("Hide developer options", "Developer mode and USB debugging report OFF while it runs",
                 cfg != null ? cfg.optBoolean("devOff", false) : (targets.contains(selectedPkg) && status.optBoolean("autoDevOff", true)));
         Switch mock = switchRow("Hide mock location", "Sets mock_location=0 while this app runs. Package templates need an active Zygisk hook.",
                 cfg != null ? cfg.optBoolean("mock", false) : (targets.contains(selectedPkg) && status.optBoolean("hideMockLocation", true)));
@@ -1156,8 +1185,8 @@ public class UiActivity extends Activity {
         p.setEllipsize(android.text.TextUtils.TruncateAt.END);
         texts.addView(n); texts.addView(p);
         row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
-        if (app.prot || targets.contains(app.pkg)) addChip(row, "PROTECTED", OK);
-        else if (hiddenInAnyTemplate(app.pkg)) addChip(row, "HIDDEN", WARN);
+        if (app.prot) addChip(row, "PROTECTED", OK);
+        else if (app.hidden) addChip(row, "HIDDEN", WARN);
         if (app.system) addChip(row, "SYSTEM", MUTED);
         row.addView(chevron());
         parent.addView(row);
@@ -1585,7 +1614,7 @@ public class UiActivity extends Activity {
 
     private int protectedCount() {
         int n = 0;
-        for (AppEntry app : apps) if (app.prot || targets.contains(app.pkg)) n++;
+        for (AppEntry app : apps) if (app.prot) n++;
         return n;
     }
 
@@ -1607,8 +1636,8 @@ public class UiActivity extends Activity {
     }
 
     private int compareApps(AppEntry a, AppEntry b) {
-        boolean aActive = a.prot || targets.contains(a.pkg);
-        boolean bActive = b.prot || targets.contains(b.pkg);
+        boolean aActive = a.prot;
+        boolean bActive = b.prot;
         if (aActive != bActive) return aActive ? -1 : 1;
         int byName = label(a.pkg).compareToIgnoreCase(label(b.pkg));
         return byName != 0 ? byName : a.pkg.compareToIgnoreCase(b.pkg);
@@ -1643,6 +1672,17 @@ public class UiActivity extends Activity {
 
     private boolean hiddenInAnyTemplate(String pkg) {
         for (List<String> list : templates.values()) if (list.contains(pkg)) return true;
+        return false;
+    }
+
+    private boolean hiddenByPolicy(String pkg) {
+        if (hiddenInAnyTemplate(pkg)) return true;
+        JSONArray legacy = config.optJSONArray("denylist");
+        if (legacy == null) legacy = status.optJSONArray("denylist");
+        if (legacy == null) return false;
+        for (int i = 0; i < legacy.length(); i++) {
+            if (pkg.equals(legacy.optString(i))) return true;
+        }
         return false;
     }
 

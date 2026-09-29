@@ -158,8 +158,13 @@ activate() {
   dev_backend="${4:-$(developer_options_backend "$want_dev")}"
   [ "$want_dev" = 1 ] || [ "$want_mock" = 1 ] || return 0
   needs_global_dev=0
+  needs_usb_debug=0
   [ "$want_dev" = 1 ] && [ "$dev_backend" != provider ] && needs_global_dev=1
-  if [ "$needs_global_dev" = 1 ] || [ "$want_mock" = 1 ]; then
+  # SystemProperties is local to an app process. Without target injection, hide
+  # USB-debug properties by turning off the real ADB transport while this target
+  # is active, then restore its original state when the target leaves foreground.
+  [ "$want_dev" = 1 ] && needs_usb_debug=1
+  if [ "$needs_global_dev" = 1 ] || [ "$needs_usb_debug" = 1 ] || [ "$want_mock" = 1 ]; then
     if [ ! -f "$SAVED" ]; then
       wait_settings 15 || { log "cloak skipped: settings service not ready (flags not readable)"; return 0; }
       if ! save_dev_flags "$SAVED" "$needs_global_dev"; then
@@ -173,23 +178,19 @@ activate() {
     settings put global development_settings_enabled 0
     settings put secure development_settings_enabled 0
   fi
+  if [ "$needs_usb_debug" = 1 ]; then
+    settings put global adb_wifi_enabled 0
+    settings put secure adb_enabled 0
+    settings put global adb_enabled 0
+  fi
   [ "$want_mock" = 1 ] && settings put secure mock_location 0
   echo "$fg:$want_dev:$want_mock:$dev_backend" > "$ACTIVE"
   echo active > "$STATE"
-  log "cloak ON ($fg devOff=$want_dev via=$dev_backend mock=$want_mock)"
+  log "cloak ON ($fg devOff=$want_dev via=$dev_backend usbDebug=$needs_usb_debug mock=$want_mock)"
 }
 
 deactivate() {
-  rm -f "$ACTIVE"
-  [ "$(jbool alwaysHidden)" = 1 ] && { echo idle > "$STATE"; return 0; }
-  if [ -f "$SAVED" ]; then
-    restore_dev_flags "$SAVED" && log "cloak OFF (flags restored)"
-    rm -f "$SAVED"
-  elif [ -f "$DIR/devsaved.last" ]; then
-    # state lost (e.g. an unclean shutdown) - put the last known good values back
-    restore_dev_flags "$DIR/devsaved.last" && log "cloak OFF (restored from last known good flags)"
-  fi
-  echo idle > "$STATE"
+  deactivate_runtime
 }
 
 log "daemon start (pid $$)"

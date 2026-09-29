@@ -439,14 +439,23 @@ feat_running() {  # feat_running <per-app key> <global key>
 # A cloak must never be turned on with unreadable flags: that leaves the device
 # with dev-options hidden forever (nothing to restore at the end).
 valid_flag() { [ -n "$1" ] && [ "$1" != "null" ]; }
+valid_saved_flag() { [ -n "$1" ]; }
 
-read_dev_flags() {   # emits global=/secure=/mock= only when every read worked
+read_dev_flags() {   # emits values only when every settings query completed
   g=$(settings get global development_settings_enabled 2>/dev/null)
   s=$(settings get secure development_settings_enabled 2>/dev/null)
   m=$(settings get secure mock_location 2>/dev/null)
+  ag=$(settings get global adb_enabled 2>/dev/null)
+  as=$(settings get secure adb_enabled 2>/dev/null)
+  aw=$(settings get global adb_wifi_enabled 2>/dev/null)
   valid_flag "$g" || return 1
   valid_flag "$s" || return 1
-  printf 'global=%s\nsecure=%s\nmock=%s\n' "$g" "$s" "${m:-0}"
+  valid_saved_flag "$m" || return 1
+  valid_saved_flag "$ag" || return 1
+  valid_saved_flag "$as" || return 1
+  valid_saved_flag "$aw" || return 1
+  printf 'global=%s\nsecure=%s\nmock=%s\nadb_global=%s\nadb_secure=%s\nadb_wifi=%s\n' \
+    "$g" "$s" "$m" "$ag" "$as" "$aw"
 }
 
 save_dev_flags() {   # save_dev_flags <file> [restore-dev=1] -> 0/1
@@ -454,6 +463,11 @@ save_dev_flags() {   # save_dev_flags <file> [restore-dev=1] -> 0/1
   printf '%s\nrestore_dev=%s\n' "$out" "${2:-1}" > "$1"
   cp -f "$1" "$DIR/devsaved.last" 2>/dev/null    # survives state cleanups
   return 0
+}
+
+restore_nullable_setting() {   # namespace key value; null means the key was absent
+  [ "$3" = null ] && { settings delete "$1" "$2"; return $?; }
+  settings put "$1" "$2" "$3"
 }
 
 restore_dev_flags() {   # restore_dev_flags <file> -> 0/1
@@ -467,7 +481,15 @@ restore_dev_flags() {   # restore_dev_flags <file> -> 0/1
     settings put global development_settings_enabled "$g"
     settings put secure development_settings_enabled "$s"
   }
-  valid_flag "$m" && settings put secure mock_location "$m"
+  valid_saved_flag "$m" && restore_nullable_setting secure mock_location "$m"
+  ag=$(sed -n 's/^adb_global=//p' "$1" | head -1)
+  as=$(sed -n 's/^adb_secure=//p' "$1" | head -1)
+  aw=$(sed -n 's/^adb_wifi=//p' "$1" | head -1)
+  # Older state files do not have ADB values. Restore it last: putting the
+  # original global flag back may reconnect the USB transport immediately.
+  valid_saved_flag "$aw" && restore_nullable_setting global adb_wifi_enabled "$aw"
+  valid_saved_flag "$as" && restore_nullable_setting secure adb_enabled "$as"
+  valid_saved_flag "$ag" && restore_nullable_setting global adb_enabled "$ag"
   return 0
 }
 
@@ -486,4 +508,52 @@ target_in_foreground() {
     [ "$t" = "$fg" ] && return 0
   done
   return 1
+}
+
+# A per-app save happens while the control UI is foreground. Do not leave the
+# previous target's global flags cloaked until the five-second watchdog wakes.
+deactivate_runtime() {
+  active="$DIR/runtime.active"
+  saved="$DIR/devsaved"
+  state="$DIR/runtime.state"
+  rm -f "$active"
+  [ "$(jbool alwaysHidden)" = 1 ] && { echo idle > "$state"; return 0; }
+  if [ -f "$saved" ]; then
+    if restore_dev_flags "$saved"; then
+      log "cloak OFF (flags restored)"
+      rm -f "$saved"
+    else
+      log "cloak OFF failed: saved flags retained for retry"
+      return 1
+    fi
+  elif [ -f "$DIR/devsaved.last" ]; then
+    if restore_dev_flags "$DIR/devsaved.last"; then
+      log "cloak OFF (restored from last known good flags)"
+    else
+      log "cloak OFF failed: could not restore last known good flags"
+      return 1
+    fi
+  fi
+  echo idle > "$state"
+  return 0
+}
+
+reconcile_runtime_after_config_change() {
+  [ "$(cat "$DIR/runtime.state" 2>/dev/null)" = active ] || return 0
+  lock="$DIR/evaluate.lock"
+  i=0
+  while ! mkdir "$lock" 2>/dev/null; do
+    i=$((i + 1))
+    [ "$i" -lt 30 ] || { log "runtime reconcile deferred: evaluation busy"; return 1; }
+    sleep 0.1
+  done
+  fg=$(foreground_pkg)
+  if [ -n "$fg" ] && is_target "$fg"; then
+    rc=0
+  else
+    deactivate_runtime
+    rc=$?
+  fi
+  rmdir "$lock" 2>/dev/null
+  return "$rc"
 }

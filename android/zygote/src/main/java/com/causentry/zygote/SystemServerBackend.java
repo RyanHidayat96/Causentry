@@ -54,6 +54,28 @@ final class SystemServerBackend {
             }
         }
         PackageCloakHooks.install();
+        installSystemSettingsHooks();
+    }
+
+    private static void installSystemSettingsHooks() {
+        // AOSP may host SettingsProvider in its own package process, while MIUI
+        // hosts it inside system_server. The dedicated package marker covers the
+        // former; retry briefly for the latter while framework providers finish
+        // initializing, without target-app injection.
+        for (int attempt = 0; attempt < 10; attempt++) {
+            int hooks = SettingsProviderHooks.install();
+            if (hooks > 0) {
+                markSettingsProviderReady(hooks);
+                return;
+            }
+            try {
+                Thread.sleep(500L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        Log.i(TAG, "SettingsProvider not hosted in system_server");
     }
 
     static void markCloakReady(int hookCount) {

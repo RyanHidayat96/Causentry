@@ -35,8 +35,10 @@ Pick an app in the control UI, choose its bypass, press **Apply for this app**:
 "apps": { "com.example.target": { "devOff": true, "mock": true, "hideTemplate": "banking" } }
 ```
 
-* `devOff` - hide developer-options reads for that app without changing the device
-  setting when the bundled SettingsProvider hook is active
+* `devOff` - hide developer-option, USB-debugging, and wireless-ADB reads for that
+  app. When a target checks process-local USB properties, Causentry temporarily
+  turns off the real ADB transport while the target is foreground and restores it
+  after the target exits.
 * `mock`   - force `mock_location=0` and apply the target-scoped hidden-app template while it runs
 * apps without an entry fall back to the global toggles (`autoDevOff`, `hideMockLocation`)
 

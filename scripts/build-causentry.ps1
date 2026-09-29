@@ -223,16 +223,24 @@ if ($IncludeZygisk) {
   $gradle = Find-Gradle
   $oldAndroidHome = $env:ANDROID_HOME
   $oldAndroidSdkRoot = $env:ANDROID_SDK_ROOT
+  $oldGradleUserHome = $env:GRADLE_USER_HOME
+  # Keep this build away from a shared Gradle cache that Android Studio or
+  # antivirus may lock on Windows.
+  $gradleUserHome = Join-Path $Root ".gradle-causentry"
+  New-Item -ItemType Directory -Force -Path $gradleUserHome | Out-Null
   $env:ANDROID_HOME = $Sdk
   $env:ANDROID_SDK_ROOT = $Sdk
+  $env:GRADLE_USER_HOME = $gradleUserHome
   try {
     Push-Location (Join-Path $Root "android")
-    & $gradle --no-daemon :zygote:assembleRelease
+    & $gradle --no-daemon --no-watch-fs :zygote:assembleRelease
     if ($LASTEXITCODE -ne 0) { Die "Gradle Zygisk backend build failed" }
   } finally {
     Pop-Location
     $env:ANDROID_HOME = $oldAndroidHome
     $env:ANDROID_SDK_ROOT = $oldAndroidSdkRoot
+    if ($null -eq $oldGradleUserHome) { Remove-Item Env:GRADLE_USER_HOME -ErrorAction SilentlyContinue }
+    else { $env:GRADLE_USER_HOME = $oldGradleUserHome }
   }
 
   $zygoteZip = Join-Path $Root "android\zygote\build\outputs\magisk\release\Causentry-Zygisk.zip"
