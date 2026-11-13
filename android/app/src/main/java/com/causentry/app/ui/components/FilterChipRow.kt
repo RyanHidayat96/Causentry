@@ -11,6 +11,8 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,9 +70,14 @@ private fun ChipItem(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+
     FilterChip(
         selected = selected,
-        onClick = onClick,
+        onClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            onClick()
+        },
         label = {
             Text(
                 text = if (count > 0) "$label ($count)" else label,

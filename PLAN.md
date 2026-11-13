@@ -149,10 +149,10 @@ Proyek Causentry memiliki fondasi yang siap di `android/app` (Kotlin, Jetpack Co
 
 ## 5. Timeline & Milestone Execution
 
-| Phase | Fokus | Deliverables |
-|---|---|---|
-| **Phase 1** | Performance & Async Foundation | `AppRepository`, `IconLoader` off-thread, `LazyColumn` state, reactive bridge |
-| **Phase 2** | Design Tokens & Base Components | Material 3 Theme, ColorScheme, `HeroStatusCard`, `AppItemCard`, `SwitchCard` |
-| **Phase 3** | Screen Flow & Layout Assembly | Home list, App Detail screen, Template manager, Diagnostics screen |
-| **Phase 4** | Motion, Polish & Edge-to-Edge | Transitions, Insets, Haptics, Search debounce, Optimistic updates |
-| **Phase 5** | Build Pipeline & Device Verification | Gradle packaging integration, R8 ProGuard, 120Hz test on device |
+| Phase | Fokus | Deliverables | Status |
+|---|---|---|---|
+| **Phase 1** | Performance & Async Foundation | `AppRepository`, `IconLoader` off-thread LruCache, `LazyColumn` state, reactive bridge | **SELESAI (PASS)** |
+| **Phase 2** | Design Tokens & Base Components | Material 3 Theme, ColorScheme, `HeroStatusCard`, `AppItemCard`, `SwitchCard`, Vector Icon Suite | **SELESAI (PASS)** |
+| **Phase 3** | Screen Flow & Layout Assembly | Home list with sticky sections, App Detail quick launch, Template multi-select, Diagnostics screen | **SELESAI (PASS)** |
+| **Phase 4** | Motion, Polish & Edge-to-Edge | `AnimatedContent` tab transitions, `ShimmerAppList` skeletons, tactile haptic feedback, border animations | **SELESAI (PASS)** |
+| **Phase 5** | Build Pipeline & Quality Gates | `scripts/build-causentry.ps1` automated release pipeline, R8 minification, unit test suites | **SELESAI (PASS)** |

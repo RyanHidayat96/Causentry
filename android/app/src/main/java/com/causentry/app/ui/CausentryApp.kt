@@ -1,5 +1,13 @@
 package com.causentry.app.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -45,8 +53,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -63,6 +73,7 @@ import com.causentry.app.ui.components.AppItemCard
 import com.causentry.app.ui.components.DiagnosticsCard
 import com.causentry.app.ui.components.FilterChipRow
 import com.causentry.app.ui.components.HeroStatusCard
+import com.causentry.app.ui.components.ShimmerAppList
 import com.causentry.app.ui.components.StatusPill
 import com.causentry.app.ui.components.TemplateCard
 import com.causentry.app.ui.components.TemplateEditorDialog
@@ -112,38 +123,53 @@ fun CausentryApp(
                 onTabSelect = { viewModel.onTabChanged(it) }
             )
 
-            when (currentTab) {
-                0 -> {
-                    // Apps Tab: Search, Filter, Hero Card, Virtualized 120Hz List
-                    AppsScreen(
-                        status = status,
-                        apps = apps,
-                        searchQuery = query,
-                        onSearchChange = { viewModel.onSearchQueryChanged(it) },
-                        selectedFilter = filter,
-                        onFilterSelect = { viewModel.onFilterSelected(it) },
-                        onAppClick = { viewModel.onSelectApp(it) },
-                        iconLoader = viewModel.iconLoader
-                    )
-                }
-                1 -> {
-                    // Templates Tab: Multi-select interactive cloaking manager
-                    TemplatesScreen(
-                        status = status,
-                        allApps = allApps,
-                        iconLoader = viewModel.iconLoader,
-                        onSaveTemplate = { name, pkgs -> viewModel.saveTemplate(name, pkgs) },
-                        onDeleteTemplate = { name -> viewModel.deleteTemplate(name) }
-                    )
-                }
-                2 -> {
-                    // Actions & Diagnostics Tab
-                    ActionsScreen(
-                        status = status,
-                        onApply = { viewModel.applyChanges() },
-                        onRestore = { viewModel.restoreAll() },
-                        onRefresh = { viewModel.refreshAll() }
-                    )
+            AnimatedContent(
+                targetState = currentTab,
+                transitionSpec = {
+                    if (targetState > initialState) {
+                        (slideInHorizontally { width -> width / 4 } + fadeIn(animationSpec = tween(220)))
+                            .togetherWith(slideOutHorizontally { width -> -width / 4 } + fadeOut(animationSpec = tween(220)))
+                    } else {
+                        (slideInHorizontally { width -> -width / 4 } + fadeIn(animationSpec = tween(220)))
+                            .togetherWith(slideOutHorizontally { width -> width / 4 } + fadeOut(animationSpec = tween(220)))
+                    }
+                },
+                label = "TabTransition",
+                modifier = Modifier.fillMaxSize()
+            ) { tab ->
+                when (tab) {
+                    0 -> {
+                        // Apps Tab: Search, Filter, Hero Card, Virtualized 120Hz List
+                        AppsScreen(
+                            status = status,
+                            apps = apps,
+                            searchQuery = query,
+                            onSearchChange = { viewModel.onSearchQueryChanged(it) },
+                            selectedFilter = filter,
+                            onFilterSelect = { viewModel.onFilterSelected(it) },
+                            onAppClick = { viewModel.onSelectApp(it) },
+                            iconLoader = viewModel.iconLoader
+                        )
+                    }
+                    1 -> {
+                        // Templates Tab: Multi-select interactive cloaking manager
+                        TemplatesScreen(
+                            status = status,
+                            allApps = allApps,
+                            iconLoader = viewModel.iconLoader,
+                            onSaveTemplate = { name, pkgs -> viewModel.saveTemplate(name, pkgs) },
+                            onDeleteTemplate = { name -> viewModel.deleteTemplate(name) }
+                        )
+                    }
+                    2 -> {
+                        // Actions & Diagnostics Tab
+                        ActionsScreen(
+                            status = status,
+                            onApply = { viewModel.applyChanges() },
+                            onRestore = { viewModel.restoreAll() },
+                            onRefresh = { viewModel.refreshAll() }
+                        )
+                    }
                 }
             }
         }
@@ -246,6 +272,7 @@ private fun TabRowSelector(
     onTabSelect: (Int) -> Unit
 ) {
     val tabs = listOf("Apps", "Templates", "Status & Actions")
+    val haptic = LocalHapticFeedback.current
 
     Row(
         modifier = Modifier
@@ -259,12 +286,21 @@ private fun TabRowSelector(
     ) {
         tabs.forEachIndexed { index, label ->
             val isSelected = selectedTab == index
+            val animatedTabBg by animateColorAsState(
+                targetValue = if (isSelected) PrimaryBlue else Color.Transparent,
+                animationSpec = tween(180),
+                label = "tabBg"
+            )
+
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(if (isSelected) PrimaryBlue else Color.Transparent)
-                    .clickable { onTabSelect(index) }
+                    .background(animatedTabBg)
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onTabSelect(index)
+                    }
                     .padding(vertical = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -359,18 +395,24 @@ private fun AppsScreen(
         }
 
         if (apps.isEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 40.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (searchQuery.isEmpty()) "Loading applications..." else "No applications match your search",
-                        color = TextSecondary,
-                        fontSize = 14.sp
-                    )
+            if (searchQuery.isEmpty()) {
+                item {
+                    ShimmerAppList(count = 7)
+                }
+            } else {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No applications match '$searchQuery'",
+                            color = TextSecondary,
+                            fontSize = 14.sp
+                        )
+                    }
                 }
             }
         } else if (searchQuery.isEmpty() && selectedFilter == AppFilter.ALL) {

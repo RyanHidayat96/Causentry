@@ -1,6 +1,7 @@
 package com.causentry.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,6 +32,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -56,6 +60,11 @@ fun TemplateCard(
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (expanded) 90f else 0f,
+        label = "chevronRotation"
+    )
 
     if (showDeleteConfirm) {
         AlertDialog(
@@ -88,7 +97,10 @@ fun TemplateCard(
             .clip(RoundedCornerShape(14.dp))
             .background(SurfaceDark)
             .border(1.dp, BorderDark, RoundedCornerShape(14.dp))
-            .clickable { expanded = !expanded }
+            .clickable {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                expanded = !expanded
+            }
             .padding(16.dp)
     ) {
         Row(
@@ -103,11 +115,24 @@ fun TemplateCard(
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
-                Text(
-                    text = "${packages.size} packages cloaked",
-                    color = TextSecondary,
-                    fontSize = 12.sp
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "${packages.size} packages cloaked",
+                        color = TextSecondary,
+                        fontSize = 12.sp
+                    )
+                    if (packages.isNotEmpty()) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_chevron_right),
+                            contentDescription = null,
+                            tint = TextSecondary,
+                            modifier = Modifier
+                                .size(14.dp)
+                                .rotate(chevronRotation)
+                        )
+                    }
+                }
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
