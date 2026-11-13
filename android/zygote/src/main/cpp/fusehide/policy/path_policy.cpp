@@ -1,0 +1,383 @@
+// Copyright (C) 2026 XiaoTong6666
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "fusehide/policy/path_policy.hpp"
+
+namespace fusehide {
+
+std::optional<std::string_view> VisibleStorageRootForPath(std::string_view path) {
+    constexpr std::string_view primary = "/storage/emulated/0";
+    if (path == primary ||
+        (path.size() > primary.size() && path.starts_with(primary) && path[primary.size()] == '/'))
+        return primary;
+
+    constexpr std::string_view prefix = "/storage/";
+    if (!path.starts_with(prefix) || path.size() < prefix.size() + 9)
+        return std::nullopt;
+    const std::string_view volume = path.substr(prefix.size(), 9);
+    for (size_t i = 0; i < volume.size(); ++i) {
+        const char ch = volume[i];
+        if (i == 4) {
+            if (ch != '-')
+                return std::nullopt;
+        } else if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') ||
+                     (ch >= 'A' && ch <= 'F'))) {
+            return std::nullopt;
+        }
+    }
+    const size_t end = prefix.size() + volume.size();
+    if (path.size() != end && path[end] != '/')
+        return std::nullopt;
+    return path.substr(0, end);
+}
+
+namespace {
+
+void FoldAsciiForMatch(std::string* value) {
+    if (value == nullptr) {
+        return;
+    }
+    for (char& ch : *value) {
+        const auto byte = static_cast<unsigned char>(ch);
+        if (byte < 0x80u) {
+            ch = static_cast<char>(std::tolower(byte));
+        }
+    }
+}
+
+std::optional<std::string_view> RelativePathViewForVisibleRoot(std::string_view path) {
+    const auto root = VisibleStorageRootForPath(path);
+    if (!root)
+        return std::nullopt;
+    return path.size() == root->size() ? std::string_view() : path.substr(root->size() + 1);
+}
+
+}  // namespace
+
+std::string NormalizeRelativeHiddenPath(std::string_view path) {
+    size_t begin = 0;
+    size_t end = path.size();
+    while (begin < end && path[begin] == '/') {
+        begin++;
+    }
+    while (end > begin && path[end - 1] == '/') {
+        end--;
+    }
+
+    bool needsCollapse = false;
+    for (size_t i = begin + 1; i < end; ++i) {
+        if (path[i] == '/' && path[i - 1] == '/') {
+            needsCollapse = true;
+            break;
+        }
+    }
+    if (!needsCollapse) {
+        return std::string(path.substr(begin, end - begin));
+    }
+
+    std::string normalized(path.substr(begin, end - begin));
+    char* data = normalized.data();
+    size_t writePos = 0;
+    bool previousSlash = false;
+    for (size_t readPos = 0; readPos < normalized.size(); ++readPos) {
+        const char ch = data[readPos];
+        if (ch == '/') {
+            if (previousSlash) {
+                continue;
+            }
+            previousSlash = true;
+        } else {
+            previousSlash = false;
+        }
+        data[writePos++] = ch;
+    }
+    normalized.resize(writePos);
+    return normalized;
+}
+
+std::string CanonicalizeHiddenEntryNameForMatch(std::string_view name) {
+    std::string canonical(name);
+    UnicodePolicy::RewriteString(canonical);
+    FoldAsciiForMatch(&canonical);
+    return canonical;
+}
+
+std::string CanonicalizeRelativeHiddenPathForMatch(std::string_view path) {
+    std::string canonical(path);
+    UnicodePolicy::RewriteString(canonical);
+    canonical = NormalizeRelativeHiddenPath(canonical);
+    if (canonical.empty()) {
+        return canonical;
+    }
+    FoldAsciiForMatch(&canonical);
+    return canonical;
+}
+
+std::optional<std::string> RelativePathForVisibleRoot(std::string_view path) {
+    const auto relativePath = RelativePathViewForVisibleRoot(path);
+    if (!relativePath.has_value()) {
+        return std::nullopt;
+    }
+    return NormalizeRelativeHiddenPath(*relativePath);
+}
+
+// Subtree checks are hot enough that the compiled rule keeps both exact and prefix forms ready,
+// leaving this helper to normalize only the runtime path being tested.
+bool MatchesRelativeHiddenPathList(const CompiledHideRule& rule, std::string_view relativePath,
+                                   bool exactOnly) {
+    const std::string normalized = CanonicalizeRelativeHiddenPathForMatch(relativePath);
+    if (normalized.empty()) {
+        return false;
+    }
+    if (rule.normalizedHiddenRelativePathExactSet.find(normalized) !=
+        rule.normalizedHiddenRelativePathExactSet.end()) {
+        return true;
+    }
+    if (!exactOnly) {
+        for (const auto& prefix : rule.normalizedHiddenRelativePathPrefixes) {
+            if (normalized.size() > prefix.size() &&
+                normalized.compare(0, prefix.size(), prefix) == 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool MatchesRelativeHiddenPathList(std::string_view relativePath, bool exactOnly) {
+    const auto rule = RuleForAnyPackage();
+    return rule != nullptr && MatchesRelativeHiddenPathList(*rule, relativePath, exactOnly);
+}
+
+bool HideAllForStorageRoot(const CompiledHideRule& rule, std::string_view rootPath) {
+    return rootPath == kVisibleStorageRoots[0] ? rule.enableHideAllRootEntries
+                                               : rule.enableHideAllPublicRootEntries;
+}
+
+bool IsWildcardRootEntryCandidate(const CompiledHideRule& rule, std::string_view name,
+                                  std::string_view rootPath) {
+    if (name.empty() || name == "." || name == "..") {
+        return false;
+    }
+    if (name.find('/') != std::string_view::npos) {
+        return false;
+    }
+    const auto& exemptions = rootPath == kVisibleStorageRoots[0]
+                                 ? rule.hideAllRootEntriesExemptionSet
+                                 : rule.hideAllPublicRootEntriesExemptionSet;
+    return exemptions.find(CanonicalizeHiddenEntryNameForMatch(name)) == exemptions.end();
+}
+
+bool IsWildcardRootEntryCandidate(std::string_view name) {
+    const auto rule = RuleForAnyPackage();
+    return rule != nullptr && IsWildcardRootEntryCandidate(*rule, name, kVisibleStorageRoots[0]);
+}
+
+bool IsWildcardRootEntryCandidate(std::string_view name, std::string_view rootPath) {
+    const auto rule = RuleForAnyPackage();
+    return rule != nullptr && IsWildcardRootEntryCandidate(*rule, name, rootPath);
+}
+
+bool ShouldHideWildcardRootEntryByParent(uint64_t parent, uint64_t rootParent,
+                                         std::string_view name) {
+    const auto rule = RuleForAnyPackage();
+    const auto rootPath = LookupTrackedPathForInode(rootParent);
+    return rule != nullptr && rootPath && HideAllForStorageRoot(*rule, *rootPath) &&
+           rootParent != 0 && parent == rootParent &&
+           IsWildcardRootEntryCandidate(*rule, name, *rootPath);
+}
+
+namespace {
+
+// Fold runtime names the same way the device's case-insensitive compare path does so root entry
+// lookup, stat/open, and descendant filtering agree on the same hidden target.
+bool IsConfiguredHiddenRootEntryNameForRule(const CompiledHideRule& rule, std::string_view name) {
+    return rule.hiddenRootEntryNameSet.find(CanonicalizeHiddenEntryNameForMatch(name)) !=
+           rule.hiddenRootEntryNameSet.end();
+}
+
+bool IsHiddenRootEntryNameForRule(const CompiledHideRule& rule, std::string_view name,
+                                  std::string_view rootPath) {
+    return IsConfiguredHiddenRootEntryNameForRule(rule, name) ||
+           (HideAllForStorageRoot(rule, rootPath) &&
+            IsWildcardRootEntryCandidate(rule, name, rootPath));
+}
+
+bool IsAnyHiddenSubtreePathForRule(const CompiledHideRule& rule, std::string_view path) {
+    if (const auto relativePath = RelativePathViewForVisibleRoot(path);
+        relativePath.has_value() && MatchesRelativeHiddenPathList(rule, *relativePath, false)) {
+        return true;
+    }
+    if (const auto rootPath = VisibleStorageRootForPath(path);
+        rootPath.has_value() && path.size() > rootPath->size()) {
+        const auto root = *rootPath;
+        const size_t componentStart = root.size() + 1;
+        const size_t slashPos = path.find('/', componentStart);
+        const size_t componentEnd = slashPos == std::string_view::npos ? path.size() : slashPos;
+        if (componentEnd <= componentStart) {
+            return false;
+        }
+
+        const std::string_view rootEntry =
+            path.substr(componentStart, componentEnd - componentStart);
+        if (IsHiddenRootEntryNameForRule(rule, rootEntry, root)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool IsExactHiddenTargetPathForRule(const CompiledHideRule& rule, std::string_view path) {
+    if (const auto relativePath = RelativePathViewForVisibleRoot(path);
+        relativePath.has_value() && MatchesRelativeHiddenPathList(rule, *relativePath, true)) {
+        return true;
+    }
+    if (const auto rootPath = VisibleStorageRootForPath(path);
+        rootPath.has_value() && path.size() > rootPath->size()) {
+        const auto root = *rootPath;
+        const size_t componentStart = root.size() + 1;
+        const size_t slashPos = path.find('/', componentStart);
+        if (slashPos != std::string_view::npos) {
+            return false;
+        }
+
+        const std::string_view rootEntry = path.substr(componentStart);
+        if (IsHiddenRootEntryNameForRule(rule, rootEntry, root)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool IsParentOfExactHiddenTargetPathForRule(const CompiledHideRule& rule, std::string_view path) {
+    // Root targets and nested relative targets need different list filtering keys. Root-level
+    // targets can be recognized by child name alone under /storage/emulated/0, but nested targets
+    // need the exact visible parent path so reply_buf can rebuild parentPath + childName.
+    if (const auto root = VisibleStorageRootForPath(path); root && path == *root)
+        return !rule.hiddenRootEntryNames.empty() || HideAllForStorageRoot(rule, *root);
+
+    const auto relativePath = RelativePathViewForVisibleRoot(path);
+    if (!relativePath.has_value()) {
+        return false;
+    }
+    return rule.exactHiddenTargetParentRelativePathSet.find(CanonicalizeRelativeHiddenPathForMatch(
+               *relativePath)) != rule.exactHiddenTargetParentRelativePathSet.end();
+}
+
+}  // namespace
+
+bool HiddenPathPolicy::IsConfiguredHiddenRootEntryName(std::string_view name) {
+    const auto rule = RuleForAnyPackage();
+    return rule != nullptr && IsConfiguredHiddenRootEntryNameForRule(*rule, name);
+}
+
+bool HiddenPathPolicy::IsConfiguredHiddenRootEntryName(uint32_t uid, std::string_view name) {
+    const auto& rule = BorrowHideRuleForUid(uid);
+    return rule != nullptr && IsConfiguredHiddenRootEntryNameForRule(*rule, name);
+}
+
+bool HiddenPathPolicy::IsHiddenRootEntryName(std::string_view name) {
+    const auto rule = RuleForAnyPackage();
+    const auto rootPath = LookupTrackedPathForInode(CurrentRootParentInode());
+    return rule != nullptr &&
+           IsHiddenRootEntryNameForRule(*rule, name,
+                                        rootPath.value_or(std::string(kVisibleStorageRoots[0])));
+}
+
+bool HiddenPathPolicy::IsHiddenRootEntryName(uint32_t uid, std::string_view name) {
+    const auto& rule = BorrowHideRuleForUid(uid);
+    const auto rootPath = LookupTrackedPathForInode(CurrentRootParentInode());
+    return rule != nullptr &&
+           IsHiddenRootEntryNameForRule(*rule, name,
+                                        rootPath.value_or(std::string(kVisibleStorageRoots[0])));
+}
+
+bool HiddenPathPolicy::IsAnyHiddenSubtreePath(std::string_view path) {
+    const auto rule = RuleForAnyPackage();
+    return rule != nullptr && IsAnyHiddenSubtreePathForRule(*rule, path);
+}
+
+bool HiddenPathPolicy::IsAnyHiddenSubtreePath(uint32_t uid, std::string_view path) {
+    const auto& rule = BorrowHideRuleForUid(uid);
+    return rule != nullptr && IsAnyHiddenSubtreePathForRule(*rule, path);
+}
+
+bool HiddenPathPolicy::IsAnyHiddenSubtreePath(const CompiledHideRule& rule, std::string_view path) {
+    return IsAnyHiddenSubtreePathForRule(rule, path);
+}
+
+bool HiddenPathPolicy::IsExactHiddenTargetPath(std::string_view path) {
+    const auto rule = RuleForAnyPackage();
+    return rule != nullptr && IsExactHiddenTargetPathForRule(*rule, path);
+}
+
+bool HiddenPathPolicy::IsExactHiddenTargetPath(uint32_t uid, std::string_view path) {
+    const auto& rule = BorrowHideRuleForUid(uid);
+    return rule != nullptr && IsExactHiddenTargetPathForRule(*rule, path);
+}
+
+bool HiddenPathPolicy::IsHiddenRootDirectoryPath(std::string_view path) {
+    const auto root = VisibleStorageRootForPath(path);
+    return root.has_value() && *root == path;
+}
+
+bool IsParentOfExactHiddenTargetPath(uint32_t uid, std::string_view path) {
+    const auto& rule = BorrowHideRuleForUid(uid);
+    return rule != nullptr && IsParentOfExactHiddenTargetPathForRule(*rule, path);
+}
+
+bool IsParentOfExactHiddenTargetPath(std::string_view path) {
+    const auto rule = RuleForAnyPackage();
+    return rule != nullptr && IsParentOfExactHiddenTargetPathForRule(*rule, path);
+}
+
+std::string HiddenPathPolicy::JoinPathComponent(std::string_view parent, std::string_view child) {
+    std::string joined(parent);
+    if (joined.empty() || joined.back() != '/') {
+        joined.push_back('/');
+    }
+    joined.append(child.data(), child.size());
+    return joined;
+}
+
+bool HiddenPathPolicy::ShouldFilterHiddenRootDirent(uint32_t uid, uint64_t ino,
+                                                    std::string_view name,
+                                                    bool requireParentMatch) {
+    const auto& rule = BorrowHideRuleForUid(uid);
+    if (rule == nullptr) {
+        return false;
+    }
+
+    if (const auto parentPath = LookupTrackedPathForInode(ino); parentPath.has_value()) {
+        const std::string childPath = JoinPathComponent(*parentPath, name);
+        if (IsExactHiddenTargetPathForRule(*rule, childPath)) {
+            return true;
+        }
+    }
+
+    if (!requireParentMatch) {
+        // Without a trusted parent inode/path we cannot tell whether this dirent belongs to
+        // /storage/emulated/0 or to an exempt subtree such as /storage/emulated/0/Android.
+        // Keep the legacy exact-name fallback, but do not apply hide-all wildcard filtering here.
+        return IsConfiguredHiddenRootEntryNameForRule(*rule, name);
+    }
+    const auto rootPath = LookupTrackedPathForInode(ino);
+    if (!rootPath || !IsHiddenRootEntryNameForRule(*rule, name, *rootPath)) {
+        return false;
+    }
+    const uint64_t rootParent = CurrentRootParentInode();
+    return rootParent != 0 && ino == rootParent;
+}
+
+}  // namespace fusehide

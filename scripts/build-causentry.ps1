@@ -241,6 +241,43 @@ if ($IncludeZygisk) {
   }
   $backendClasses = (Get-ChildItem (Join-Path $zygoteStage "zygisk") -Filter *.so -File).Count
   Say ("   backend ok : {0} DEX file(s) + {1} package marker(s) + {2} Zygisk loader libraries" -f $zygoteDex.Count, $packageMarkers.Count, $backendClasses) "Green"
+
+  # Compile native C++ FUSE storage cloaker and Zygisk engine
+  $cppDir = Join-Path $Root "android\zygote\src\main\cpp"
+  $cmake = Join-Path $Sdk "cmake\3.22.1\bin\cmake.exe"
+  $ninja = Join-Path $Sdk "cmake\3.22.1\bin\ninja.exe"
+  $ndkDir = Join-Path $Sdk "ndk\26.1.10909125"
+  $strip = Join-Path $ndkDir "toolchains\llvm\prebuilt\windows-x86_64\bin\llvm-strip.exe"
+
+  if ((Test-Path $cppDir) -and (Test-Path $cmake) -and (Test-Path $ninja)) {
+    Say "   compiling native C++ FUSE cloaker & Zygisk engine (arm64-v8a)..." "Cyan"
+    $buildArm64 = Join-Path $cppDir "build-arm64"
+    New-Item -ItemType Directory -Force -Path $buildArm64 | Out-Null
+    Push-Location $buildArm64
+    try {
+      & $cmake .. -G "Ninja" -DCMAKE_MAKE_PROGRAM="$ninja" `
+        -DCMAKE_TOOLCHAIN_FILE="$ndkDir/build/cmake/android.toolchain.cmake" `
+        -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 -DCMAKE_BUILD_TYPE=Release
+      if ($LASTEXITCODE -eq 0) {
+        & $ninja
+        if ($LASTEXITCODE -eq 0) {
+          # Strip libzygisk.so
+          if (Test-Path $strip) {
+            & $strip --strip-all "libzygisk.so"
+          }
+          # Copy libzygisk.so to zygisk/arm64-v8a.so
+          Copy-Item "libzygisk.so" (Join-Path $zygiskDest "arm64-v8a.so") -Force
+          # Copy libfusehide.so to lib/arm64-v8a/libfusehide.so
+          $modLibArm64 = Join-Path $Mod "lib\arm64-v8a"
+          New-Item -ItemType Directory -Force -Path $modLibArm64 | Out-Null
+          Copy-Item "libfusehide.so" (Join-Path $modLibArm64 "libfusehide.so") -Force
+          Say "   native FUSE storage cloaker & Zygisk engine integrated successfully!" "Green"
+        }
+      }
+    } finally {
+      Pop-Location
+    }
+  }
 } else {
   Say "   backend    : excluded by CAUSENTRY_EXCLUDE_ZYGISK=1" "DarkGray"
 }

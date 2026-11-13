@@ -59,6 +59,8 @@ zygisk {
     packages(
         ZygoteLoader.PACKAGE_SYSTEM_SERVER,
         "com.android.providers.settings",
+        "com.google.android.providers.media.module",
+        "com.android.providers.media.module",
     )
     id = "causentry"
     name = "Causentry"

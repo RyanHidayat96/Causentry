@@ -15,8 +15,8 @@ valid_package_name() {
 
 valid_template_name() {
   case "$1" in ""|[dD][eE][fF][aA][uU][lL][tT]) return 1;; esac
-  case "$1" in *[!A-Za-z0-9_ .-]*) return 1;; esac
-  return 0
+  bad=$(printf '%s' "$1" | tr -d 'A-Za-z0-9_. -')
+  [ -z "$bad" ]
 }
 
 package_manager_ready() {

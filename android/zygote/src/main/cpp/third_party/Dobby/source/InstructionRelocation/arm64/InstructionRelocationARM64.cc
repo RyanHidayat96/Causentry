@@ -1,0 +1,622 @@
+#include "platform_macro.h"
+
+#if defined(TARGET_ARCH_ARM64)
+
+#include "InstructionRelocation/arm64/InstructionRelocationARM64.h"
+
+#include "dobby_internal.h"
+
+#include "core/arch/arm64/registers-arm64.h"
+#include "core/assembler/assembler-arm64.h"
+#include "core/codegen/codegen-arm64.h"
+#include "MemoryAllocator/NearMemoryAllocator.h"
+#include "PlatformUtil/ProcessRuntimeUtility.h"
+
+#include "inst_constants.h"
+#include "inst_decode_encode_kit.h"
+#include <vector>
+
+using namespace zz::arm64;
+
+namespace {
+
+constexpr int64_t kArm64DirectBranchRange = INT64_C(1) << 27;
+constexpr size_t kArm64LiteralRange = size_t{1} << 20;
+
+// Constrain the *base* of the relocated buffer so an instruction at
+// `instruction_offset` can still encode a PC-relative reference to `target`.
+// ARM64 B/BL and literal loads use signed immediates whose positive endpoint
+// is exclusive, so keep one instruction of margin at both ends. The slightly
+// conservative symmetric window is easier for NearMemoryAllocator to honor
+// and avoids selecting an address that only works at the negative endpoint.
+bool IntersectPcRelativeWindow(addr_t target, uint32_t instruction_offset, size_t reach,
+                               addr_t *minimum, addr_t *maximum) {
+  if (!minimum || !maximum || reach <= sizeof(arm64_inst_t) || target < instruction_offset)
+    return false;
+  const addr_t center = target - instruction_offset;
+  const addr_t radius = static_cast<addr_t>(reach - sizeof(arm64_inst_t));
+  const addr_t local_minimum = center > radius ? center - radius : 0;
+  const addr_t local_maximum = center <= UINTPTR_MAX - radius ? center + radius : UINTPTR_MAX;
+  if (local_minimum > *minimum)
+    *minimum = local_minimum;
+  if (local_maximum < *maximum)
+    *maximum = local_maximum;
+  return *minimum <= *maximum;
+}
+
+} // namespace
+
+#if defined(DOBBY_DEBUG)
+#define debug_nop() _ nop()
+#else
+#define debug_nop()
+#endif
+
+#define arm64_trunc_page(x) ((x) & (~(0x1000 - 1)))
+#define arm64_round_page(x) trunc_page((x) + (0x1000 - 1))
+
+typedef struct {
+  addr_t mapped_addr;
+
+  uint8_t *buffer;
+  uint8_t *buffer_cursor;
+  size_t buffer_size;
+
+  vmaddr_t src_vmaddr;
+  vmaddr_t dst_vmaddr;
+
+  CodeMemBlock *origin;
+  CodeMemBlock *relocated;
+
+  tinystl::unordered_map<off_t, off_t> relocated_offset_map;
+
+  tinystl::unordered_map<vmaddr_t, AssemblerPseudoLabel *> label_map;
+
+} relo_ctx_t;
+
+struct DirectBranchFixup {
+  uint32_t offset;
+  addr_t target;
+  bool link;
+};
+
+struct LiteralLoadFixup {
+  uint32_t offset;
+  addr_t target;
+  arm64_inst_t instruction;
+  uint32_t data_offset;
+  bool copied;
+};
+
+// Literal loads can address 4, 8 or 16 bytes; PRFM does not load data.
+static size_t literal_data_size(arm64_inst_t inst) {
+  const unsigned opc = bits(inst, 30, 31);
+  const bool simd = bit(inst, 26) != 0;
+  if (simd)
+    return opc == 3 ? 0 : (size_t{4} << opc);
+  return opc == 0 || opc == 2 ? 4 : (opc == 1 ? 8 : 0);
+}
+
+// ---
+
+addr_t relo_cur_src_vmaddr(relo_ctx_t *ctx) {
+  return ctx->src_vmaddr + (ctx->buffer_cursor - ctx->buffer);
+}
+
+addr_t relo_cur_dst_vmaddr(relo_ctx_t *ctx, TurboAssembler *assembler) {
+  return ctx->dst_vmaddr + assembler->GetCodeBuffer()->GetBufferSize();
+}
+
+addr_t relo_src_offset_to_vmaddr(relo_ctx_t *ctx, off_t offset) {
+  return ctx->src_vmaddr + offset;
+}
+
+addr_t relo_dst_offset_to_vmaddr(relo_ctx_t *ctx, off_t offset) {
+  return ctx->dst_vmaddr + offset;
+}
+
+// ---
+
+#if 0
+bool has_relo_label_at(relo_ctx_t *ctx, vmaddr_t addr) {
+  if (ctx->label_map.count(addr)) {
+    return true;
+  }
+  return false;
+}
+
+AssemblerPseudoLabel *relo_label_create_or_get(relo_ctx_t *ctx, vmaddr_t addr) {
+  if (!ctx->label_map.count(addr)) {
+    auto *label = new AssemblerPseudoLabel(addr);
+    ctx->label_map[addr] = label;
+  }
+  return ctx->label_map[addr];
+}
+
+int64_t relo_label_link_offset(relo_ctx_t *ctx, pcrel_type_t pcrel_type, int64_t offset) {
+  auto is_offset_undefined = [ctx](int64_t offset) -> bool {
+    if (ctx->buffer_cursor + offset < ctx->buffer || ctx->buffer_cursor + offset > ctx->buffer + ctx->buffer_size) {
+      return true;
+    }
+    return false;
+  };
+
+  auto is_offset_uninitialized = [ctx](int64_t offset) -> bool {
+    if (ctx->buffer_cursor + offset > ctx->buffer && ctx->buffer_cursor + offset < ctx->buffer + ctx->buffer_size) {
+      if (!ctx->relocated_offset_map.count(ctx->buffer_cursor + offset - ctx->buffer_cursor))
+        return true;
+    }
+    return false;
+  };
+
+  addr_t label_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
+  if (pcrel_type == RELO_ARM64_RELOC_PAGE21) {
+    label_vmaddr = arm64_trunc_page(label_vmaddr);
+  }
+
+  auto *label = relo_label_create_or_get(ctx, label_vmaddr);
+  if (is_offset_undefined(offset)) { // pc relative target is beyond our scope
+    label->link_to(AssemblerPseudoLabel::kLabelImm19, relo_cur_src_vmaddr(ctx), (addr_t)ctx->buffer_cursor - ctx->mapped_addr);
+    return 0;
+  } else if (is_offset_uninitialized(offset)) { // pc relative target is in our control, but not handle yet
+    label->link_to(AssemblerPseudoLabel::kLabelImm19, relo_cur_src_vmaddr(ctx), (addr_t)ctx->buffer_cursor - ctx->mapped_addr);
+    return 0;
+  } else { // pc relative target is already handled
+    off_t off = ctx->buffer_cursor + offset - ctx->buffer;
+    off_t relocated_off = label->relocated_pos();
+    int64_t new_offset = relo_dst_offset_to_vmaddr(ctx, relocated_off) - relo_src_offset_to_vmaddr(ctx, off);
+    return new_offset;
+  }
+}
+#endif
+
+// ---
+
+static inline bool inst_is_b_bl(uint32_t instr) {
+  return (instr & UnconditionalBranchFixedMask) == UnconditionalBranchFixed;
+}
+
+static inline bool inst_is_ldr_literal(uint32_t instr) {
+  return ((instr & LoadRegLiteralFixedMask) == LoadRegLiteralFixed);
+}
+
+static inline bool inst_is_adr(uint32_t instr) {
+  return (instr & PCRelAddressingFixedMask) == PCRelAddressingFixed && (instr & PCRelAddressingMask) == ADR;
+}
+
+static inline bool inst_is_adrp(uint32_t instr) {
+  return (instr & PCRelAddressingFixedMask) == PCRelAddressingFixed && (instr & PCRelAddressingMask) == ADRP;
+}
+
+static inline bool inst_is_b_cond(uint32_t instr) {
+  return (instr & ConditionalBranchFixedMask) == ConditionalBranchFixed;
+}
+
+static inline bool inst_is_compare_b(uint32_t instr) {
+  return (instr & CompareBranchFixedMask) == CompareBranchFixed;
+}
+
+static inline bool inst_is_test_b(uint32_t instr) {
+  return (instr & TestBranchFixedMask) == TestBranchFixed;
+}
+
+// ---
+
+int relo_relocate(relo_ctx_t *ctx, bool branch) {
+#if defined(DOBBY_DEBUG)
+  int relocated_insn_count = 0;
+#endif
+
+  TurboAssembler turbo_assembler_(0);
+#define _ turbo_assembler_.
+
+  auto relocated_buffer = turbo_assembler_.GetCodeBuffer();
+  std::vector<DirectBranchFixup> direct_branches;
+  std::vector<LiteralLoadFixup> literal_loads;
+  std::vector<addr_t> address_targets;
+
+  while (ctx->buffer_cursor < ctx->buffer + ctx->buffer_size) {
+    uint32_t orig_off = ctx->buffer_cursor - ctx->buffer;
+    uint32_t relocated_off = relocated_buffer->GetBufferSize();
+    ctx->relocated_offset_map[orig_off] = relocated_off;
+
+#if 0
+    vmaddr_t inst_vmaddr = 0;
+    inst_vmaddr = relo_cur_src_vmaddr(ctx);
+    if (has_relo_label_at(ctx, inst_vmaddr)) {
+      auto *label = relo_label_create_or_get(ctx, inst_vmaddr);
+      label->bind_to(inst_vmaddr);
+    }
+#endif
+
+    arm64_inst_t inst = *(arm64_inst_t *)ctx->buffer_cursor;
+    // The stolen prologue may contain an inline literal pool following RET.
+    // Its payload can coincidentally decode as a branch or another literal;
+    // these words are data, not additional instructions to relocate.
+    bool embedded_literal_data = false;
+    for (const auto &literal : literal_loads) {
+      const size_t width = literal_data_size(literal.instruction);
+      const addr_t word = ctx->src_vmaddr + orig_off;
+      if (width && word >= literal.target && word - literal.target < width) {
+        embedded_literal_data = true;
+        break;
+      }
+    }
+    if (embedded_literal_data) {
+      _ Emit(inst);
+      ctx->buffer_cursor += sizeof(arm64_inst_t);
+      continue;
+    }
+    if (inst_is_b_bl(inst)) {
+      DLOG(0, "%d:relo <b_bl> at %p", relocated_insn_count++, relo_cur_src_vmaddr(ctx));
+
+      int64_t offset = decode_imm26_offset(inst);
+      addr_t dst_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
+
+      // A literal load followed by BR/BLR destroys x17, which can still
+      // contain a live value at this relocated instruction. A direct branch
+      // does not change any general-purpose register. If it cannot reach its
+      // target after placement, reject this relocation rather than clobber.
+      const bool link = (inst & UnconditionalBranchMask) == BL;
+      direct_branches.push_back({static_cast<uint32_t>(relocated_buffer->GetBufferSize()), dst_vmaddr, link});
+      _ Emit(static_cast<arm64_inst_t>(link ? BL : B));
+
+    } else if (inst_is_ldr_literal(inst)) {
+      DLOG(0, "%d:relo <ldr_literal> at %p", relocated_insn_count++, relo_cur_src_vmaddr(ctx));
+
+      int64_t offset = decode_imm19_offset(inst);
+      addr_t dst_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
+
+      // Preserve the original literal-load instruction, including its target
+      // register and SIMD/PRFM variant. Rebase its PC-relative immediate after
+      // locating the executable buffer. Replacing it with MOV+LDR would change
+      // a destination register *before* a possible memory fault.
+      literal_loads.push_back({static_cast<uint32_t>(relocated_buffer->GetBufferSize()), dst_vmaddr, inst, 0, false});
+      _ Emit(inst);
+    } else if (inst_is_adr(inst)) {
+      DLOG(0, "%d:relo <adr> at %p", relocated_insn_count++, relo_cur_src_vmaddr(ctx));
+
+      int64_t offset = decode_immhi_immlo_offset(inst);
+      addr_t dst_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
+      // ADR returns the address itself. If its target is overwritten by a
+      // long inline patch, copying the bytes into the relocation buffer does
+      // not preserve pointer identity. Refuse such a relocation instead of
+      // returning a pointer whose contents have changed.
+      address_targets.push_back(dst_vmaddr);
+
+      int rd = decode_rd(inst);
+
+      {
+        _ Mov(X(rd), dst_vmaddr);
+        ;
+      }
+    } else if (inst_is_adrp(inst)) {
+      DLOG(0, "%d:relo <adrp> at %p", relocated_insn_count++, relo_cur_src_vmaddr(ctx));
+
+      int64_t offset = decode_immhi_immlo_zero12_offset(inst);
+      addr_t dst_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
+      dst_vmaddr = arm64_trunc_page(dst_vmaddr);
+
+      int rd = decode_rd(inst);
+
+      {
+        _ Mov(X(rd), dst_vmaddr);
+        ;
+      }
+    } else if (inst_is_b_cond(inst)) {
+      DLOG(0, "%d:relo <b_cond> at %p", relocated_insn_count++, relo_cur_src_vmaddr(ctx));
+
+      int64_t offset = decode_imm19_offset(inst);
+      addr_t dst_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
+
+      arm64_inst_t branch_instr = inst;
+      {
+        char cond = bits(inst, 0, 3);
+        cond = cond ^ 1;
+        set_bits(branch_instr, 0, 3, cond);
+
+        int64_t offset = 4 * 2;
+        uint32_t imm19 = offset >> 2;
+        set_bits(branch_instr, 5, 23, imm19);
+      }
+
+      {
+        _ Emit(branch_instr);
+        direct_branches.push_back({static_cast<uint32_t>(relocated_buffer->GetBufferSize()), dst_vmaddr, false});
+        _ Emit(static_cast<arm64_inst_t>(B));
+      }
+    } else if (inst_is_compare_b(inst)) {
+      DLOG(0, "%d:relo <compare_b> at %p", relocated_insn_count++, relo_cur_src_vmaddr(ctx));
+
+      int64_t offset = decode_imm19_offset(inst);
+      addr_t dst_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
+
+      arm64_inst_t branch_instr = inst;
+      {
+        char op = bit(inst, 24);
+        op = op ^ 1;
+        set_bit(branch_instr, 24, op);
+
+        int64_t offset = 4 * 2;
+        uint32_t imm19 = offset >> 2;
+        set_bits(branch_instr, 5, 23, imm19);
+      }
+
+      {
+        _ Emit(branch_instr);
+        direct_branches.push_back({static_cast<uint32_t>(relocated_buffer->GetBufferSize()), dst_vmaddr, false});
+        _ Emit(static_cast<arm64_inst_t>(B));
+      }
+    } else if (inst_is_test_b(inst)) {
+      DLOG(0, "%d:relo <test_b> at %p", relocated_insn_count++, relo_cur_src_vmaddr(ctx));
+
+      int64_t offset = decode_imm14_offset(inst);
+      addr_t dst_vmaddr = relo_cur_src_vmaddr(ctx) + offset;
+
+      arm64_inst_t branch_instr = inst;
+      {
+        char op = bit(inst, 24);
+        op = op ^ 1;
+        set_bit(branch_instr, 24, op);
+
+        int64_t offset = 4 * 2;
+        uint32_t imm14 = offset >> 2;
+        set_bits(branch_instr, 5, 18, imm14);
+      }
+
+      {
+        _ Emit(branch_instr);
+        direct_branches.push_back({static_cast<uint32_t>(relocated_buffer->GetBufferSize()), dst_vmaddr, false});
+        _ Emit(static_cast<arm64_inst_t>(B));
+      }
+    } else {
+      _ Emit(inst);
+    }
+
+    ctx->buffer_cursor += sizeof(arm64_inst_t);
+  }
+#undef _
+
+  // update origin
+  int new_origin_len = (addr_t)ctx->buffer_cursor - (addr_t)ctx->buffer;
+  ctx->origin->reset(ctx->origin->addr, new_origin_len);
+
+  uint32_t tail_branch_offset = 0;
+  // TODO: if last instr is unlink branch, ignore it
+  if (branch) {
+    // A transparent original-function trampoline must not consume an
+    // architectural scratch register at the relocation boundary. In
+    // particular, x17 is a normal Dart generated-code temporary and can carry
+    // a live value from the final relocated instruction into the first
+    // instruction after the stolen prologue. The historical
+    // LiteralLdrBranch() tail used x17 for an absolute jump and silently
+    // destroyed that value.
+    //
+    // Reserve the tail instruction first. After literal labels are bound we
+    // know the exact relocated size and can allocate only that much memory.
+    tail_branch_offset = relocated_buffer->GetBufferSize();
+    turbo_assembler_.b(static_cast<int64_t>(0));
+  }
+
+  // A literal within the stolen entry will be overwritten by the inline
+  // trampoline. Preserve its original bytes separately in the relocated
+  // buffer, after the return branch, and retarget the load to that copy.
+  // A non-branching relocation needs its own skip branch around the data.
+  const addr_t source_begin = ctx->origin->addr;
+  const addr_t source_end = source_begin + ctx->origin->size;
+  if (source_end < source_begin)
+    return -1;
+  for (addr_t target : address_targets) {
+    // ADR materializes an address, not a sized load. A consumer can dereference
+    // a range starting BEFORE the patched entry and extending into it. Since
+    // the instruction does not tell us the eventual access width, only a
+    // forward address outside the stolen interval is demonstrably safe from
+    // this kind of overlap. Reject backward ADR targets rather than guessing
+    // that a 4/8/16-byte read is the only possible consumer.
+    if (target < source_end) {
+      ERROR_LOG("[insn relocate] ADR target may overlap overwritten entry: %p in/before [%p,%p)", target, source_begin,
+                source_end);
+      return -1;
+    }
+  }
+  uint32_t data_skip_offset = 0;
+  bool appended_skip = false;
+  for (auto &fixup : literal_loads) {
+    const size_t width = literal_data_size(fixup.instruction);
+    if (width && fixup.target > UINTPTR_MAX - width)
+      return -1;
+    if (width && fixup.target < source_end && fixup.target <= UINTPTR_MAX - width &&
+        fixup.target + width > source_begin) {
+      if (width > 16) {
+        ERROR_LOG("[insn relocate] partial inline ARM64 literal: instruction=%08x target=%p size=%zu source=[%p,%p)",
+                  fixup.instruction, fixup.target, width, source_begin, source_end);
+        return -1;
+      }
+      // A literal can straddle the overwritten entry's end (e.g. a 12-byte
+      // patch overwriting the first four bytes of an 8-byte literal). Copy
+      // the *whole* datum before installing the patch, but only if the entire
+      // source memory range is currently readable.
+      // The original datum can begin *before* the hook entry and extend into
+      // the patch, so a one-sided target-in-entry test misses it. A source
+      // before ctx->buffer must be read from the actual original mapping.
+      const addr_t host_literal =
+          fixup.target >= source_begin ? (addr_t)ctx->buffer + (fixup.target - source_begin) : fixup.target;
+      bool readable = false;
+      for (const auto &region : ProcessRuntimeUtility::GetProcessMemoryLayout()) {
+        if (region.start <= host_literal && host_literal < region.end && region.end - host_literal >= width &&
+            region.permission != kNoAccess) {
+          readable = true;
+          break;
+        }
+      }
+      if (!readable)
+        return -1;
+      if (!branch && !appended_skip) {
+        data_skip_offset = relocated_buffer->GetBufferSize();
+        relocated_buffer->Emit32(B);
+        appended_skip = true;
+      }
+      while (relocated_buffer->GetBufferSize() % width)
+        relocated_buffer->Emit8(0);
+      fixup.data_offset = relocated_buffer->GetBufferSize();
+      fixup.copied = true;
+      relocated_buffer->EmitBuffer(reinterpret_cast<uint8_t *>(host_literal), width);
+    }
+  }
+  if (appended_skip) {
+    const uint32_t delta = relocated_buffer->GetBufferSize() - data_skip_offset;
+    relocated_buffer->RewriteInst(data_skip_offset, B | bits(delta >> 2, 0, 25));
+  }
+
+  // Bind all labels
+  turbo_assembler_.RelocBind();
+
+  // Branch and literal targets must be reachable from the actual relocated
+  // buffer. Never fall back to a register-clobbering absolute jump/load.
+  if (branch || !direct_branches.empty() || !literal_loads.empty()) {
+    bool use_simulated_address = false;
+#if defined(TEST_WITH_UNICORN)
+    // Unicorn executes a synthetic VM address; emitted bytes live in a
+    // separate host allocation created by AssemblyCodeBuilder.
+    use_simulated_address = !branch && ctx->dst_vmaddr != 0;
+#endif
+    if (!use_simulated_address) {
+      const uint32_t relocated_size = relocated_buffer->GetBufferSize();
+      const addr_t source_begin = ctx->origin->addr;
+      const addr_t source_end = source_begin + ctx->origin->size;
+      addr_t minimum_start = 0;
+      addr_t maximum_start = UINTPTR_MAX;
+      bool constrained = false;
+
+      if (branch) {
+        const addr_t resume = source_end;
+        if (!IntersectPcRelativeWindow(resume, tail_branch_offset, kArm64DirectBranchRange,
+                                       &minimum_start, &maximum_start))
+          return -1;
+        constrained = true;
+      }
+      for (const auto &fixup : direct_branches) {
+        // A branch back into the stolen prologue is rebound to another offset
+        // in the relocated buffer, so it imposes no absolute-address window.
+        if (fixup.target >= source_begin && fixup.target < source_end)
+          continue;
+        if (!IntersectPcRelativeWindow(fixup.target, fixup.offset, kArm64DirectBranchRange,
+                                       &minimum_start, &maximum_start)) {
+          ERROR_LOG("[insn relocate] ARM64 direct-branch relocation windows do not intersect");
+          return -1;
+        }
+        constrained = true;
+      }
+      for (const auto &fixup : literal_loads) {
+        // Inline literals copied into the relocated buffer move with its base
+        // and therefore impose no absolute-address reachability constraint.
+        if (fixup.copied)
+          continue;
+        if (!IntersectPcRelativeWindow(fixup.target, fixup.offset, kArm64LiteralRange,
+                                       &minimum_start, &maximum_start)) {
+          ERROR_LOG("[insn relocate] ARM64 literal relocation windows do not intersect");
+          return -1;
+        }
+        constrained = true;
+      }
+
+      addr_t preferred_start = ctx->origin->addr;
+      size_t search_range = kArm64DirectBranchRange - sizeof(arm64_inst_t);
+      if (constrained) {
+        const addr_t span = maximum_start - minimum_start;
+        preferred_start = minimum_start + span / 2;
+        search_range = static_cast<size_t>(span / 2);
+      }
+      // The allocator clips an entire allocation to its search interval, so a
+      // window narrower than the relocation itself cannot be satisfied.
+      if (search_range < relocated_size)
+        return -1;
+      auto *near_code =
+          NearMemoryAllocator::SharedAllocator()->allocateNearExecMemory(relocated_size, preferred_start, search_range);
+      if (near_code == nullptr) {
+        ERROR_LOG("[insn relocate] failed to allocate ARM64 relocation near %p", preferred_start);
+        return -1;
+      }
+      ctx->dst_vmaddr = reinterpret_cast<addr_t>(near_code);
+      turbo_assembler_.SetRealizedAddress(near_code);
+    }
+  }
+  if (branch) {
+    const addr_t resume = ctx->origin->addr + ctx->origin->size;
+    const addr_t branch_pc = ctx->dst_vmaddr + tail_branch_offset;
+    const int64_t delta = static_cast<int64_t>(resume) - static_cast<int64_t>(branch_pc);
+    if ((delta & 3) != 0 || delta < -kArm64DirectBranchRange ||
+        delta >= kArm64DirectBranchRange) {
+      ERROR_LOG("[insn relocate] ARM64 original trampoline is outside direct branch reach");
+      return -1;
+    }
+
+    const arm64_inst_t tail_branch = B | bits(delta >> 2, 0, 25);
+    relocated_buffer->RewriteInst(tail_branch_offset, tail_branch);
+  }
+
+  for (const auto &fixup : direct_branches) {
+    addr_t target = fixup.target;
+    const addr_t source_begin = ctx->origin->addr;
+    if (target >= source_begin && target < source_begin + ctx->origin->size) {
+      const off_t source_off = static_cast<off_t>(target - source_begin);
+      const auto it = ctx->relocated_offset_map.find(source_off);
+      if (it == ctx->relocated_offset_map.end())
+        return -1;
+      target = ctx->dst_vmaddr + it->second;
+    }
+    const addr_t branch_pc = ctx->dst_vmaddr + fixup.offset;
+    const int64_t delta = static_cast<int64_t>(target) - static_cast<int64_t>(branch_pc);
+    if ((delta & 3) != 0 || delta < -kArm64DirectBranchRange || delta >= kArm64DirectBranchRange) {
+      ERROR_LOG("[insn relocate] ARM64 direct branch outside reach: %p -> %p", branch_pc, target);
+      return -1;
+    }
+    relocated_buffer->RewriteInst(fixup.offset, (fixup.link ? BL : B) | bits(delta >> 2, 0, 25));
+  }
+
+  for (const auto &fixup : literal_loads) {
+    const addr_t load_pc = ctx->dst_vmaddr + fixup.offset;
+    const addr_t data_target = fixup.copied ? ctx->dst_vmaddr + fixup.data_offset : fixup.target;
+    const int64_t delta = static_cast<int64_t>(data_target) - static_cast<int64_t>(load_pc);
+    if ((delta & 3) != 0 || delta < -(INT64_C(1) << 20) || delta >= (INT64_C(1) << 20)) {
+      ERROR_LOG("[insn relocate] ARM64 literal load outside reach: %p -> %p", load_pc, fixup.target);
+      return -1;
+    }
+    arm64_inst_t relocated_load = fixup.instruction;
+    set_bits(relocated_load, 5, 23, bits(delta >> 2, 0, 18));
+    relocated_buffer->RewriteInst(fixup.offset, relocated_load);
+  }
+
+  // Generate executable code
+  {
+    auto code = AssemblyCodeBuilder::FinalizeFromTurboAssembler(&turbo_assembler_);
+    if (code == nullptr) return -1;
+    ctx->relocated = code;
+  }
+  return 0;
+}
+
+void GenRelocateCode(void *buffer, CodeMemBlock *origin, CodeMemBlock *relocated, bool branch) {
+  relo_ctx_t ctx = {0};
+
+  ctx.buffer = ctx.buffer_cursor = (uint8_t *)buffer;
+  ctx.buffer_size = origin->size;
+
+  ctx.src_vmaddr = (vmaddr_t)origin->addr;
+  ctx.dst_vmaddr = (vmaddr_t)relocated->addr;
+
+  ctx.origin = origin;
+
+  if (relo_relocate(&ctx, branch) != 0 || ctx.relocated == nullptr) {
+    relocated->reset(0, 0);
+    return;
+  }
+
+  relocated->reset(ctx.relocated->addr, ctx.relocated->size);
+}
+
+void GenRelocateCodeAndBranch(void *buffer, CodeMemBlock *origin, CodeMemBlock *relocated) {
+  GenRelocateCode(buffer, origin, relocated, true);
+}
+
+#endif

@@ -152,7 +152,21 @@ while read -r t u tpl iso dev; do
   first=0
   printf '%s' "$u" >> "$T"
 done < "$TARGET_FILE"
-printf ']}' >> "$T"
+printf '],"storageRules":{"hiddenRootEntryNames":[' >> "$T"
+sfirst=1
+for se in MT2 TWRP Fox su daemonsu .magisk busybox TitaniumBackup SwiftBackup xinhao; do
+  [ $sfirst -eq 1 ] || printf ',' >> "$T"
+  sfirst=0
+  json_package "$se" >> "$T"
+done
+printf '],"hiddenRelativePaths":[' >> "$T"
+sfirst=1
+for sp in "Download/KernelSU" "Download/Magisk" "Download/APatch"; do
+  [ $sfirst -eq 1 ] || printf ',' >> "$T"
+  sfirst=0
+  json_package "$sp" >> "$T"
+done
+printf ']}}' >> "$T"
 
 # Publish a complete policy so concurrent PackageManager calls never read half a save.
 cp -f "$T" "$OUT_DIR/.cloak.$$" \
@@ -180,3 +194,4 @@ wait "$mirror_local" 2>/dev/null || :
 wait "$mirror_media" 2>/dev/null || :
 [ "$T" = "$DIR/.cloak.tmp" ] && mv -f "$T" "$DIR/cloak.json.tmp" 2>/dev/null
 echo "cloak.json: $(wc -c < "$OUT" 2>/dev/null) bytes -> $OUT (+2 mirrors)"
+am broadcast -a com.causentry.action.RELOAD_STORAGE_CLOAK >/dev/null 2>&1 || :

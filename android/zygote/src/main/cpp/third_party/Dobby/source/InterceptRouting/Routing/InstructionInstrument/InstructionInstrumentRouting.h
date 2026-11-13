@@ -1,0 +1,36 @@
+#pragma once
+
+#include "dobby_internal.h"
+
+#include "InterceptRouting/InterceptRouting.h"
+
+#include "TrampolineBridge/ClosureTrampolineBridge/ClosureTrampoline.h"
+
+class InstructionInstrumentRouting : public InterceptRouting {
+public:
+  InstructionInstrumentRouting(InterceptEntry *entry, dobby_instrument_callback_t pre_handler,
+                               dobby_instrument_callback_t post_handler)
+      : InterceptRouting(entry) {
+    this->prologue_dispatch_bridge = nullptr;
+    this->pre_handler = pre_handler;
+    this->post_handler = post_handler;
+    this->closure_trampoline_ = nullptr;
+  }
+
+  ~InstructionInstrumentRouting() override {
+    delete closure_trampoline_;
+  }
+
+  bool DispatchRouting() override;
+
+private:
+  bool BuildRouting();
+
+public:
+  dobby_instrument_callback_t pre_handler;
+  dobby_instrument_callback_t post_handler;
+
+private:
+  void *prologue_dispatch_bridge;
+  ClosureTrampolineEntry *closure_trampoline_;
+};

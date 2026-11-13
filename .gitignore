@@ -46,3 +46,5 @@ causentry.keystore
 /bpjstku-fix/jadx-res/
 /bpjstku-fix/diag/
 /bpjstku-fix/tools/
+
+**/build-arm64/

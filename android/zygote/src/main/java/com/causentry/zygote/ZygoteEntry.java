@@ -3,6 +3,8 @@ package com.causentry.zygote;
 import android.os.Process;
 import android.util.Log;
 
+import java.lang.reflect.Method;
+
 import com.v7878.r8.annotations.DoNotObfuscate;
 import com.v7878.r8.annotations.DoNotObfuscateType;
 import com.v7878.r8.annotations.DoNotShrink;
@@ -26,12 +28,32 @@ public class ZygoteEntry {
     @DoNotObfuscate
     @DoNotShrink
     public static void main() throws Throwable {
-        String packageName = ZygoteLoader.getPackageName();
-        String processName = ZygoteLoader.getProcessName();
+        String packageName = null;
+        String processName = null;
+        try {
+            packageName = ZygoteLoader.getPackageName();
+            processName = ZygoteLoader.getProcessName();
+        } catch (Throwable ignored) {
+        }
+        if (packageName == null || processName == null) {
+            if (Process.myUid() == Process.SYSTEM_UID) {
+                packageName = "android";
+                processName = "system_server";
+            } else {
+                try {
+                    Class<?> atClass = Class.forName("android.app.ActivityThread");
+                    Method currentPackage = atClass.getDeclaredMethod("currentPackageName");
+                    Method currentProcess = atClass.getDeclaredMethod("currentProcessName");
+                    packageName = (String) currentPackage.invoke(null);
+                    processName = (String) currentProcess.invoke(null);
+                } catch (Throwable ignored) {}
+            }
+        }
+
         Log.i(TAG, "Injected into " + packageName + "/" + processName
                 + " uid=" + Process.myUid() + " pid=" + Process.myPid());
         try {
-            if (ZygoteLoader.PACKAGE_SYSTEM_SERVER.equals(packageName)) {
+            if ("android".equals(packageName) || Process.myUid() == Process.SYSTEM_UID) {
                 SystemServerBackend.start();
             } else if (SettingsProviderBackend.PACKAGE_NAME.equals(packageName)) {
                 SettingsProviderBackend.start();

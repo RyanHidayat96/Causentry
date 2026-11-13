@@ -193,6 +193,12 @@ snapshot() {
     printf '"rootApps":'; json_string "$rootapps"; printf ',"rootSuggest":'; json_string "$suggests"; printf ','
     printf '"applyBusy":%s,"applyDone":%s,"applyRc":%s,"applyToken":' "$apply_busy" "$apply_done" "$apply_rc"; json_string "$apply_token"; printf ','
     printf '"commandRc":%s,"commandToken":' "$command_rc"; json_string "$command_token"; printf ','
+    fuse_info='{"active":false,"covered":false}'
+    if [ -f /data/media/0/Android/media/com.causentry.app/fuse_status.json ]; then
+      fuse_info=$(tr -d '\r\n' < /data/media/0/Android/media/com.causentry.app/fuse_status.json 2>/dev/null)
+      [ -n "$fuse_info" ] || fuse_info='{"active":false,"covered":false}'
+    fi
+    printf '"fuse":%s,' "$fuse_info"
     printf '"config":%s,' "$(tr -d '\n' < "$CONF" 2>/dev/null || echo '{}')"
     printf '"log":'; json_log_string; printf '}'
   } > "$T"
