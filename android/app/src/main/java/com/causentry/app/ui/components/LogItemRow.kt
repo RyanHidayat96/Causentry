@@ -45,6 +45,7 @@ import com.causentry.app.ui.theme.DangerRed
 import com.causentry.app.ui.theme.PrimaryBlue
 import com.causentry.app.ui.theme.SuccessGreen
 import com.causentry.app.ui.theme.SurfaceDark
+import com.causentry.app.ui.theme.SurfaceHighDark
 import com.causentry.app.ui.theme.TextPrimary
 import com.causentry.app.ui.theme.TextSecondary
 import com.causentry.app.ui.theme.WarningAmber
@@ -105,7 +106,7 @@ fun LogItemRow(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f, fill = false)
+                    modifier = Modifier.weight(1f)
                 ) {
                     // Level Badge
                     Box(
@@ -138,10 +139,16 @@ fun LogItemRow(
                     )
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
                 // Time & PID Metadata
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(SurfaceHighDark)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
                     Text(
                         text = "PID ${entry.pid}",
                         color = TextSecondary.copy(alpha = 0.8f),
@@ -155,7 +162,7 @@ fun LogItemRow(
                     )
                     Text(
                         text = entry.timestamp.substringAfter(" "),
-                        color = TextSecondary.copy(alpha = 0.8f),
+                        color = TextSecondary,
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace
                     )

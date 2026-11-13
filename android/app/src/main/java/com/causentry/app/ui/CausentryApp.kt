@@ -177,6 +177,7 @@ fun CausentryApp(
                             logs = logs,
                             crashReports = crashReports,
                             allApps = allApps,
+                            iconLoader = viewModel.iconLoader,
                             isStreaming = isStreaming,
                             searchQuery = forensicQuery,
                             selectedPackage = forensicPkg,

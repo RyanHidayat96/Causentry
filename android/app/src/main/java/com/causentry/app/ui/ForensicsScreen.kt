@@ -10,6 +10,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,12 +25,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -45,8 +48,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,6 +63,7 @@ import com.causentry.app.model.CrashThreatReport
 import com.causentry.app.model.LogEntry
 import com.causentry.app.model.LogLevel
 import com.causentry.app.ui.components.CrashAlertCard
+import com.causentry.app.ui.components.ForensicAppPickerDialog
 import com.causentry.app.ui.components.LogItemRow
 import com.causentry.app.ui.components.StatusPill
 import com.causentry.app.ui.theme.BorderDark
@@ -76,6 +82,7 @@ fun ForensicsScreen(
     logs: List<LogEntry>,
     crashReports: List<CrashThreatReport>,
     allApps: List<AppInfo>,
+    iconLoader: com.causentry.app.data.IconLoader,
     isStreaming: Boolean,
     searchQuery: String,
     selectedPackage: String?,
@@ -93,12 +100,25 @@ fun ForensicsScreen(
 ) {
     val context = LocalContext.current
     val listState = rememberLazyListState()
-    var packageDropdownExpanded by remember { mutableStateOf(false) }
+    var showAppPickerDialog by remember { mutableStateOf(false) }
 
     val selectedApp = remember(selectedPackage, allApps) {
         allApps.find { it.packageName == selectedPackage }
     }
     val hasActiveFilter = selectedPackage != null || selectedLevel != null || searchQuery.isNotBlank()
+
+    if (showAppPickerDialog) {
+        ForensicAppPickerDialog(
+            allApps = allApps,
+            currentPackage = selectedPackage,
+            iconLoader = iconLoader,
+            onSelectPackage = { pkg ->
+                onSelectPackage(pkg)
+                showAppPickerDialog = false
+            },
+            onDismiss = { showAppPickerDialog = false }
+        )
+    }
 
     // Auto-scroll to bottom when streaming is active and new logs arrive
     LaunchedEffect(logs.size, isStreaming) {
@@ -116,41 +136,48 @@ fun ForensicsScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp)
+                .padding(horizontal = 14.dp, vertical = 6.dp)
         ) {
-            // Row 1: Stream Status & Action Buttons
+            // Row 1: Stream Status & Compact Action Buttons
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(SurfaceDark)
                     .border(1.dp, BorderDark, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left: Stream status + line counter (clickable to toggle pause/stream)
+                // Left: Stream status + line counter
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onToggleStream() }
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
+                    // Status Pill (clickable to toggle stream)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
-                            .size(9.dp)
-                            .clip(CircleShape)
-                            .background(if (isStreaming) SuccessGreen else WarningAmber)
-                    )
-                    Spacer(modifier = Modifier.width(7.dp))
-                    Text(
-                        text = if (isStreaming) "LIVE STREAM" else "PAUSED",
-                        color = if (isStreaming) SuccessGreen else WarningAmber,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
-                    )
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (isStreaming) SuccessGreen.copy(alpha = 0.12f) else WarningAmber.copy(alpha = 0.12f))
+                            .border(1.dp, if (isStreaming) SuccessGreen.copy(alpha = 0.35f) else WarningAmber.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
+                            .clickable { onToggleStream() }
+                            .padding(horizontal = 7.dp, vertical = 4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(if (isStreaming) SuccessGreen else WarningAmber)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isStreaming) "LIVE" else "PAUSED",
+                            color = if (isStreaming) SuccessGreen else WarningAmber,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
 
                     Spacer(modifier = Modifier.width(8.dp))
 
@@ -158,7 +185,8 @@ fun ForensicsScreen(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
                             .background(SurfaceHighDark)
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .border(1.dp, BorderDark, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 7.dp, vertical = 4.dp)
                     ) {
                         Text(
                             text = "${logs.size} lines",
@@ -170,134 +198,154 @@ fun ForensicsScreen(
                     }
                 }
 
-                // Right: Action buttons with consistent styling and touch targets
+                // Right: Action buttons (Compact Box, zero collision, strictly sized)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     // Play/Pause button
-                    IconButton(
-                        onClick = onToggleStream,
+                    Box(
                         modifier = Modifier
-                            .size(34.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .size(30.dp)
+                            .clip(RoundedCornerShape(7.dp))
                             .background(SurfaceHighDark)
-                            .border(1.dp, if (isStreaming) WarningAmber.copy(alpha = 0.5f) else SuccessGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .border(1.dp, if (isStreaming) WarningAmber.copy(alpha = 0.5f) else SuccessGreen.copy(alpha = 0.5f), RoundedCornerShape(7.dp))
+                            .clickable { onToggleStream() },
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             painter = painterResource(id = if (isStreaming) R.drawable.ic_pause else R.drawable.ic_play),
                             contentDescription = if (isStreaming) "Pause Stream" else "Resume Stream",
                             tint = if (isStreaming) WarningAmber else SuccessGreen,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(14.dp)
                         )
                     }
 
                     // Clear logs button
-                    IconButton(
-                        onClick = onClearLogs,
+                    Box(
                         modifier = Modifier
-                            .size(34.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .size(30.dp)
+                            .clip(RoundedCornerShape(7.dp))
                             .background(SurfaceHighDark)
-                            .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
+                            .border(1.dp, BorderDark, RoundedCornerShape(7.dp))
+                            .clickable { onClearLogs() },
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_delete),
                             contentDescription = "Clear Logs",
                             tint = TextSecondary,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(14.dp)
                         )
                     }
 
                     // Export / Share button
-                    IconButton(
-                        onClick = {
-                            val file = onExportLogs()
-                            if (file != null) {
-                                try {
-                                    val uri = FileProvider.getUriForFile(
-                                        context,
-                                        "${context.packageName}.fileprovider",
-                                        file
-                                    )
-                                    val intent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(Intent.EXTRA_STREAM, uri)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    context.startActivity(Intent.createChooser(intent, "Share Log Dump"))
-                                } catch (_: Exception) {
-                                    Toast.makeText(context, "Exported to: ${file.absolutePath}", Toast.LENGTH_LONG).show()
-                                }
-                            } else {
-                                Toast.makeText(context, "Failed to export logs", Toast.LENGTH_SHORT).show()
-                            }
-                        },
+                    Box(
                         modifier = Modifier
-                            .size(34.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .size(30.dp)
+                            .clip(RoundedCornerShape(7.dp))
                             .background(SurfaceHighDark)
-                            .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
+                            .border(1.dp, BorderDark, RoundedCornerShape(7.dp))
+                            .clickable {
+                                val file = onExportLogs()
+                                if (file != null) {
+                                    try {
+                                        val uri = FileProvider.getUriForFile(
+                                            context,
+                                            "${context.packageName}.fileprovider",
+                                            file
+                                        )
+                                        val intent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(Intent.EXTRA_STREAM, uri)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        context.startActivity(Intent.createChooser(intent, "Share Log Dump"))
+                                    } catch (_: Exception) {
+                                        Toast.makeText(context, "Exported to: ${file.absolutePath}", Toast.LENGTH_LONG).show()
+                                    }
+                                } else {
+                                    Toast.makeText(context, "Failed to export logs", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_copy),
                             contentDescription = "Export Logs",
                             tint = PrimaryBlue,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(14.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            // Row 2: Search Input Field (Proper height, no text clipping)
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchQueryChange,
-                placeholder = {
-                    Text(
-                        "Search logs, tags, or PIDs...",
-                        color = TextSecondary.copy(alpha = 0.7f),
-                        fontSize = 12.sp
-                    )
-                },
-                singleLine = true,
-                leadingIcon = {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_search),
-                        contentDescription = null,
-                        tint = TextSecondary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { onSearchQueryChange("") }, modifier = Modifier.size(24.dp)) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_close),
-                                contentDescription = "Clear search",
-                                tint = TextSecondary,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-                    }
-                },
+            // Row 2: Search Input Field (BasicTextField with CenterStart alignment: 100% immune to clipping)
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
-                shape = RoundedCornerShape(10.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = PrimaryBlue,
-                    unfocusedBorderColor = BorderDark,
-                    focusedContainerColor = SurfaceDark,
-                    unfocusedContainerColor = SurfaceDark,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary
+                    .height(42.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(SurfaceDark)
+                    .border(1.dp, BorderDark, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_search),
+                    contentDescription = null,
+                    tint = TextSecondary,
+                    modifier = Modifier.size(16.dp)
                 )
-            )
 
-            Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (searchQuery.isEmpty()) {
+                        Text(
+                            text = "Search logs, tags, or PIDs...",
+                            color = TextSecondary.copy(alpha = 0.6f),
+                            fontSize = 12.sp
+                        )
+                    }
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchQueryChange,
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = TextPrimary,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Default
+                        ),
+                        cursorBrush = SolidColor(PrimaryBlue),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                if (searchQuery.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .clickable { onSearchQueryChange("") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_close),
+                            contentDescription = "Clear search",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
 
             // Row 3: Horizontal Filter Chips (App selector + Log Levels + Reset)
             Row(
@@ -307,72 +355,45 @@ fun ForensicsScreen(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // App Selector Chip
-                Box {
-                    FilterChip(
-                        selected = selectedPackage != null,
-                        onClick = { packageDropdownExpanded = true },
-                        label = {
-                            Text(
-                                text = if (selectedApp != null) "App: ${selectedApp.label}" else if (selectedPackage != null) "App: $selectedPackage" else "All Apps ▾",
-                                fontSize = 11.sp,
-                                fontWeight = if (selectedPackage != null) FontWeight.Bold else FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                        },
-                        trailingIcon = if (selectedPackage != null) {
-                            {
-                                Text(
-                                    text = "✕",
-                                    color = PrimaryBlue,
-                                    fontSize = 10.sp,
-                                    modifier = Modifier.clickable { onSelectPackage(null) }
-                                )
-                            }
-                        } else null,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = PrimaryBlue.copy(alpha = 0.2f),
-                            selectedLabelColor = PrimaryBlue,
-                            containerColor = SurfaceDark,
-                            labelColor = TextSecondary
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            enabled = true,
-                            selected = selectedPackage != null,
-                            borderColor = if (selectedPackage != null) PrimaryBlue else BorderDark
-                        ),
-                        modifier = Modifier.height(32.dp)
-                    )
-
-                    DropdownMenu(
-                        expanded = packageDropdownExpanded,
-                        onDismissRequest = { packageDropdownExpanded = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("All Applications (Global Stream)", fontWeight = FontWeight.Bold) },
-                            onClick = {
-                                onSelectPackage(null)
-                                packageDropdownExpanded = false
-                            }
+                // App Selector Chip (Opens searchable dialog)
+                FilterChip(
+                    selected = selectedPackage != null,
+                    onClick = { showAppPickerDialog = true },
+                    label = {
+                        Text(
+                            text = if (selectedApp != null) "App: ${selectedApp.label}" else if (selectedPackage != null) "App: $selectedPackage" else "All Apps ▾",
+                            fontSize = 11.sp,
+                            fontWeight = if (selectedPackage != null) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
-                        allApps.forEach { app ->
-                            DropdownMenuItem(
-                                text = {
-                                    Column {
-                                        Text(app.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                        Text(app.packageName, fontSize = 11.sp, color = TextSecondary, fontFamily = FontFamily.Monospace)
-                                    }
-                                },
-                                onClick = {
-                                    onSelectPackage(app.packageName)
-                                    packageDropdownExpanded = false
-                                }
+                    },
+                    trailingIcon = if (selectedPackage != null) {
+                        {
+                            Text(
+                                text = "✕",
+                                color = PrimaryBlue,
+                                fontSize = 10.sp,
+                                modifier = Modifier
+                                    .clickable { onSelectPackage(null) }
+                                    .padding(horizontal = 2.dp)
                             )
                         }
-                    }
-                }
+                    } else null,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = PrimaryBlue.copy(alpha = 0.2f),
+                        selectedLabelColor = PrimaryBlue,
+                        containerColor = SurfaceDark,
+                        labelColor = TextSecondary
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = selectedPackage != null,
+                        borderColor = if (selectedPackage != null) PrimaryBlue else BorderDark
+                    ),
+                    modifier = Modifier.height(32.dp)
+                )
 
                 // Level Filter Chips
                 LevelChip(
@@ -428,8 +449,12 @@ fun ForensicsScreen(
                         modifier = Modifier.height(32.dp)
                     )
                 }
+
+                Spacer(modifier = Modifier.width(16.dp))
             }
         }
+
+        HorizontalDivider(color = BorderDark.copy(alpha = 0.6f), thickness = 1.dp)
 
         // Active Crash & Threat Alert Banner (if crashes recorded)
         AnimatedVisibility(visible = crashReports.isNotEmpty()) {
@@ -476,7 +501,8 @@ fun ForensicsScreen(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.45f))
+                    .background(Color.Black.copy(alpha = 0.45f)),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
             ) {
                 items(
                     items = logs,
