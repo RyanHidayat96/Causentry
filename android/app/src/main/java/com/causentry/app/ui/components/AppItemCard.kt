@@ -75,7 +75,7 @@ fun AppItemCard(
             Text(
                 text = app.packageName,
                 color = TextSecondary,
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 fontFamily = FontFamily.Monospace,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

@@ -106,7 +106,6 @@ fun CausentryApp(
         containerColor = BgDark,
         topBar = {
             TopAppBar(
-                status = status,
                 isRefreshing = isRefreshing,
                 onRefresh = { viewModel.refreshAll() }
             )
@@ -196,21 +195,9 @@ fun CausentryApp(
 
 @Composable
 private fun TopAppBar(
-    status: DaemonStatus,
     isRefreshing: Boolean,
     onRefresh: () -> Unit
 ) {
-    val pillColor = when {
-        !status.daemonAlive -> DangerRed
-        status.state == "active" -> SuccessGreen
-        else -> WarningAmber
-    }
-    val pillText = when {
-        !status.daemonAlive -> "STOPPED"
-        status.state == "active" -> "ACTIVE"
-        else -> "STANDBY"
-    }
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -233,34 +220,27 @@ private fun TopAppBar(
             )
         }
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .clickable(enabled = !isRefreshing, onClick = onRefresh)
+                .background(SurfaceDark)
+                .border(1.dp, BorderDark, RoundedCornerShape(10.dp))
+                .padding(8.dp)
         ) {
-            StatusPill(text = pillText, color = pillColor)
-
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable(enabled = !isRefreshing, onClick = onRefresh)
-                    .background(SurfaceDark)
-                    .border(1.dp, BorderDark, RoundedCornerShape(10.dp))
-                    .padding(8.dp)
-            ) {
-                if (isRefreshing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.width(18.dp).height(18.dp),
-                        strokeWidth = 2.dp,
-                        color = PrimaryBlue
-                    )
-                } else {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_refresh),
-                        contentDescription = "Refresh",
-                        tint = TextPrimary,
-                        modifier = Modifier.padding(2.dp).width(16.dp).height(16.dp)
-                    )
-                }
+            if (isRefreshing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.width(18.dp).height(18.dp),
+                    strokeWidth = 2.dp,
+                    color = PrimaryBlue
+                )
+            } else {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_refresh),
+                    contentDescription = "Refresh",
+                    tint = TextPrimary,
+                    modifier = Modifier.padding(2.dp).width(16.dp).height(16.dp)
+                )
             }
         }
     }
@@ -271,7 +251,7 @@ private fun TabRowSelector(
     selectedTab: Int,
     onTabSelect: (Int) -> Unit
 ) {
-    val tabs = listOf("Apps", "Templates", "Status & Actions")
+    val tabs = listOf("Apps", "Templates", "Diagnostics")
     val haptic = LocalHapticFeedback.current
 
     Row(
