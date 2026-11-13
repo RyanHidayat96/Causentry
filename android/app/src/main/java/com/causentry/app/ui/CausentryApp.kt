@@ -101,6 +101,14 @@ fun CausentryApp(
     val currentTab by viewModel.currentTab.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
 
+    // Forensic live log & crash stream
+    val logs by viewModel.filteredLogs.collectAsState()
+    val crashReports by viewModel.crashReports.collectAsState()
+    val isStreaming by viewModel.isLiveStreaming.collectAsState()
+    val forensicQuery by viewModel.forensicSearchQuery.collectAsState()
+    val forensicPkg by viewModel.forensicSelectedPackage.collectAsState()
+    val forensicLevel by viewModel.forensicSelectedLevel.collectAsState()
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = BgDark,
@@ -142,6 +150,7 @@ fun CausentryApp(
                         AppsScreen(
                             status = status,
                             apps = apps,
+                            allApps = allApps,
                             searchQuery = query,
                             onSearchChange = { viewModel.onSearchQueryChanged(it) },
                             selectedFilter = filter,
@@ -156,11 +165,37 @@ fun CausentryApp(
                             status = status,
                             allApps = allApps,
                             iconLoader = viewModel.iconLoader,
-                            onSaveTemplate = { name, pkgs -> viewModel.saveTemplate(name, pkgs) },
+                            onSaveTemplate = { name, pkgs, deleteName -> viewModel.saveTemplate(name, pkgs, deleteName) },
                             onDeleteTemplate = { name -> viewModel.deleteTemplate(name) }
                         )
                     }
                     2 -> {
+                        // Forensics Tab: Real-time LogCat, Crash Detector & Threat Heuristics
+                        ForensicsScreen(
+                            logs = logs,
+                            crashReports = crashReports,
+                            allApps = allApps,
+                            isStreaming = isStreaming,
+                            searchQuery = forensicQuery,
+                            selectedPackage = forensicPkg,
+                            selectedLevel = forensicLevel,
+                            onToggleStream = { viewModel.toggleLiveStreaming() },
+                            onClearLogs = { viewModel.clearLogs() },
+                            onClearCrashes = { viewModel.clearCrashes() },
+                            onDismissCrash = { viewModel.dismissCrash(it) },
+                            onSelectPackage = { viewModel.setForensicPackage(it) },
+                            onSelectLevel = { viewModel.setForensicLevel(it) },
+                            onSearchQueryChange = { viewModel.setForensicSearchQuery(it) },
+                            onExportLogs = { viewModel.exportLogsToFile() },
+                            onInspectApp = { pkg ->
+                                val target = allApps.find { it.packageName == pkg }
+                                if (target != null) {
+                                    viewModel.onSelectApp(target)
+                                }
+                            }
+                        )
+                    }
+                    3 -> {
                         // Actions & Diagnostics Tab
                         ActionsScreen(
                             status = status,
@@ -188,7 +223,8 @@ fun CausentryApp(
                 viewModel.deleteAppConfig(app.packageName)
                 viewModel.onSelectApp(null)
             },
-            onDismiss = { viewModel.onSelectApp(null) }
+            onDismiss = { viewModel.onSelectApp(null) },
+            onInspectLogs = { viewModel.inspectAppLogs(app.packageName) }
         )
     }
 }
@@ -251,7 +287,7 @@ private fun TabRowSelector(
     selectedTab: Int,
     onTabSelect: (Int) -> Unit
 ) {
-    val tabs = listOf("Apps", "Templates", "Diagnostics")
+    val tabs = listOf("Apps", "Templates", "Forensics", "Diagnostics")
     val haptic = LocalHapticFeedback.current
 
     Row(
@@ -299,6 +335,7 @@ private fun TabRowSelector(
 private fun AppsScreen(
     status: DaemonStatus,
     apps: List<AppInfo>,
+    allApps: List<AppInfo>,
     searchQuery: String,
     onSearchChange: (String) -> Unit,
     selectedFilter: AppFilter,
@@ -366,29 +403,70 @@ private fun AppsScreen(
             FilterChipRow(
                 selectedFilter = selectedFilter,
                 onFilterSelect = onFilterSelect,
-                allCount = apps.size,
-                protectedCount = status.targets.size,
-                userCount = apps.count { !it.isSystem },
-                systemCount = apps.count { it.isSystem },
+                allCount = allApps.size,
+                protectedCount = allApps.count { it.isProtected },
+                userCount = allApps.count { !it.isSystem },
+                systemCount = allApps.count { it.isSystem },
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
             )
         }
 
-        if (apps.isEmpty()) {
-            if (searchQuery.isEmpty()) {
-                item {
-                    ShimmerAppList(count = 7)
-                }
-            } else {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 40.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+        if (allApps.isEmpty()) {
+            item {
+                ShimmerAppList(count = 7)
+            }
+        } else if (apps.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 48.dp, horizontal = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (searchQuery.isNotEmpty()) {
                         Text(
                             text = "No applications match '$searchQuery'",
+                            color = TextSecondary,
+                            fontSize = 14.sp
+                        )
+                    } else if (selectedFilter == AppFilter.PROTECTED) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_shield),
+                                contentDescription = null,
+                                tint = PrimaryBlue.copy(alpha = 0.5f),
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "No Protected Applications",
+                                color = TextPrimary,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Tap any application from the list to configure anti-detection protection.",
+                                color = TextSecondary,
+                                fontSize = 12.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    } else if (selectedFilter == AppFilter.USER) {
+                        Text(
+                            text = "No user-installed applications found.",
+                            color = TextSecondary,
+                            fontSize = 14.sp
+                        )
+                    } else if (selectedFilter == AppFilter.SYSTEM) {
+                        Text(
+                            text = "No system applications found.",
+                            color = TextSecondary,
+                            fontSize = 14.sp
+                        )
+                    } else {
+                        Text(
+                            text = "No applications found.",
                             color = TextSecondary,
                             fontSize = 14.sp
                         )
@@ -480,10 +558,11 @@ private fun TemplatesScreen(
     status: DaemonStatus,
     allApps: List<AppInfo>,
     iconLoader: com.causentry.app.data.IconLoader,
-    onSaveTemplate: (String, List<String>) -> Unit,
+    onSaveTemplate: (name: String, packages: List<String>, deleteName: String?) -> Unit,
     onDeleteTemplate: (String) -> Unit
 ) {
     var showEditor by remember { mutableStateOf(false) }
+    var editingInitialName by remember { mutableStateOf("") }
     var editingName by remember { mutableStateOf("") }
     var editingPackages by remember { mutableStateOf<List<String>>(emptyList()) }
 
@@ -494,7 +573,8 @@ private fun TemplatesScreen(
             allApps = allApps,
             iconLoader = iconLoader,
             onSave = { name, pkgs ->
-                onSaveTemplate(name, pkgs)
+                val deleteOld = if (editingInitialName.isNotEmpty() && editingInitialName != name) editingInitialName else null
+                onSaveTemplate(name, pkgs, deleteOld)
                 showEditor = false
             },
             onDismiss = { showEditor = false }
@@ -528,6 +608,7 @@ private fun TemplatesScreen(
 
             Button(
                 onClick = {
+                    editingInitialName = ""
                     editingName = ""
                     editingPackages = emptyList()
                     showEditor = true
@@ -560,6 +641,7 @@ private fun TemplatesScreen(
                     name = name,
                     packages = pkgs,
                     onEdit = {
+                        editingInitialName = name
                         editingName = name
                         editingPackages = pkgs
                         showEditor = true

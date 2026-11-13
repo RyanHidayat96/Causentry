@@ -1,5 +1,6 @@
 package com.causentry.app.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,6 +36,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.causentry.app.R
 import com.causentry.app.data.IconLoader
 import com.causentry.app.model.AppInfo
@@ -51,6 +55,7 @@ import com.causentry.app.ui.theme.SurfaceDark
 import com.causentry.app.ui.theme.SurfaceHighDark
 import com.causentry.app.ui.theme.TextPrimary
 import com.causentry.app.ui.theme.TextSecondary
+import com.causentry.app.ui.theme.WarningAmber
 
 @Composable
 fun TemplateEditorDialog(
@@ -82,10 +87,16 @@ fun TemplateEditorDialog(
         }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    val isNameValid = templateName.isNotBlank()
+    val haptic = LocalHapticFeedback.current
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxWidth(0.92f)
                 .fillMaxHeight(0.85f)
                 .clip(RoundedCornerShape(20.dp))
                 .background(SurfaceDark)
@@ -122,7 +133,10 @@ fun TemplateEditorDialog(
                     unfocusedContainerColor = SurfaceHighDark,
                     focusedTextColor = TextPrimary,
                     unfocusedTextColor = TextPrimary
-                )
+                ),
+                supportingText = if (!isNameValid) {
+                    { Text("Name is required to save template", color = WarningAmber, fontSize = 10.sp) }
+                } else null
             )
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -244,32 +258,46 @@ fun TemplateEditorDialog(
 
             // Action buttons
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedButton(
                     onClick = onDismiss,
-                    modifier = Modifier.weight(1f).height(46.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary)
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
+                    border = BorderStroke(1.dp, BorderDark)
                 ) {
-                    Text("Cancel")
+                    Text("Cancel", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 }
 
                 Button(
                     onClick = {
                         val name = templateName.trim()
                         if (name.isNotEmpty()) {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             onSave(name, selectedPackages.toList())
                             onDismiss()
                         }
                     },
-                    enabled = templateName.isNotBlank(),
-                    modifier = Modifier.weight(1f).height(46.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
+                    enabled = isNameValid,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = PrimaryBlue,
+                        disabledContainerColor = PrimaryBlue.copy(alpha = 0.35f)
+                    )
                 ) {
-                    Text("Save Template", color = TextPrimary, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (selectedPackages.isNotEmpty()) "Save (${selectedPackages.size})" else "Save",
+                        color = if (isNameValid) TextPrimary else TextSecondary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
                 }
             }
         }

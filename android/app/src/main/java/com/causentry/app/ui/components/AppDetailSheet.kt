@@ -62,7 +62,8 @@ fun AppDetailDialog(
     iconLoader: IconLoader,
     onSave: (devOff: Boolean, mock: Boolean, isolate: Boolean, template: String?) -> Unit,
     onDelete: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onInspectLogs: (() -> Unit)? = null
 ) {
     var devOff by remember(app) { mutableStateOf(app.devOff) }
     var mock by remember(app) { mutableStateOf(app.mock) }
@@ -245,6 +246,30 @@ fun AppDetailDialog(
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp
                 )
+            }
+
+            if (onInspectLogs != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        onDismiss()
+                        onInspectLogs()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryBlue),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, PrimaryBlue.copy(alpha = 0.5f))
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_bug),
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Inspect Live Logs & Crashes", fontWeight = FontWeight.SemiBold)
+                }
             }
 
             if (app.isProtected) {
