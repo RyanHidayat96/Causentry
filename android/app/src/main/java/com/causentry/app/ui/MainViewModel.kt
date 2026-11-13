@@ -192,6 +192,12 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun updateStorageRules(roots: List<String>, relatives: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            daemonBridge.saveStorageRules(roots, relatives)
+        }
+    }
+
     // --- Forensic & LogFox Controls ---
     fun toggleLiveStreaming() = forensicManager.toggleLiveStreaming()
     fun clearLogs() = forensicManager.clearLogs()

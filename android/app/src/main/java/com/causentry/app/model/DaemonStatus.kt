@@ -27,7 +27,13 @@ data class DaemonStatus(
     val commandToken: String = "",
     val templates: Map<String, List<String>> = emptyMap(),
     val perAppConfigs: Map<String, PerAppConfig> = emptyMap(),
-    val log: String = ""
+    val log: String = "",
+    // FUSE Storage Cloak Status & Rules
+    val fuseActive: Boolean = false,
+    val fuseCovered: Boolean = false,
+    val fuseTargetCount: Int = 0,
+    val storageHiddenRoots: List<String> = emptyList(),
+    val storageHiddenRelatives: List<String> = emptyList()
 )
 
 data class PerAppConfig(

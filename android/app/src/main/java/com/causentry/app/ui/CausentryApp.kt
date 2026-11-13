@@ -76,6 +76,7 @@ import com.causentry.app.ui.components.FilterChipRow
 import com.causentry.app.ui.components.HeroStatusCard
 import com.causentry.app.ui.components.ShimmerAppList
 import com.causentry.app.ui.components.StatusPill
+import com.causentry.app.ui.components.StorageCloakCard
 import com.causentry.app.ui.components.TemplateCard
 import com.causentry.app.ui.components.TemplateEditorDialog
 import com.causentry.app.ui.theme.BgDark
@@ -201,6 +202,9 @@ fun CausentryApp(
                         ActionsScreen(
                             status = status,
                             backupManager = viewModel.configBackupManager,
+                            onSaveStorageRules = { roots, relatives ->
+                                viewModel.updateStorageRules(roots, relatives)
+                            },
                             onApply = { viewModel.applyChanges() },
                             onRestore = { viewModel.restoreAll() },
                             onRefresh = { viewModel.refreshAll() }
@@ -660,6 +664,7 @@ private fun TemplatesScreen(
 private fun ActionsScreen(
     status: DaemonStatus,
     backupManager: com.causentry.app.data.ConfigBackupManager,
+    onSaveStorageRules: (roots: List<String>, relatives: List<String>) -> Unit,
     onApply: () -> Unit,
     onRestore: () -> Unit,
     onRefresh: () -> Unit
@@ -699,6 +704,13 @@ private fun ActionsScreen(
             .verticalScroll(rememberScrollState())
     ) {
         DiagnosticsCard(status = status)
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        StorageCloakCard(
+            status = status,
+            onSaveStorageRules = onSaveStorageRules
+        )
 
         Spacer(modifier = Modifier.height(16.dp))
 

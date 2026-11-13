@@ -35,6 +35,10 @@ class ForensicManager @Inject constructor(
     private val entryIdGen = AtomicLong(1)
     private val crashIdGen = AtomicLong(1)
 
+    // SharedPreferences to persist live streaming state across app restarts
+    private val prefs = context.getSharedPreferences("causentry_forensics", Context.MODE_PRIVATE)
+    private val KEY_LIVE_STREAMING = "live_streaming_enabled"
+
     // Maximum log entries kept in memory to maintain 120Hz smooth UI
     private val maxBufferEntries = 1500
 
@@ -44,7 +48,9 @@ class ForensicManager @Inject constructor(
     private val _crashReportsFlow = MutableStateFlow<List<CrashThreatReport>>(emptyList())
     val crashReportsFlow: StateFlow<List<CrashThreatReport>> = _crashReportsFlow.asStateFlow()
 
-    private val _isLiveStreaming = MutableStateFlow(true)
+    private val _isLiveStreaming = MutableStateFlow(
+        prefs.getBoolean(KEY_LIVE_STREAMING, true)
+    )
     val isLiveStreaming: StateFlow<Boolean> = _isLiveStreaming.asStateFlow()
 
     // Cache of PID -> Package Name
@@ -63,26 +69,33 @@ class ForensicManager @Inject constructor(
     private var activeCrashType = CrashType.JAVA_CRASH
 
     init {
-        startStreaming()
-    }
-
-    fun startStreaming() {
-        if (streamJob?.isActive == true) return
-        _isLiveStreaming.value = true
-
         streamJob = scope.launch {
             runLogcatLoop()
         }
     }
 
+    fun startStreaming() {
+        _isLiveStreaming.value = true
+        prefs.edit().putBoolean(KEY_LIVE_STREAMING, true).apply()
+        if (streamJob?.isActive != true) {
+            streamJob = scope.launch {
+                runLogcatLoop()
+            }
+        }
+    }
+
     fun pauseStreaming() {
         _isLiveStreaming.value = false
+        prefs.edit().putBoolean(KEY_LIVE_STREAMING, false).apply()
     }
 
     fun resumeStreaming() {
         _isLiveStreaming.value = true
+        prefs.edit().putBoolean(KEY_LIVE_STREAMING, true).apply()
         if (streamJob?.isActive != true) {
-            startStreaming()
+            streamJob = scope.launch {
+                runLogcatLoop()
+            }
         }
     }
 

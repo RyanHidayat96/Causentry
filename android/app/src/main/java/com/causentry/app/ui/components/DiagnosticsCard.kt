@@ -97,6 +97,12 @@ fun DiagnosticsCard(
         )
 
         DiagRow(
+            label = "FUSE Storage Cloak",
+            value = if (status.fuseCovered) "Active & Covered (libfuse_jni)" else if (status.fuseActive) "Active (Storage Hooked)" else "Standby (${status.targets.size} apps)",
+            statusColor = if (status.fuseCovered || status.fuseActive) SuccessGreen else PrimaryBlue
+        )
+
+        DiagRow(
             label = "Heartbeat Monitor",
             value = if (status.heartbeatAge > 999) "No signal" else "${status.heartbeatAge}s ago (Interval 4-5s)",
             statusColor = if (status.heartbeatAge <= 15) SuccessGreen else DangerRed

@@ -95,6 +95,11 @@ fun ForensicsScreen(
     val listState = rememberLazyListState()
     var packageDropdownExpanded by remember { mutableStateOf(false) }
 
+    val selectedApp = remember(selectedPackage, allApps) {
+        allApps.find { it.packageName == selectedPackage }
+    }
+    val hasActiveFilter = selectedPackage != null || selectedLevel != null || searchQuery.isNotBlank()
+
     // Auto-scroll to bottom when streaming is active and new logs arrive
     LaunchedEffect(logs.size, isStreaming) {
         if (isStreaming && logs.isNotEmpty()) {
@@ -107,28 +112,41 @@ fun ForensicsScreen(
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.2f))
     ) {
-        // Control Bar (Status, App Picker, Stream Controls)
+        // Control & Filter Header Section
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
+            // Row 1: Stream Status & Action Buttons
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(SurfaceDark)
+                    .border(1.dp, BorderDark, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Left: Stream status + line counter (clickable to toggle pause/stream)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onToggleStream() }
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
                     Box(
                         modifier = Modifier
-                            .size(10.dp)
+                            .size(9.dp)
                             .clip(CircleShape)
-                            .background(if (isStreaming) SuccessGreen else DangerRed)
+                            .background(if (isStreaming) SuccessGreen else WarningAmber)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(7.dp))
                     Text(
                         text = if (isStreaming) "LIVE STREAM" else "PAUSED",
-                        color = if (isStreaming) SuccessGreen else DangerRed,
+                        color = if (isStreaming) SuccessGreen else WarningAmber,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.5.sp
@@ -136,27 +154,39 @@ fun ForensicsScreen(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    Text(
-                        text = "${logs.size} lines",
-                        color = TextSecondary,
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(SurfaceHighDark)
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "${logs.size} lines",
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Right: Action buttons with consistent styling and touch targets
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     // Play/Pause button
                     IconButton(
                         onClick = onToggleStream,
                         modifier = Modifier
                             .size(34.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(SurfaceDark)
-                            .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
+                            .background(SurfaceHighDark)
+                            .border(1.dp, if (isStreaming) WarningAmber.copy(alpha = 0.5f) else SuccessGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                     ) {
                         Icon(
                             painter = painterResource(id = if (isStreaming) R.drawable.ic_pause else R.drawable.ic_play),
-                            contentDescription = if (isStreaming) "Pause" else "Resume",
+                            contentDescription = if (isStreaming) "Pause Stream" else "Resume Stream",
                             tint = if (isStreaming) WarningAmber else SuccessGreen,
                             modifier = Modifier.size(16.dp)
                         )
@@ -168,7 +198,7 @@ fun ForensicsScreen(
                         modifier = Modifier
                             .size(34.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(SurfaceDark)
+                            .background(SurfaceHighDark)
                             .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
                     ) {
                         Icon(
@@ -206,7 +236,7 @@ fun ForensicsScreen(
                         modifier = Modifier
                             .size(34.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(SurfaceDark)
+                            .background(SurfaceHighDark)
                             .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
                     ) {
                         Icon(
@@ -219,122 +249,26 @@ fun ForensicsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // App Filter Selector dropdown
-            Box(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(SurfaceDark)
-                        .border(1.dp, if (selectedPackage != null) PrimaryBlue else BorderDark, RoundedCornerShape(10.dp))
-                        .clickable { packageDropdownExpanded = true }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "Filter App: ",
-                            color = TextSecondary,
-                            fontSize = 12.sp
-                        )
-                        Text(
-                            text = selectedPackage ?: "All System & User Apps",
-                            color = if (selectedPackage != null) PrimaryBlue else TextPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFamily = if (selectedPackage != null) FontFamily.Monospace else FontFamily.Default
-                        )
-                    }
-
-                    if (selectedPackage != null) {
-                        Text(
-                            text = "✕",
-                            color = TextSecondary,
-                            fontSize = 12.sp,
-                            modifier = Modifier
-                                .clickable { onSelectPackage(null) }
-                                .padding(horizontal = 4.dp)
-                        )
-                    } else {
-                        Text(text = "▼", color = TextSecondary, fontSize = 10.sp)
-                    }
-                }
-
-                DropdownMenu(
-                    expanded = packageDropdownExpanded,
-                    onDismissRequest = { packageDropdownExpanded = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("All Applications (Global Stream)") },
-                        onClick = {
-                            onSelectPackage(null)
-                            packageDropdownExpanded = false
-                        }
-                    )
-                    allApps.forEach { app ->
-                        DropdownMenuItem(
-                            text = {
-                                Column {
-                                    Text(app.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                    Text(app.packageName, fontSize = 11.sp, color = TextSecondary, fontFamily = FontFamily.Monospace)
-                                }
-                            },
-                            onClick = {
-                                onSelectPackage(app.packageName)
-                                packageDropdownExpanded = false
-                            }
-                        )
-                    }
-                }
-            }
-
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Filter Chips (Log Level)
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                LevelChip(
-                    label = "ALL",
-                    selected = selectedLevel == null,
-                    onClick = { onSelectLevel(null) }
-                )
-                LevelChip(
-                    label = "INFO+",
-                    selected = selectedLevel == LogLevel.INFO,
-                    onClick = { onSelectLevel(if (selectedLevel == LogLevel.INFO) null else LogLevel.INFO) }
-                )
-                LevelChip(
-                    label = "WARN",
-                    selected = selectedLevel == LogLevel.WARN,
-                    onClick = { onSelectLevel(if (selectedLevel == LogLevel.WARN) null else LogLevel.WARN) }
-                )
-                LevelChip(
-                    label = "ERROR & CRASH",
-                    selected = selectedLevel == LogLevel.ERROR,
-                    activeColor = DangerRed,
-                    onClick = { onSelectLevel(if (selectedLevel == LogLevel.ERROR) null else LogLevel.ERROR) }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Quick Search Field
+            // Row 2: Search Input Field (Proper height, no text clipping)
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
-                placeholder = { Text("Filter log text or tag...", color = TextSecondary, fontSize = 12.sp) },
+                placeholder = {
+                    Text(
+                        "Search logs, tags, or PIDs...",
+                        color = TextSecondary.copy(alpha = 0.7f),
+                        fontSize = 12.sp
+                    )
+                },
                 singleLine = true,
                 leadingIcon = {
                     Icon(
                         painter = painterResource(id = R.drawable.ic_search),
                         contentDescription = null,
                         tint = TextSecondary,
-                        modifier = Modifier.size(15.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 },
                 trailingIcon = {
@@ -342,7 +276,7 @@ fun ForensicsScreen(
                         IconButton(onClick = { onSearchQueryChange("") }, modifier = Modifier.size(24.dp)) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_close),
-                                contentDescription = "Clear",
+                                contentDescription = "Clear search",
                                 tint = TextSecondary,
                                 modifier = Modifier.size(14.dp)
                             )
@@ -351,8 +285,8 @@ fun ForensicsScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp),
-                shape = RoundedCornerShape(8.dp),
+                    .height(48.dp),
+                shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PrimaryBlue,
                     unfocusedBorderColor = BorderDark,
@@ -362,6 +296,139 @@ fun ForensicsScreen(
                     unfocusedTextColor = TextPrimary
                 )
             )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Row 3: Horizontal Filter Chips (App selector + Log Levels + Reset)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // App Selector Chip
+                Box {
+                    FilterChip(
+                        selected = selectedPackage != null,
+                        onClick = { packageDropdownExpanded = true },
+                        label = {
+                            Text(
+                                text = if (selectedApp != null) "App: ${selectedApp.label}" else if (selectedPackage != null) "App: $selectedPackage" else "All Apps ▾",
+                                fontSize = 11.sp,
+                                fontWeight = if (selectedPackage != null) FontWeight.Bold else FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        },
+                        trailingIcon = if (selectedPackage != null) {
+                            {
+                                Text(
+                                    text = "✕",
+                                    color = PrimaryBlue,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.clickable { onSelectPackage(null) }
+                                )
+                            }
+                        } else null,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = PrimaryBlue.copy(alpha = 0.2f),
+                            selectedLabelColor = PrimaryBlue,
+                            containerColor = SurfaceDark,
+                            labelColor = TextSecondary
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = selectedPackage != null,
+                            borderColor = if (selectedPackage != null) PrimaryBlue else BorderDark
+                        ),
+                        modifier = Modifier.height(32.dp)
+                    )
+
+                    DropdownMenu(
+                        expanded = packageDropdownExpanded,
+                        onDismissRequest = { packageDropdownExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("All Applications (Global Stream)", fontWeight = FontWeight.Bold) },
+                            onClick = {
+                                onSelectPackage(null)
+                                packageDropdownExpanded = false
+                            }
+                        )
+                        allApps.forEach { app ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(app.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                        Text(app.packageName, fontSize = 11.sp, color = TextSecondary, fontFamily = FontFamily.Monospace)
+                                    }
+                                },
+                                onClick = {
+                                    onSelectPackage(app.packageName)
+                                    packageDropdownExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Level Filter Chips
+                LevelChip(
+                    label = "All Levels",
+                    selected = selectedLevel == null,
+                    onClick = { onSelectLevel(null) }
+                )
+                LevelChip(
+                    label = "Info+",
+                    selected = selectedLevel == LogLevel.INFO,
+                    onClick = { onSelectLevel(if (selectedLevel == LogLevel.INFO) null else LogLevel.INFO) }
+                )
+                LevelChip(
+                    label = "Warn",
+                    selected = selectedLevel == LogLevel.WARN,
+                    activeColor = WarningAmber,
+                    onClick = { onSelectLevel(if (selectedLevel == LogLevel.WARN) null else LogLevel.WARN) }
+                )
+                LevelChip(
+                    label = "Error & Crash",
+                    selected = selectedLevel == LogLevel.ERROR,
+                    activeColor = DangerRed,
+                    onClick = { onSelectLevel(if (selectedLevel == LogLevel.ERROR) null else LogLevel.ERROR) }
+                )
+
+                // Reset Filters Chip
+                if (hasActiveFilter) {
+                    FilterChip(
+                        selected = false,
+                        onClick = {
+                            onSelectPackage(null)
+                            onSelectLevel(null)
+                            onSearchQueryChange("")
+                        },
+                        label = {
+                            Text(
+                                text = "Reset ✕",
+                                color = DangerRed,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = DangerRed.copy(alpha = 0.12f),
+                            labelColor = DangerRed
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = false,
+                            borderColor = DangerRed.copy(alpha = 0.4f)
+                        ),
+                        modifier = Modifier.height(32.dp)
+                    )
+                }
+            }
         }
 
         // Active Crash & Threat Alert Banner (if crashes recorded)

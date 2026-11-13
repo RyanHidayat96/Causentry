@@ -145,6 +145,28 @@ class DaemonBridge @Inject constructor(
         op
     }
 
+    suspend fun saveStorageRules(roots: List<String>, relatives: List<String>): String = withContext(Dispatchers.IO) {
+        val file = File(context.filesDir, "status.json")
+        val currentJson = if (file.exists()) {
+            val content = file.readText(Charsets.UTF_8).replace("\uFEFF", "").trim()
+            try {
+                JSONObject(content).optJSONObject("config") ?: JSONObject()
+            } catch (_: Throwable) {
+                JSONObject()
+            }
+        } else {
+            JSONObject()
+        }
+
+        val storageObj = JSONObject().apply {
+            put("hiddenRootEntryNames", JSONArray(roots))
+            put("hiddenRelativePaths", JSONArray(relatives))
+        }
+        currentJson.put("storageRules", storageObj)
+
+        importConfig(currentJson.toString())
+    }
+
     private fun sendCommand(obj: JSONObject): Boolean {
         return try {
             val cmdDir = File(context.filesDir, "cmd")
@@ -231,6 +253,15 @@ class DaemonBridge @Inject constructor(
             templatesMap[name] = jsonList(arr)
         }
 
+        val fuseObj = json.optJSONObject("fuse")
+        val fuseActive = fuseObj?.optBoolean("active", false) ?: false
+        val fuseCovered = fuseObj?.optBoolean("covered", false) ?: false
+        val fuseTargetCount = fuseObj?.optInt("targetCount", 0) ?: targetsList.size
+
+        val storageRulesObj = cfg.optJSONObject("storageRules")
+        val storageRoots = jsonList(storageRulesObj?.optJSONArray("hiddenRootEntryNames"))
+        val storageRelatives = jsonList(storageRulesObj?.optJSONArray("hiddenRelativePaths"))
+
         return DaemonStatus(
             state = json.optString("state", "unknown"),
             daemonAlive = json.optBoolean("daemon", false),
@@ -258,7 +289,12 @@ class DaemonBridge @Inject constructor(
             commandToken = json.optString("commandToken", ""),
             templates = templatesMap,
             perAppConfigs = perAppMap,
-            log = json.optString("log", "")
+            log = json.optString("log", ""),
+            fuseActive = fuseActive,
+            fuseCovered = fuseCovered,
+            fuseTargetCount = fuseTargetCount,
+            storageHiddenRoots = storageRoots,
+            storageHiddenRelatives = storageRelatives
         )
     }
 

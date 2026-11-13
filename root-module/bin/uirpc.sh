@@ -299,6 +299,10 @@ process_cmds() {
           printf ',"hideMode":'; json_string "$(hide_mode)"
           printf ',"cloakPackages":'; tojson_arr "$(jlist cloakPackages | tr '\n' ',')"
           printf ',"root_packages":'; tojson_arr "$(jlist root_packages | tr '\n' ',')"
+          sr=$(tr -d '\r\n' < "$CONF" 2>/dev/null | sed -nE 's/.*"storageRules"[[:space:]]*:[[:space:]]*(\{[^}]*\}).*/\1/p')
+          if [ -n "$sr" ]; then
+            printf ',"storageRules":%s' "$sr"
+          fi
           printf '}'
         } > "$CONF_NEW"
         rm -f "$APPS_T"
