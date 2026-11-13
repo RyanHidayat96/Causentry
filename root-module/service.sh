@@ -64,10 +64,8 @@ sh "$DIR/apply.sh" boot >> "$LOG" 2>&1
 setsid /system/bin/sh "$DIR/causentry-loop.sh" >/dev/null 2>&1 < /dev/null &
 echo "$(date '+%m-%d %H:%M:%S') [service] daemon supervisor restarted" >> "$LOG"
 
-# --- control UI: loopback only, token protected ---
+# --- control UI: disabled in stealth mode (VGuard scans /proc/net/tcp) ---
+# The busybox httpd on port 8899 is a root indicator visible to banking apps.
+# Causentry now uses the native APK UI exclusively; httpd is no longer started.
 pm grant com.causentry.app android.permission.READ_LOGS >/dev/null 2>&1 &
-if ensure_ui; then
-  echo "$(date '+%m-%d %H:%M:%S') [service] ui ready" >> "$LOG"
-else
-  echo "$(date '+%m-%d %H:%M:%S') [service] no busybox: control UI skipped (CLI unaffected)" >> "$LOG"
-fi
+echo "$(date '+%m-%d %H:%M:%S') [service] httpd disabled (stealth); native APK UI only" >> "$LOG"

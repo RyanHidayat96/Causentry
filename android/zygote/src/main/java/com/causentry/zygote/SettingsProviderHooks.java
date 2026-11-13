@@ -36,7 +36,14 @@ final class SettingsProviderHooks {
                     "development_settings_enabled",
                     "adb_enabled",
                     "adb_wifi_enabled",
-                    "mock_location")));
+                    "mock_location",
+                    "usb_debugging",           // VGuard checks this alias too
+                    "verifier_verify_adb_installs")));
+    /** Secure settings that leak accessibility services or developer mode to VGuard. */
+    private static final Set<String> HIDDEN_SECURE_SETTINGS = Collections.unmodifiableSet(
+            new HashSet<>(Arrays.asList(
+                    "enabled_accessibility_services",
+                    "accessibility_enabled")));
     private static volatile int installedHooks;
 
     private SettingsProviderHooks() {}
@@ -79,11 +86,26 @@ final class SettingsProviderHooks {
     }
 
     private static void interceptCall(MethodHandle original, EmulatedStackFrame frame) throws Throwable {
+        int callingUid = Binder.getCallingUid();
         String key = hiddenDeveloperSetting(frame);
-        if (key != null && CloakPolicy.hidesDeveloperOptions(Binder.getCallingUid())) {
+        if (key != null && CloakPolicy.hidesDeveloperOptions(callingUid)) {
             Bundle result = new Bundle();
             result.putString(Settings.NameValueTable.NAME, key);
             result.putString(Settings.NameValueTable.VALUE, "0");
+            frame.accessor().setValue(EmulatedStackFrame.RETURN_VALUE_IDX, result);
+            return;
+        }
+        // Hide accessibility services from protected apps so VGuard cannot detect them
+        String secureKey = hiddenSecureSetting(frame);
+        if (secureKey != null && CloakPolicy.hidesDeveloperOptions(callingUid)) {
+            Bundle result = new Bundle();
+            result.putString(Settings.NameValueTable.NAME, secureKey);
+            if ("enabled_accessibility_services".equals(secureKey)) {
+                // Return empty — no accessibility services enabled
+                result.putString(Settings.NameValueTable.VALUE, "");
+            } else {
+                result.putString(Settings.NameValueTable.VALUE, "0");
+            }
             frame.accessor().setValue(EmulatedStackFrame.RETURN_VALUE_IDX, result);
             return;
         }
@@ -104,6 +126,24 @@ final class SettingsProviderHooks {
                 continue;
             }
             if (getMethodSeen && HIDDEN_DEVELOPER_SETTINGS.contains(text)) return text;
+        }
+        return null;
+    }
+
+    /** Detects secure-namespace settings that leak accessibility or developer indicators. */
+    private static String hiddenSecureSetting(EmulatedStackFrame frame) {
+        EmulatedStackFrame.StackFrameAccessor accessor = frame.accessor();
+        boolean getMethodSeen = false;
+        for (int i = 1; i < frame.type().parameterCount(); i++) {
+            if (accessor.getArgumentShorty(i) != 'L') continue;
+            Object value = accessor.getReference(i);
+            if (!(value instanceof String)) continue;
+            String text = (String) value;
+            if (text.startsWith("GET_")) {
+                getMethodSeen = true;
+                continue;
+            }
+            if (getMethodSeen && HIDDEN_SECURE_SETTINGS.contains(text)) return text;
         }
         return null;
     }

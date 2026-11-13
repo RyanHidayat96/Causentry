@@ -61,6 +61,7 @@ final class PackageCloakHooks {
             if (hookBefore("com.android.server.pm.AppsFilterImpl", "shouldFilterApplication",
                     appFilter, true)) installed++;
             installed += AppZygoteHooks.install(systemServerLoader);
+            installed += ActiveServicesHooks.install(systemServerLoader);
 
             if (installed >= 2) {
                 SystemServerBackend.markCloakReady(installed);

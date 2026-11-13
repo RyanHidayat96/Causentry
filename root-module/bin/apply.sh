@@ -164,6 +164,13 @@ fi
 # 4) Zygisk-only policy: no Vector/LSPosed module/scoping path.
 log "zygisk-only: Vector/LSPosed hook scoping disabled"
 
+# 4b) Kill stale busybox httpd on ports visible to untrusted apps.
+#     VGuard (V-Key) scans /proc/net/tcp and flags suspicious listeners.
+#     The causentry web UI httpd on port 8899 is a root indicator.
+pkill -f "httpd -p 127.0.0.1:8899" 2>/dev/null
+pkill -f "httpd.*8899" 2>/dev/null
+log "busybox httpd stopped (stealth mode)"
+
 echo "Causentry: apply($mode) done"
 
 # 5) system_server package cloaking config (non-destructive hiding)
