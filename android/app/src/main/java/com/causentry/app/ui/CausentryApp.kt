@@ -110,6 +110,8 @@ fun CausentryApp(
     val forensicQuery by viewModel.forensicSearchQuery.collectAsState()
     val forensicPkg by viewModel.forensicSelectedPackage.collectAsState()
     val forensicLevel by viewModel.forensicSelectedLevel.collectAsState()
+    val forensicFilterNoise by viewModel.forensicFilterNoise.collectAsState()
+    val forensicOnlyHooks by viewModel.forensicOnlyHooks.collectAsState()
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -182,6 +184,8 @@ fun CausentryApp(
                             searchQuery = forensicQuery,
                             selectedPackage = forensicPkg,
                             selectedLevel = forensicLevel,
+                            filterNoise = forensicFilterNoise,
+                            onlyHooks = forensicOnlyHooks,
                             onToggleStream = { viewModel.toggleLiveStreaming() },
                             onClearLogs = { viewModel.clearLogs() },
                             onClearCrashes = { viewModel.clearCrashes() },

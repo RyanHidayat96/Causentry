@@ -67,22 +67,65 @@ class MainViewModel @Inject constructor(
     private val _forensicSelectedLevel = MutableStateFlow<LogLevel?>(null)
     val forensicSelectedLevel: StateFlow<LogLevel?> = _forensicSelectedLevel.asStateFlow()
 
-    val filteredLogs: StateFlow<List<LogEntry>> = combine(
-        forensicManager.logsFlow,
+    private val _forensicFilterNoise = MutableStateFlow(true)
+    val forensicFilterNoise: StateFlow<Boolean> = _forensicFilterNoise.asStateFlow()
+
+    private val _forensicOnlyHooks = MutableStateFlow(false)
+    val forensicOnlyHooks: StateFlow<Boolean> = _forensicOnlyHooks.asStateFlow()
+
+    private data class ForensicFilterState(
+        val query: String,
+        val pkg: String?,
+        val level: LogLevel?,
+        val filterNoise: Boolean,
+        val onlyHooks: Boolean
+    )
+
+    private val forensicFilterFlow = combine(
         _forensicSearchQuery.debounce(100),
         _forensicSelectedPackage,
-        _forensicSelectedLevel
-    ) { logs, query, pkg, level ->
-        val q = query.trim().lowercase()
-        logs.filter { entry ->
-            val matchesPkg = pkg.isNullOrEmpty() ||
-                entry.packageName.equals(pkg, ignoreCase = true) ||
-                entry.message.contains(pkg, ignoreCase = true) ||
-                entry.tag.contains(pkg, ignoreCase = true) ||
-                forensicManager.isPidForPackage(entry.pid, pkg)
+        _forensicSelectedLevel,
+        _forensicFilterNoise,
+        _forensicOnlyHooks
+    ) { query, pkg, level, filterNoise, onlyHooks ->
+        ForensicFilterState(query, pkg, level, filterNoise, onlyHooks)
+    }
 
-            val matchesLevel = level == null || entry.level == level ||
-                (level == LogLevel.ERROR && (entry.level == LogLevel.FATAL || entry.level == LogLevel.ERROR))
+    val filteredLogs: StateFlow<List<LogEntry>> = combine(
+        forensicManager.logsFlow,
+        forensicFilterFlow
+    ) { logs, filters ->
+        val q = filters.query.trim().lowercase()
+        val NOISE_TAGS = setOf(
+            "HWComposer", "SurfaceFlinger", "chatty", "InputTransport",
+            "OpenGLRenderer", "Gralloc4", "TrafficStats", "BufferQueueProducer",
+            "ViewRootImpl", "Choreographer", "BufferItemConsumer"
+        )
+        val HOOK_KEYWORDS = listOf(
+            "causentry", "zygisk", "cloak", "activeservices", "settingsprovider",
+            "appzygote", "packagecloak", "stripped isolation", "demoted app zygote"
+        )
+
+        logs.filter { entry ->
+            if (filters.filterNoise && NOISE_TAGS.contains(entry.tag)) {
+                return@filter false
+            }
+
+            if (filters.onlyHooks) {
+                val tagLower = entry.tag.lowercase()
+                val msgLower = entry.message.lowercase()
+                val matchesHook = HOOK_KEYWORDS.any { tagLower.contains(it) || msgLower.contains(it) }
+                if (!matchesHook) return@filter false
+            }
+
+            val matchesPkg = filters.pkg.isNullOrEmpty() ||
+                entry.packageName.equals(filters.pkg, ignoreCase = true) ||
+                entry.message.contains(filters.pkg, ignoreCase = true) ||
+                entry.tag.contains(filters.pkg, ignoreCase = true) ||
+                forensicManager.isPidForPackage(entry.pid, filters.pkg)
+
+            val matchesLevel = filters.level == null || entry.level == filters.level ||
+                (filters.level == LogLevel.ERROR && (entry.level == LogLevel.FATAL || entry.level == LogLevel.ERROR))
 
             val matchesQuery = q.isEmpty() ||
                 entry.message.lowercase().contains(q) ||
@@ -207,6 +250,8 @@ class MainViewModel @Inject constructor(
     fun setForensicPackage(pkg: String?) { _forensicSelectedPackage.value = pkg }
     fun setForensicLevel(level: LogLevel?) { _forensicSelectedLevel.value = level }
     fun setForensicSearchQuery(q: String) { _forensicSearchQuery.value = q }
+    fun toggleForensicNoiseFilter() { _forensicFilterNoise.value = !_forensicFilterNoise.value }
+    fun toggleForensicOnlyHooks() { _forensicOnlyHooks.value = !_forensicOnlyHooks.value }
     fun exportLogsToFile(): File? = forensicManager.exportLogsToFile()
 
     fun inspectAppLogs(packageName: String) {

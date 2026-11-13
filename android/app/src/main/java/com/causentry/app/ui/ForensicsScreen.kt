@@ -62,7 +62,6 @@ import com.causentry.app.model.AppInfo
 import com.causentry.app.model.CrashThreatReport
 import com.causentry.app.model.LogEntry
 import com.causentry.app.model.LogLevel
-import com.causentry.app.ui.components.CrashAlertCard
 import com.causentry.app.ui.components.ForensicAppPickerDialog
 import com.causentry.app.ui.components.LogItemRow
 import com.causentry.app.ui.components.StatusPill
@@ -87,6 +86,8 @@ fun ForensicsScreen(
     searchQuery: String,
     selectedPackage: String?,
     selectedLevel: LogLevel?,
+    filterNoise: Boolean = true,
+    onlyHooks: Boolean = false,
     onToggleStream: () -> Unit,
     onClearLogs: () -> Unit,
     onClearCrashes: () -> Unit,
@@ -94,6 +95,8 @@ fun ForensicsScreen(
     onSelectPackage: (String?) -> Unit,
     onSelectLevel: (LogLevel?) -> Unit,
     onSearchQueryChange: (String) -> Unit,
+    onToggleFilterNoise: () -> Unit = {},
+    onToggleOnlyHooks: () -> Unit = {},
     onExportLogs: () -> File?,
     onInspectApp: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -105,7 +108,7 @@ fun ForensicsScreen(
     val selectedApp = remember(selectedPackage, allApps) {
         allApps.find { it.packageName == selectedPackage }
     }
-    val hasActiveFilter = selectedPackage != null || selectedLevel != null || searchQuery.isNotBlank()
+    val hasActiveFilter = selectedPackage != null || selectedLevel != null || searchQuery.isNotBlank() || onlyHooks
 
     if (showAppPickerDialog) {
         ForensicAppPickerDialog(
@@ -395,6 +398,58 @@ fun ForensicsScreen(
                     modifier = Modifier.height(32.dp)
                 )
 
+                // Noise Filter Toggle Chip (Hides HWComposer / SurfaceFlinger spam)
+                FilterChip(
+                    selected = filterNoise,
+                    onClick = onToggleFilterNoise,
+                    label = {
+                        Text(
+                            text = if (filterNoise) "🔇 Clean Noise" else "🔊 Raw Logs",
+                            fontSize = 11.sp,
+                            fontWeight = if (filterNoise) FontWeight.Bold else FontWeight.Medium
+                        )
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = PrimaryBlue.copy(alpha = 0.15f),
+                        selectedLabelColor = PrimaryBlue,
+                        containerColor = SurfaceDark,
+                        labelColor = TextSecondary
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = filterNoise,
+                        borderColor = if (filterNoise) PrimaryBlue.copy(alpha = 0.6f) else BorderDark
+                    ),
+                    modifier = Modifier.height(32.dp)
+                )
+
+                // Hook Filter Toggle Chip (Isolates Causentry hooks)
+                FilterChip(
+                    selected = onlyHooks,
+                    onClick = onToggleOnlyHooks,
+                    label = {
+                        Text(
+                            text = "⚡ Hooks",
+                            fontSize = 11.sp,
+                            fontWeight = if (onlyHooks) FontWeight.Bold else FontWeight.Medium
+                        )
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = SuccessGreen.copy(alpha = 0.18f),
+                        selectedLabelColor = SuccessGreen,
+                        containerColor = SurfaceDark,
+                        labelColor = TextSecondary
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = onlyHooks,
+                        borderColor = if (onlyHooks) SuccessGreen.copy(alpha = 0.6f) else BorderDark
+                    ),
+                    modifier = Modifier.height(32.dp)
+                )
+
                 // Level Filter Chips
                 LevelChip(
                     label = "All Levels",
@@ -427,6 +482,7 @@ fun ForensicsScreen(
                             onSelectPackage(null)
                             onSelectLevel(null)
                             onSearchQueryChange("")
+                            if (onlyHooks) onToggleOnlyHooks()
                         },
                         label = {
                             Text(
@@ -455,24 +511,6 @@ fun ForensicsScreen(
         }
 
         HorizontalDivider(color = BorderDark.copy(alpha = 0.6f), thickness = 1.dp)
-
-        // Active Crash & Threat Alert Banner (if crashes recorded)
-        AnimatedVisibility(visible = crashReports.isNotEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-            ) {
-                crashReports.take(2).forEach { report ->
-                    CrashAlertCard(
-                        report = report,
-                        onDismiss = { onDismissCrash(report.id) },
-                        onInspectApp = onInspectApp,
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    )
-                }
-            }
-        }
 
         // Live Logcat View (Virtualized LazyColumn)
         if (logs.isEmpty()) {

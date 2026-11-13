@@ -67,6 +67,7 @@ class ForensicManager @Inject constructor(
     private var activeCrashPid = 0
     private var activeCrashTimestamp = ""
     private var activeCrashType = CrashType.JAVA_CRASH
+    private var activeCrashLastTime = 0L
 
     init {
         preloadRunningProcesses()
@@ -299,6 +300,12 @@ class ForensicManager @Inject constructor(
     private fun detectThreatsAndCrashes(entry: LogEntry) {
         val tag = entry.tag
         val msg = entry.message
+        val now = System.currentTimeMillis()
+
+        // Commit pending crash trace if timeout elapsed (1.5s idle)
+        if (activeCrashTrace.isNotEmpty() && activeCrashLastTime > 0 && now - activeCrashLastTime > 1500) {
+            commitActiveCrash()
+        }
 
         // 1. AndroidRuntime FATAL EXCEPTION (Java crash or RASP trap)
         if (tag == "AndroidRuntime" && msg.contains("FATAL EXCEPTION:")) {
@@ -307,6 +314,7 @@ class ForensicManager @Inject constructor(
             activeCrashTrace.appendLine(msg)
             activeCrashTimestamp = entry.timestamp
             activeCrashPid = entry.pid
+            activeCrashLastTime = now
             activeCrashType = CrashType.JAVA_CRASH
 
             // Parse process name if present in line
@@ -319,9 +327,10 @@ class ForensicManager @Inject constructor(
             return
         }
 
-        // Append ongoing crash stack trace
+        // Append ongoing crash stack trace (do NOT drop on interleaved system tags)
         if (tag == "AndroidRuntime" && activeCrashTrace.isNotEmpty() && activeCrashPid == entry.pid) {
             activeCrashTrace.appendLine(msg)
+            activeCrashLastTime = now
 
             if (msg.contains("Process: ")) {
                 val sub = msg.substringAfter("Process: ").substringBefore(",").trim()
@@ -329,9 +338,9 @@ class ForensicManager @Inject constructor(
                 pidToPackage[entry.pid] = sub
             }
 
-            // End of crash stack trace (common indicator or exception complete)
-            if (msg.startsWith("\tat ") || msg.contains("Caused by:")) {
-                // continuing trace
+            // Cap trace buffer to avoid memory blowout
+            if (activeCrashTrace.length > 15000) {
+                commitActiveCrash()
             }
             return
         }
@@ -343,10 +352,17 @@ class ForensicManager @Inject constructor(
             activeCrashTrace.appendLine(msg)
             activeCrashTimestamp = entry.timestamp
             activeCrashPid = entry.pid
+            activeCrashLastTime = now
             activeCrashType = CrashType.NATIVE_CRASH
 
             val pkg = pidToPackage[entry.pid]
             activeCrashPkg = pkg
+            return
+        }
+
+        if (tag == "DEBUG" && activeCrashTrace.isNotEmpty() && activeCrashType == CrashType.NATIVE_CRASH) {
+            activeCrashTrace.appendLine(msg)
+            activeCrashLastTime = now
             return
         }
 
@@ -369,9 +385,37 @@ class ForensicManager @Inject constructor(
             return
         }
 
-        // Commit active Java/Native crash if other tags arrive
-        if (activeCrashTrace.isNotEmpty() && tag != "AndroidRuntime" && tag != "DEBUG") {
-            commitActiveCrash()
+        // 4. ActivityManager Process Death / Force Stop (Detects silent RASP exits & OOM kills)
+        if (tag == "ActivityManager") {
+            if (activeCrashTrace.isNotEmpty() && activeCrashPid > 0 && msg.contains("pid $activeCrashPid")) {
+                commitActiveCrash()
+            } else if (msg.contains("has died")) {
+                // Example: Process id.co.btn.mobilebanking.android (pid 15586) has died: clean
+                val procPart = msg.substringAfter("Process ").substringBefore(" ")
+                val pidPart = msg.substringAfter("(pid ").substringBefore(")").toIntOrNull() ?: 0
+                val reason = msg.substringAfter("has died: ", "terminated")
+
+                if (procPart.contains(".") && !procPart.startsWith("com.android.") && !procPart.startsWith("android.")) {
+                    val alreadyReported = _crashReportsFlow.value.any {
+                        it.packageName == procPart && (pidPart == 0 || it.pid == pidPart)
+                    }
+                    if (!alreadyReported) {
+                        val report = CrashThreatReport(
+                            id = crashIdGen.getAndIncrement(),
+                            timestamp = entry.timestamp,
+                            packageName = procPart,
+                            pid = pidPart,
+                            type = CrashType.PROCESS_KILL,
+                            title = "Process Terminated (Silent / RASP Kill)",
+                            summary = "Process $procPart (PID $pidPart) died: $reason",
+                            fullTrace = msg,
+                            threatDiagnosis = "Process terminated abruptly without an uncaught Java exception. Frequently caused by native RASP security routines calling _exit(0), abort(), or trigger-killing the app when tampering is detected.",
+                            recommendedFix = "Ensure target app is cloaked with 'Demote App-Zygote' and 'Hide Developer Options' enabled in Causentry."
+                        )
+                        addCrashReport(report)
+                    }
+                }
+            }
         }
     }
 
@@ -429,6 +473,7 @@ class ForensicManager @Inject constructor(
         addCrashReport(report)
         activeCrashPkg = null
         activeCrashPid = 0
+        activeCrashLastTime = 0L
     }
 
     private fun addCrashReport(report: CrashThreatReport) {
