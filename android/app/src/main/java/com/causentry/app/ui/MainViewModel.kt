@@ -46,6 +46,10 @@ class MainViewModel @Inject constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    // Full list of installed apps for templates & bulk operations
+    val allApps: StateFlow<List<AppInfo>> = appRepository.appsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // 120Hz smooth debounced search & filter pipeline
     val filteredApps: StateFlow<List<AppInfo>> = combine(
         appRepository.appsFlow,
@@ -121,6 +125,12 @@ class MainViewModel @Inject constructor(
     fun saveTemplate(name: String, packages: List<String>, deleteName: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             daemonBridge.saveTemplate(name, packages, deleteName)
+        }
+    }
+
+    fun deleteTemplate(name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            daemonBridge.deleteTemplate(name)
         }
     }
 

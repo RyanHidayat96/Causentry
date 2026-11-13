@@ -3,17 +3,21 @@ package com.causentry.app.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,6 +50,11 @@ fun HeroStatusCard(
     }
 
     val zygiskColor = if (status.cloakReady) SuccessGreen else WarningAmber
+    val zygiskText = when {
+        status.cloakReady -> "Zygisk hook active (system_server)"
+        status.zygisk.contains("ready") -> "Zygisk ready"
+        else -> "Zygisk hook standby"
+    }
 
     Column(
         modifier = modifier
@@ -59,18 +68,29 @@ fun HeroStatusCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text(
-                    text = "System Protection",
-                    color = TextPrimary,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(daemonColor)
                 )
-                Text(
-                    text = if (status.cloakReady) "Zygisk system_server hook active" else "Hook standby / starting",
-                    color = TextSecondary,
-                    fontSize = 12.sp
-                )
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Column {
+                    Text(
+                        text = "System Protection",
+                        color = TextPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = zygiskText,
+                        color = TextSecondary,
+                        fontSize = 12.sp
+                    )
+                }
             }
 
             StatusPill(

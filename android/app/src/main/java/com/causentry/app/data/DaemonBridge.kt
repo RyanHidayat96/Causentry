@@ -108,6 +108,8 @@ class DaemonBridge @Inject constructor(
         op
     }
 
+    suspend fun deleteTemplate(name: String): String = saveTemplate("", emptyList(), deleteName = name)
+
     suspend fun apply(): String = withContext(Dispatchers.IO) {
         val op = "app-" + System.currentTimeMillis()
         sendCommand(JSONObject().apply {

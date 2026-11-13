@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,6 +20,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -32,20 +35,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.causentry.app.R
 import com.causentry.app.data.IconLoader
 import com.causentry.app.model.AppInfo
 import com.causentry.app.ui.theme.BorderDark
 import com.causentry.app.ui.theme.DangerRed
 import com.causentry.app.ui.theme.PrimaryBlue
+import com.causentry.app.ui.theme.SuccessGreen
 import com.causentry.app.ui.theme.SurfaceDark
 import com.causentry.app.ui.theme.SurfaceHighDark
 import com.causentry.app.ui.theme.TextPrimary
 import com.causentry.app.ui.theme.TextSecondary
+import com.causentry.app.ui.theme.WarningAmber
 
 @Composable
 fun AppDetailDialog(
@@ -73,6 +81,11 @@ fun AppDetailDialog(
                 .verticalScroll(rememberScrollState())
         ) {
             // Header
+            val context = LocalContext.current
+            val launchIntent = remember(app.packageName) {
+                context.packageManager.getLaunchIntentForPackage(app.packageName)
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -100,36 +113,60 @@ fun AppDetailDialog(
                         fontFamily = FontFamily.Monospace
                     )
                 }
+
+                if (launchIntent != null) {
+                    IconButton(
+                        onClick = {
+                            try {
+                                context.startActivity(launchIntent)
+                            } catch (_: Exception) {}
+                        },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_launch),
+                            contentDescription = "Launch App",
+                            tint = PrimaryBlue,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
             // Switch 1: Dev Options
-            FeatureSwitchCard(
+            SwitchCard(
                 title = "Hide Developer Options",
-                description = "Returns development_settings_enabled and adb_enabled as 0 for this app without changing global device settings.",
+                description = "Returns development_settings_enabled and adb_enabled as 0 for this app without changing global phone settings.",
                 checked = devOff,
-                onCheckedChange = { devOff = it }
+                onCheckedChange = { devOff = it },
+                iconRes = R.drawable.ic_code,
+                iconTint = PrimaryBlue
             )
 
             Spacer(modifier = Modifier.height(10.dp))
 
             // Switch 2: Mock Location
-            FeatureSwitchCard(
+            SwitchCard(
                 title = "Hide Mock Location",
                 description = "Forces mock_location=0 and isolates location providers so the app cannot detect GPS spoofing tools.",
                 checked = mock,
-                onCheckedChange = { mock = it }
+                onCheckedChange = { mock = it },
+                iconRes = R.drawable.ic_location,
+                iconTint = WarningAmber
             )
 
             Spacer(modifier = Modifier.height(10.dp))
 
             // Switch 3: App-Zygote Isolation
-            FeatureSwitchCard(
+            SwitchCard(
                 title = "Block App-Zygote Probes",
                 description = "Stops app from spawning isolated processes via app-zygote (bypasses SELinux and anti-tamper RASP checks).",
                 checked = isolate,
-                onCheckedChange = { isolate = it }
+                onCheckedChange = { isolate = it },
+                iconRes = R.drawable.ic_shield,
+                iconTint = SuccessGreen
             )
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -235,54 +272,5 @@ fun AppDetailDialog(
                 Text("Dismiss", color = TextSecondary)
             }
         }
-    }
-}
-
-@Composable
-private fun FeatureSwitchCard(
-    title: String,
-    description: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(SurfaceHighDark)
-            .border(1.dp, BorderDark, RoundedCornerShape(12.dp))
-            .clickable { onCheckedChange(!checked) }
-            .padding(14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                color = TextPrimary,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = description,
-                color = TextSecondary,
-                fontSize = 11.sp,
-                lineHeight = 15.sp
-            )
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = TextPrimary,
-                checkedTrackColor = PrimaryBlue,
-                uncheckedThumbColor = TextSecondary,
-                uncheckedTrackColor = SurfaceDark
-            )
-        )
     }
 }

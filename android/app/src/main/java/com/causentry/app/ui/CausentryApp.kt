@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -32,6 +34,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -42,19 +45,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.causentry.app.R
 import com.causentry.app.model.AppFilter
 import com.causentry.app.model.AppInfo
 import com.causentry.app.model.DaemonStatus
 import com.causentry.app.ui.components.AppDetailDialog
 import com.causentry.app.ui.components.AppItemCard
+import com.causentry.app.ui.components.DiagnosticsCard
+import com.causentry.app.ui.components.FilterChipRow
 import com.causentry.app.ui.components.HeroStatusCard
 import com.causentry.app.ui.components.StatusPill
+import com.causentry.app.ui.components.TemplateCard
+import com.causentry.app.ui.components.TemplateEditorDialog
 import com.causentry.app.ui.theme.BgDark
 import com.causentry.app.ui.theme.BorderDark
 import com.causentry.app.ui.theme.DangerRed
@@ -72,6 +83,7 @@ fun CausentryApp(
 ) {
     val status by viewModel.daemonStatus.collectAsState()
     val apps by viewModel.filteredApps.collectAsState()
+    val allApps by viewModel.allApps.collectAsState()
     val query by viewModel.searchQuery.collectAsState()
     val filter by viewModel.selectedFilter.collectAsState()
     val selectedApp by viewModel.selectedApp.collectAsState()
@@ -115,10 +127,13 @@ fun CausentryApp(
                     )
                 }
                 1 -> {
-                    // Templates Tab
+                    // Templates Tab: Multi-select interactive cloaking manager
                     TemplatesScreen(
                         status = status,
-                        onSaveTemplate = { name, pkgs -> viewModel.saveTemplate(name, pkgs) }
+                        allApps = allApps,
+                        iconLoader = viewModel.iconLoader,
+                        onSaveTemplate = { name, pkgs -> viewModel.saveTemplate(name, pkgs) },
+                        onDeleteTemplate = { name -> viewModel.deleteTemplate(name) }
                     )
                 }
                 2 -> {
@@ -213,11 +228,11 @@ private fun TopAppBar(
                         color = PrimaryBlue
                     )
                 } else {
-                    Text(
-                        text = "↻",
-                        color = TextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_refresh),
+                        contentDescription = "Refresh",
+                        tint = TextPrimary,
+                        modifier = Modifier.padding(2.dp).width(16.dp).height(16.dp)
                     )
                 }
             }
@@ -300,6 +315,14 @@ private fun AppsScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp),
                 shape = RoundedCornerShape(12.dp),
+                leadingIcon = {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_search),
+                        contentDescription = null,
+                        tint = TextSecondary,
+                        modifier = Modifier.padding(2.dp).width(18.dp).height(18.dp)
+                    )
+                },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PrimaryBlue,
                     unfocusedBorderColor = BorderDark,
@@ -310,47 +333,29 @@ private fun AppsScreen(
                 ),
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
-                        Text(
-                            text = "✕",
-                            color = TextSecondary,
-                            modifier = Modifier
-                                .clickable { onSearchChange("") }
-                                .padding(8.dp)
-                        )
+                        IconButton(onClick = { onSearchChange("") }) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_close),
+                                contentDescription = "Clear",
+                                tint = TextSecondary,
+                                modifier = Modifier.padding(2.dp).width(16.dp).height(16.dp)
+                            )
+                        }
                     }
                 }
             )
         }
 
         item {
-            // Filter chip row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChipItem(
-                    label = "All",
-                    selected = selectedFilter == AppFilter.ALL,
-                    onClick = { onFilterSelect(AppFilter.ALL) }
-                )
-                FilterChipItem(
-                    label = "Protected (${status.targets.size})",
-                    selected = selectedFilter == AppFilter.PROTECTED,
-                    onClick = { onFilterSelect(AppFilter.PROTECTED) }
-                )
-                FilterChipItem(
-                    label = "User",
-                    selected = selectedFilter == AppFilter.USER,
-                    onClick = { onFilterSelect(AppFilter.USER) }
-                )
-                FilterChipItem(
-                    label = "System",
-                    selected = selectedFilter == AppFilter.SYSTEM,
-                    onClick = { onFilterSelect(AppFilter.SYSTEM) }
-                )
-            }
+            FilterChipRow(
+                selectedFilter = selectedFilter,
+                onFilterSelect = onFilterSelect,
+                allCount = apps.size,
+                protectedCount = status.targets.size,
+                userCount = apps.count { !it.isSystem },
+                systemCount = apps.count { it.isSystem },
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+            )
         }
 
         if (apps.isEmpty()) {
@@ -368,8 +373,42 @@ private fun AppsScreen(
                     )
                 }
             }
+        } else if (searchQuery.isEmpty() && selectedFilter == AppFilter.ALL) {
+            val protectedApps = apps.filter { it.isProtected }
+            val otherApps = apps.filter { !it.isProtected }
+
+            if (protectedApps.isNotEmpty()) {
+                item {
+                    SectionHeader(title = "PROTECTED APPLICATIONS", count = protectedApps.size)
+                }
+                items(
+                    items = protectedApps,
+                    key = { it.packageName }
+                ) { app ->
+                    AppItemCard(
+                        app = app,
+                        iconLoader = iconLoader,
+                        onClick = { onAppClick(app) }
+                    )
+                }
+            }
+
+            if (otherApps.isNotEmpty()) {
+                item {
+                    SectionHeader(title = "ALL OTHER APPLICATIONS", count = otherApps.size)
+                }
+                items(
+                    items = otherApps,
+                    key = { it.packageName }
+                ) { app ->
+                    AppItemCard(
+                        app = app,
+                        iconLoader = iconLoader,
+                        onClick = { onAppClick(app) }
+                    )
+                }
+            }
         } else {
-            // Keyed virtualized items: only the 8-10 items on screen are composed!
             items(
                 items = apps,
                 key = { it.packageName }
@@ -389,42 +428,56 @@ private fun AppsScreen(
 }
 
 @Composable
-private fun FilterChipItem(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = {
-            Text(
-                text = label,
-                fontSize = 12.sp,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-            )
-        },
-        shape = RoundedCornerShape(8.dp),
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = PrimaryBlue.copy(alpha = 0.2f),
-            selectedLabelColor = PrimaryBlue,
-            containerColor = SurfaceDark,
-            labelColor = TextSecondary
-        ),
-        border = FilterChipDefaults.filterChipBorder(
-            enabled = true,
-            selected = selected,
-            borderColor = if (selected) PrimaryBlue else BorderDark
+private fun SectionHeader(title: String, count: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            color = TextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp
         )
-    )
+        Text(
+            text = "$count",
+            color = TextSecondary,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold
+        )
+    }
 }
 
 @Composable
 private fun TemplatesScreen(
     status: DaemonStatus,
-    onSaveTemplate: (String, List<String>) -> Unit
+    allApps: List<AppInfo>,
+    iconLoader: com.causentry.app.data.IconLoader,
+    onSaveTemplate: (String, List<String>) -> Unit,
+    onDeleteTemplate: (String) -> Unit
 ) {
-    var newTemplateName by remember { mutableStateOf("") }
+    var showEditor by remember { mutableStateOf(false) }
+    var editingName by remember { mutableStateOf("") }
+    var editingPackages by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    if (showEditor) {
+        TemplateEditorDialog(
+            initialName = editingName,
+            initialPackages = editingPackages,
+            allApps = allApps,
+            iconLoader = iconLoader,
+            onSave = { name, pkgs ->
+                onSaveTemplate(name, pkgs)
+                showEditor = false
+            },
+            onDismiss = { showEditor = false }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -432,60 +485,35 @@ private fun TemplatesScreen(
             .padding(20.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        Text(
-            text = "Hidden-App Templates",
-            color = TextPrimary,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = "Templates define groups of apps cloaked from target package queries in system_server.",
-            color = TextSecondary,
-            fontSize = 12.sp
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Create Template Input Card
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(SurfaceDark)
-                .border(1.dp, BorderDark, RoundedCornerShape(12.dp))
-                .padding(10.dp),
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedTextField(
-                value = newTemplateName,
-                onValueChange = { newTemplateName = it },
-                placeholder = { Text("New template name...", color = TextSecondary, fontSize = 13.sp) },
-                singleLine = true,
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(8.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = PrimaryBlue,
-                    unfocusedBorderColor = BorderDark,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Hidden-App Templates",
+                    color = TextPrimary,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
                 )
-            )
-
-            Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Configure groups of apps to cloak from target package queries in system_server.",
+                    color = TextSecondary,
+                    fontSize = 12.sp
+                )
+            }
 
             Button(
                 onClick = {
-                    val name = newTemplateName.trim()
-                    if (name.isNotEmpty()) {
-                        onSaveTemplate(name, emptyList())
-                        newTemplateName = ""
-                    }
+                    editingName = ""
+                    editingPackages = emptyList()
+                    showEditor = true
                 },
-                enabled = newTemplateName.isNotBlank(),
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
             ) {
-                Text("Create", color = TextPrimary, fontWeight = FontWeight.Bold)
+                Text("+ New", color = TextPrimary, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -499,40 +527,24 @@ private fun TemplatesScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "No custom templates configured yet.",
+                    text = "No custom templates configured yet. Tap '+ New' to create one.",
                     color = TextSecondary,
                     fontSize = 14.sp
                 )
             }
         } else {
             status.templates.forEach { (name, pkgs) ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(SurfaceDark)
-                        .border(1.dp, BorderDark, RoundedCornerShape(12.dp))
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = name,
-                            color = TextPrimary,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "${pkgs.size} apps cloaked in this template",
-                            color = TextSecondary,
-                            fontSize = 12.sp
-                        )
-                    }
-
-                    StatusPill(text = "${pkgs.size} APPS", color = PrimaryBlue)
-                }
+                TemplateCard(
+                    name = name,
+                    packages = pkgs,
+                    onEdit = {
+                        editingName = name
+                        editingPackages = pkgs
+                        showEditor = true
+                    },
+                    onDelete = { onDeleteTemplate(name) },
+                    modifier = Modifier.padding(vertical = 6.dp)
+                )
             }
         }
     }
@@ -545,25 +557,57 @@ private fun ActionsScreen(
     onRestore: () -> Unit,
     onRefresh: () -> Unit
 ) {
+    var showRestoreConfirm by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
+
+    if (showRestoreConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRestoreConfirm = false },
+            title = { Text("Restore Default Settings?", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            text = { Text("This will revert all developer options, mock location, and app cloak overrides to system defaults. Are you sure?", color = TextSecondary) },
+            containerColor = SurfaceDark,
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRestoreConfirm = false
+                        onRestore()
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = DangerRed)
+                ) {
+                    Text("Restore Defaults", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestoreConfirm = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(20.dp)
             .verticalScroll(rememberScrollState())
     ) {
+        DiagnosticsCard(status = status)
+
+        Spacer(modifier = Modifier.height(20.dp))
+
         Text(
-            text = "Engine Actions",
+            text = "Engine Management",
             color = TextPrimary,
-            fontSize = 17.sp,
+            fontSize = 16.sp,
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = "Control root daemon state, resync Zygisk policy, or restore default phone flags.",
+            text = "Apply pending rules, force reload Zygisk policy, or rollback changes.",
             color = TextSecondary,
             fontSize = 12.sp
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -579,10 +623,10 @@ private fun ActionsScreen(
             }
 
             Button(
-                onClick = onRestore,
+                onClick = { showRestoreConfirm = true },
                 modifier = Modifier.weight(1f).height(48.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = DangerRed.copy(alpha = 0.8f))
+                colors = ButtonDefaults.buttonColors(containerColor = DangerRed.copy(alpha = 0.85f))
             ) {
                 Text("Restore All", color = TextPrimary, fontWeight = FontWeight.Bold)
             }
@@ -590,22 +634,43 @@ private fun ActionsScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Text(
-            text = "DAEMON LOG OUTPUT",
-            color = TextSecondary,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.5.sp
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "DAEMON & ZYGISK LOGS",
+                color = TextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
+
+            TextButton(
+                onClick = {
+                    clipboardManager.setText(AnnotatedString(status.log))
+                }
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_copy),
+                    contentDescription = "Copy Logs",
+                    tint = PrimaryBlue,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Copy Logs", color = PrimaryBlue, fontSize = 12.sp)
+            }
+        }
 
         Spacer(modifier = Modifier.height(6.dp))
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(300.dp)
+                .height(320.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(Color.Black.copy(alpha = 0.4f))
+                .background(Color.Black.copy(alpha = 0.45f))
                 .border(1.dp, BorderDark, RoundedCornerShape(12.dp))
                 .padding(12.dp)
                 .verticalScroll(rememberScrollState())
