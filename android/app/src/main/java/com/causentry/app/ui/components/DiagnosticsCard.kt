@@ -54,11 +54,14 @@ fun DiagnosticsCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "System & Runtime Diagnostics",
+                text = "System Diagnostics",
                 color = TextPrimary,
                 fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f, fill = false)
             )
+
+            Spacer(modifier = Modifier.width(8.dp))
 
             StatusPill(
                 text = if (status.daemonAlive) "HEALTHY" else "OFFLINE",

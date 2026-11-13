@@ -35,7 +35,8 @@ final class SettingsProviderHooks {
             new HashSet<>(Arrays.asList(
                     "development_settings_enabled",
                     "adb_enabled",
-                    "adb_wifi_enabled")));
+                    "adb_wifi_enabled",
+                    "mock_location")));
     private static volatile int installedHooks;
 
     private SettingsProviderHooks() {}

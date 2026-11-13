@@ -20,30 +20,70 @@ final class AppZygoteHooks {
     private AppZygoteHooks() {}
 
     static int install(ClassLoader loader) {
+        int installed = 0;
+        try {
+            Class<?> hostingRecordClass = Class.forName("com.android.server.am.HostingRecord", true, loader);
+            for (Method m : hostingRecordClass.getDeclaredMethods()) {
+                if ("usesAppZygote".equals(m.getName()) && m.getReturnType() == boolean.class) {
+                    Hooks.hook(m, Hooks.EntryPointType.DIRECT, (original, frame) -> {
+                        Object hostingRecord = frame.accessor().getReference(0);
+                        String packageName = definingPackage(hostingRecord);
+                        if (packageName != null && CloakPolicy.blocksAppZygote(packageName)) {
+                            frame.accessor().setValue(EmulatedStackFrame.RETURN_VALUE_IDX, false);
+                            Log.i(TAG, "usesAppZygote returned false for " + packageName);
+                            return;
+                        }
+                        Transformers.invokeExactNoChecks(original, frame);
+                    }, Hooks.EntryPointType.DIRECT);
+                    installed++;
+                    Log.i(TAG, "hooked HostingRecord#usesAppZygote");
+                }
+            }
+        } catch (Throwable e) {
+            Log.w(TAG, "failed to hook HostingRecord#usesAppZygote", e);
+        }
+
         try {
             Class<?> processList = Class.forName("com.android.server.am.ProcessList", true, loader);
             Executable target = findStartProcessLocked(processList);
             if (target == null) {
                 Log.w(TAG, "appzygote hook unavailable ProcessList#startProcessLocked");
-                return 0;
+                return installed;
             }
 
             HookTransformer transformer = (original, frame) -> {
                 Object hostingRecord = referenceArgument(frame, 1);
                 String packageName = definingPackage(hostingRecord);
-                if (usesAppZygote(hostingRecord) && CloakPolicy.blocksAppZygote(packageName)) {
-                    frame.accessor().setValue(EmulatedStackFrame.RETURN_VALUE_IDX, true);
-                    Log.i(TAG, "blocked app zygote start for " + packageName);
-                    return;
+                if (packageName != null && CloakPolicy.blocksAppZygote(packageName)) {
+                    disableUsesAppZygote(hostingRecord);
+                    Log.i(TAG, "demoted app zygote to regular process for " + packageName);
                 }
                 Transformers.invokeExactNoChecks(original, frame);
             };
             Hooks.hook(target, Hooks.EntryPointType.DIRECT, transformer, Hooks.EntryPointType.DIRECT);
             Log.i(TAG, "hooked ProcessList#startProcessLocked for app zygote");
-            return 1;
+            installed++;
+            return installed;
         } catch (Throwable error) {
             Log.e(TAG, "appzygote hook failed", error);
-            return 0;
+            return installed;
+        }
+    }
+
+    private static void disableUsesAppZygote(Object hostingRecord) {
+        if (hostingRecord == null) return;
+        for (Class<?> cursor = hostingRecord.getClass(); cursor != null; cursor = cursor.getSuperclass()) {
+            for (Field field : cursor.getDeclaredFields()) {
+                if (field.getType() == boolean.class && !Modifier.isStatic(field.getModifiers())) {
+                    try {
+                        field.setAccessible(true);
+                        if (field.getBoolean(hostingRecord) && (field.getName().toLowerCase().contains("zygote") || field.getName().equals("mUsesAppZygote"))) {
+                            field.setBoolean(hostingRecord, false);
+                            Log.i(TAG, "demoted HostingRecord field " + field.getName() + " to false");
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            }
         }
     }
 

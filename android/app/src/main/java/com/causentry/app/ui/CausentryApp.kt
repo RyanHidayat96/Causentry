@@ -70,6 +70,7 @@ import com.causentry.app.model.AppInfo
 import com.causentry.app.model.DaemonStatus
 import com.causentry.app.ui.components.AppDetailDialog
 import com.causentry.app.ui.components.AppItemCard
+import com.causentry.app.ui.components.BackupRestoreCard
 import com.causentry.app.ui.components.DiagnosticsCard
 import com.causentry.app.ui.components.FilterChipRow
 import com.causentry.app.ui.components.HeroStatusCard
@@ -199,6 +200,7 @@ fun CausentryApp(
                         // Actions & Diagnostics Tab
                         ActionsScreen(
                             status = status,
+                            backupManager = viewModel.configBackupManager,
                             onApply = { viewModel.applyChanges() },
                             onRestore = { viewModel.restoreAll() },
                             onRefresh = { viewModel.refreshAll() }
@@ -657,6 +659,7 @@ private fun TemplatesScreen(
 @Composable
 private fun ActionsScreen(
     status: DaemonStatus,
+    backupManager: com.causentry.app.data.ConfigBackupManager,
     onApply: () -> Unit,
     onRestore: () -> Unit,
     onRefresh: () -> Unit
@@ -696,6 +699,14 @@ private fun ActionsScreen(
             .verticalScroll(rememberScrollState())
     ) {
         DiagnosticsCard(status = status)
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        BackupRestoreCard(
+            status = status,
+            backupManager = backupManager,
+            onRefresh = onRefresh
+        )
 
         Spacer(modifier = Modifier.height(20.dp))
 

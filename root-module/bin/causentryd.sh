@@ -160,10 +160,7 @@ activate() {
   needs_global_dev=0
   needs_usb_debug=0
   [ "$want_dev" = 1 ] && [ "$dev_backend" != provider ] && needs_global_dev=1
-  # SystemProperties is local to an app process. Without target injection, hide
-  # USB-debug properties by turning off the real ADB transport while this target
-  # is active, then restore its original state when the target leaves foreground.
-  [ "$want_dev" = 1 ] && needs_usb_debug=1
+  [ "$want_dev" = 1 ] && [ "$dev_backend" != provider ] && needs_usb_debug=1
   if [ "$needs_global_dev" = 1 ] || [ "$needs_usb_debug" = 1 ] || [ "$want_mock" = 1 ]; then
     if [ ! -f "$SAVED" ]; then
       wait_settings 15 || { log "cloak skipped: settings service not ready (flags not readable)"; return 0; }

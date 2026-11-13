@@ -325,10 +325,27 @@ process_cmds() {
         fi
         ;;
       refresh) schedule_apps_snapshot ;;
-      savecfg)
-        # Deprecated: complete config replacement is too broad for a bridge command.
-        rm -f "$CMD_DIR/config.json"
-        log "ignored deprecated savecfg command" ;;
+      savecfg|importcfg)
+        b64=$(getf configBase64); op=$(getf op); rc=1
+        if [ -n "$b64" ]; then
+          T="$CONF.new"
+          if printf '%s' "$b64" | base64 -d 2>/dev/null | tr -d '\r\n\xef\xbb\xbf' > "$T"; then
+            if [ -s "$T" ]; then
+              mv -f "$T" "$CONF"
+              chmod 644 "$CONF"
+              sh "$DIR/cloak.sh" >> "$LOG" 2>&1
+              sh "$DIR/apply.sh" app >> "$LOG" 2>&1
+              mark_changed
+              schedule_apps_snapshot
+              rc=0
+              log "config restored from backup"
+            else
+              rm -f "$T"
+            fi
+          fi
+        fi
+        complete_command "$op" "$rc"
+        ;;
       setapp)
         # {"action":"setapp","pkg":"x","features":"devOff,mock"} -> enable + set features
         pkg=$(getf pkg); feats=$(getf features); template=$(getf template); op=$(getf op); rc=1

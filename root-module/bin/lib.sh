@@ -57,7 +57,8 @@ ere_escape() {
 
 # list items of a JSON string array: jlist targets
 jlist() {
-  sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*\[([^]]*)\].*/\1/p" "$CONF" 2>/dev/null \
+  tr -d '\r\n' < "$CONF" 2>/dev/null \
+    | sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*\[([^]]*)\].*/\1/p" \
     | head -1 | tr ',' '\n' | sed 's/[", ]//g' | grep -v '^$'
 }
 
@@ -91,7 +92,7 @@ extract_app_entries() {   # extract_app_entries [config-file]
 }
 
 hide_template_pairs() {
-  sed -nE 's/.*"hideTemplates"[[:space:]]*:[[:space:]]*\{([^}]*)\}.*/\1/p' "$CONF" 2>/dev/null \
+  tr -d '\r\n' < "$CONF" 2>/dev/null | sed -nE 's/.*"hideTemplates"[[:space:]]*:[[:space:]]*\{([^}]*)\}.*/\1/p' \
     | head -1 | grep -oE '"[A-Za-z0-9_.-]+"[[:space:]]*:[[:space:]]*\[[^]]*\]' 2>/dev/null
 }
 
@@ -99,7 +100,7 @@ hide_template_list() {
   name="$1"
   valid_template_name "$name" || return 0
   esc=$(ere_escape "$name")
-  out=$(sed -nE "s/.*\"hideTemplates\"[[:space:]]*:[[:space:]]*\{.*\"$esc\"[[:space:]]*:[[:space:]]*\[([^]]*)\].*/\1/p" "$CONF" 2>/dev/null \
+  out=$(tr -d '\r\n' < "$CONF" 2>/dev/null | sed -nE "s/.*\"hideTemplates\"[[:space:]]*:[[:space:]]*\{.*\"$esc\"[[:space:]]*:[[:space:]]*\[([^]]*)\].*/\1/p" \
     | head -1 | tr ',' '\n' | sed 's/[", ]//g' | grep -v '^$')
   if [ -n "$out" ]; then
     printf '%s\n' "$out"
@@ -137,13 +138,13 @@ emit_hide_templates_json() {  # emit_hide_templates_json [replace-name] [replace
 
 # boolean field: jbool autoDevOff -> 1/0
 jbool() {
-  v=$(sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*(true|false).*/\1/p" "$CONF" 2>/dev/null | head -1)
+  v=$(tr -d '\r\n' < "$CONF" 2>/dev/null | sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*(true|false).*/\1/p" | head -1)
   [ "$v" = "true" ] && echo 1 || echo 0
 }
 
 # string field: jstr hideMode -> hide
 jstr() {
-  sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" "$CONF" 2>/dev/null | head -1
+  tr -d '\r\n' < "$CONF" 2>/dev/null | sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" | head -1
 }
 
 # how to deal with detection packages: none (default) | hide | cloak | uninstall

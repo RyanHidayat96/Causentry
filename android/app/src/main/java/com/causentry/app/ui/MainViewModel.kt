@@ -3,6 +3,7 @@ package com.causentry.app.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.causentry.app.data.AppRepository
+import com.causentry.app.data.ConfigBackupManager
 import com.causentry.app.data.DaemonBridge
 import com.causentry.app.data.ForensicManager
 import com.causentry.app.data.IconLoader
@@ -32,7 +33,8 @@ class MainViewModel @Inject constructor(
     private val appRepository: AppRepository,
     val daemonBridge: DaemonBridge,
     val iconLoader: IconLoader,
-    val forensicManager: ForensicManager
+    val forensicManager: ForensicManager,
+    val configBackupManager: ConfigBackupManager
 ) : ViewModel() {
 
     val daemonStatus: StateFlow<DaemonStatus> = daemonBridge.statusFlow

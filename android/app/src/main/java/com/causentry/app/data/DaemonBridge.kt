@@ -130,6 +130,21 @@ class DaemonBridge @Inject constructor(
         op
     }
 
+    suspend fun importConfig(jsonString: String): String = withContext(Dispatchers.IO) {
+        val op = "imp-" + System.currentTimeMillis()
+        val b64 = android.util.Base64.encodeToString(
+            jsonString.toByteArray(Charsets.UTF_8),
+            android.util.Base64.NO_WRAP
+        )
+        sendCommand(JSONObject().apply {
+            put("action", "importcfg")
+            put("configBase64", b64)
+            put("op", op)
+        })
+        checkAndUpdateStatus()
+        op
+    }
+
     private fun sendCommand(obj: JSONObject): Boolean {
         return try {
             val cmdDir = File(context.filesDir, "cmd")
@@ -171,7 +186,7 @@ class DaemonBridge @Inject constructor(
                 return@withContext
             }
 
-            val content = file.readText(Charsets.UTF_8)
+            val content = file.readText(Charsets.UTF_8).replace("\uFEFF", "").trim()
             val json = JSONObject(content)
             val parsed = parseStatus(json)
 
@@ -179,7 +194,7 @@ class DaemonBridge @Inject constructor(
             lastStatusLength = length
             _statusFlow.value = parsed
         } catch (t: Throwable) {
-            // Keep previous status or mark daemon down on I/O error
+            android.util.Log.e("DaemonBridge", "failed to read or parse status.json", t)
         }
     }
 
