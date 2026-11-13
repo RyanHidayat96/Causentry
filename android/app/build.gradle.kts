@@ -6,17 +6,44 @@ plugins {
 }
 
 android {
-    namespace = "dev.causentry.android"
+    namespace = "com.causentry.app"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "dev.causentry.android"
+        applicationId = "com.causentry.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 110
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("release") {
+            val ksFile = rootProject.file("../causentry.keystore")
+            if (ksFile.exists()) {
+                storeFile = ksFile
+                storePassword = "causentry"
+                keyAlias = "causentry"
+                keyPassword = "causentry"
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("release")
+        }
     }
 
     buildFeatures {

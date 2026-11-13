@@ -1,4 +1,4 @@
-package dev.causentry.android
+package com.causentry.app
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -6,6 +6,6 @@ import kotlin.test.assertEquals
 class ProductIdentityTest {
     @Test
     fun packageIdentityIsStable() {
-        assertEquals("dev.causentry.android", BuildConfig.APPLICATION_ID)
+        assertEquals("com.causentry.app", BuildConfig.APPLICATION_ID)
     }
 }

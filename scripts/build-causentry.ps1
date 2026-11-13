@@ -132,80 +132,41 @@ if ($IncludeZygisk) {
 }
 New-Item -ItemType Directory -Force -Path $Release | Out-Null
 
-# ---------------- 1..7 payload APK ----------------
+# ---------------- 1/1 modern Compose payload APK ----------------
 if (-not $NoApk) {
-  # clean per entry: a foreign file (e.g. a ROM dump being inspected) may be locked,
-  # and that must not break the build
-  if (Test-Path $Build) {
-    Get-ChildItem -Force $Build | ForEach-Object {
-      try { Remove-Item -Recurse -Force $_.FullName -ErrorAction Stop } catch { Write-Host "   (skip locked: $($_.Name))" }
-    }
-  }
-  foreach ($d in "stubs", "classes", "dex", "gen", "apk") {
-    New-Item -ItemType Directory -Force -Path (Join-Path $Build $d) | Out-Null
-  }
-
-  Say "[1/7] selecting Zygisk-only control UI sources"
-  $legacyHookSources = @(
-    "AppOpsCloak.java",
-    "AppZygoteCloak.java",
-    "CausentryModule.java",
-    "Cfg.java",
-    "CloakCfg.java",
-    "Hide.java",
-    "PackageCloak.java",
-    "SystemCloak.java"
-  )
-
-  Say "[2/7] compiling payload classes"
-  $modSrc = (Get-ChildItem (Join-Path $Src "src") -Recurse -Filter *.java |
-    Where-Object { $legacyHookSources -notcontains $_.Name }).FullName
-  if (-not $modSrc) { Die "no payload sources under $Src\src" }
-  & $Javac -nowarn --release 11 -cp $AJar -d (Join-Path $Build "classes") @modSrc
-  if ($LASTEXITCODE -ne 0) { Die "javac (payload) failed" }
-
-  Say "[3/7] dexing (d8)"
-  $classes = (Get-ChildItem (Join-Path $Build "classes") -Recurse -Filter *.class).FullName
-  & $Java -cp $d8Jar com.android.tools.r8.D8 --release --min-api 26 --lib $AJar --output (Join-Path $Build "dex") @classes
-  if ($LASTEXITCODE -ne 0) { Die "d8 failed" }
-
-  Say "[4/7] aapt2 compile + link"
-  & $aapt2 compile --dir (Join-Path $Src "res") -o (Join-Path $Build "res.zip")
-  if ($LASTEXITCODE -ne 0) { Die "aapt2 compile failed" }
-  & $aapt2 link -o (Join-Path $Build "apk\base.apk") -I $AJar `
-      --manifest (Join-Path $Src "manifest\AndroidManifest.xml") `
-      --java (Join-Path $Build "gen") `
-      --min-sdk-version 26 --target-sdk-version 35 --no-version-vectors (Join-Path $Build "res.zip")
-  if ($LASTEXITCODE -ne 0) { Die "aapt2 link failed" }
-
-  Say "[5/7] injecting classes.dex"
-  $dexedApk = Join-Path $Build "apk\dexed.apk"
-  Copy-Item (Join-Path $Build "apk\base.apk") $dexedApk -Force
-  $dexBytes = [IO.File]::ReadAllBytes((Join-Path $Build "dex\classes.dex"))
-  $za = [System.IO.Compression.ZipFile]::Open($dexedApk, [System.IO.Compression.ZipArchiveMode]::Update)
-  try {
-    $old = $za.GetEntry("classes.dex"); if ($old) { $old.Delete() }
-    $e = $za.CreateEntry("classes.dex", [System.IO.Compression.CompressionLevel]::Optimal)
-    $s = $e.Open(); $s.Write($dexBytes, 0, $dexBytes.Length); $s.Dispose()
-  } finally { $za.Dispose() }
-
-  Say "[6/7] zipalign"
-  & $zipalign -f -p 4 $dexedApk (Join-Path $Build "apk\aligned.apk")
-  if ($LASTEXITCODE -ne 0) { Die "zipalign failed" }
-
-  Say "[7/7] signing"
   if (-not (Test-Path $Ks)) {
     Say "      creating keystore (alias causentry)"
     & $Keytool -genkeypair -keystore $Ks -alias causentry -keyalg RSA -keysize 2048 -validity 10000 `
       -storepass causentry -keypass causentry -dname "CN=Causentry,O=Causentry,C=ID"
     if ($LASTEXITCODE -ne 0) { Die "keytool failed" }
   }
+
+  Say "[1/1] compiling modern Compose M3 control UI (:app:assembleRelease)"
+  $gradle = Find-Gradle
+  $oldAndroidHome = $env:ANDROID_HOME
+  $oldAndroidSdkRoot = $env:ANDROID_SDK_ROOT
+  $oldGradleUserHome = $env:GRADLE_USER_HOME
+  $gradleUserHome = Join-Path $Root ".gradle-causentry"
+  New-Item -ItemType Directory -Force -Path $gradleUserHome | Out-Null
+  $env:ANDROID_HOME = $Sdk
+  $env:ANDROID_SDK_ROOT = $Sdk
+  $env:GRADLE_USER_HOME = $gradleUserHome
+  try {
+    Push-Location (Join-Path $Root "android")
+    & $gradle --no-daemon --no-watch-fs :app:assembleRelease
+    if ($LASTEXITCODE -ne 0) { Die "Gradle Compose control UI build failed" }
+  } finally {
+    Pop-Location
+    $env:ANDROID_HOME = $oldAndroidHome
+    $env:ANDROID_SDK_ROOT = $oldAndroidSdkRoot
+    if ($null -eq $oldGradleUserHome) { Remove-Item Env:GRADLE_USER_HOME -ErrorAction SilentlyContinue }
+    else { $env:GRADLE_USER_HOME = $oldGradleUserHome }
+  }
+
+  $appReleaseApk = Join-Path $Root "android\app\build\outputs\apk\release\app-release.apk"
+  if (-not (Test-Path $appReleaseApk)) { Die "Gradle finished but $appReleaseApk not found" }
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ApkOut) | Out-Null
-  & $Java -jar $signerJar sign --ks $Ks --ks-pass pass:causentry --key-pass pass:causentry `
-        --out $ApkOut (Join-Path $Build "apk\aligned.apk")
-  if ($LASTEXITCODE -ne 0) { Die "apksigner failed" }
-  & $Java -jar $signerJar verify $ApkOut | Out-Null
-  if ($LASTEXITCODE -ne 0) { Die "apksigner verify failed" }
+  Copy-Item $appReleaseApk $ApkOut -Force
   Say ("      payload ok: {0} ({1:n0} bytes)" -f $ApkOut, (Get-Item $ApkOut).Length) "Green"
 } else {
   if (-not (Test-Path $ApkOut)) { Die "-NoApk given but $ApkOut does not exist" }
