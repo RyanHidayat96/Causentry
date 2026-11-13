@@ -6,11 +6,28 @@ if /I "%~1"=="/help" goto :help
 if /I "%~1"=="/?" goto :help
 
 set "CHECK_ONLY=0"
-set "DEVICE_ARG=%~1"
+set "FORCE_INSTALL=0"
+set "DEVICE_ARG="
+
+:parse_args
+if "%~1"=="" goto :args_done
 if /I "%~1"=="--check" (
   set "CHECK_ONLY=1"
-  set "DEVICE_ARG=%~2"
+  shift
+  goto :parse_args
 )
+if /I "%~1"=="--force" (
+  set "FORCE_INSTALL=1"
+  shift
+  goto :parse_args
+)
+if not defined DEVICE_ARG (
+  set "DEVICE_ARG=%~1"
+)
+shift
+goto :parse_args
+
+:args_done
 
 set "ROOT=%~dp0"
 call :find_adb || exit /b 1
@@ -31,26 +48,36 @@ if not exist "%APK%" (
 )
 
 set "LOCAL_SHA="
-for /f "usebackq delims=" %%H in (`powershell.exe -NoProfile -Command "(Get-FileHash -LiteralPath '%APK%' -Algorithm SHA256).Hash"`) do set "LOCAL_SHA=%%H"
+for /f "usebackq delims=" %%H in (`powershell.exe -NoProfile -Command "(Get-FileHash -LiteralPath '%APK%' -Algorithm SHA256).Hash.ToLower()"`) do set "LOCAL_SHA=%%H"
 if not defined LOCAL_SHA (
   echo ERROR: cannot calculate local APK hash.
   exit /b 1
 )
 
 set "REMOTE_APK="
-for /f "tokens=2 delims=:" %%P in ('"%ADB%" -s "%SERIAL%" shell pm path com.causentry.app ^| findstr /B /C:"package:"') do if not defined REMOTE_APK set "REMOTE_APK=%%P"
+for /f "usebackq delims=" %%P in (`"%ADB%" -s "%SERIAL%" shell "pm path com.causentry.app 2>/dev/null | tr -d '\r' | sed -n 's/^package://p' | head -1"`) do set "REMOTE_APK=%%P"
 set "REMOTE_SHA="
-if defined REMOTE_APK for /f "tokens=1" %%H in ('"%ADB%" -s "%SERIAL%" shell "sha256sum '%REMOTE_APK%'" 2^>nul') do if not defined REMOTE_SHA set "REMOTE_SHA=%%H"
+if defined REMOTE_APK for /f "tokens=1" %%H in ('"%ADB%" -s "%SERIAL%" shell "sha256sum %REMOTE_APK% 2^>/dev/null ^| tr -d '\r'"') do if not defined REMOTE_SHA set "REMOTE_SHA=%%H"
 
-if defined REMOTE_SHA if /I "%LOCAL_SHA%"=="%REMOTE_SHA%" (
-  echo APK unchanged. Nothing installed; device not restarted.
+if "%FORCE_INSTALL%"=="0" if defined REMOTE_SHA if /I "%LOCAL_SHA%"=="%REMOTE_SHA%" (
+  echo Device   : %SERIAL%
+  echo APK hash : %LOCAL_SHA% (unchanged)
+  echo Control UI is already up to date. Nothing installed.
   exit /b 0
 )
 
 echo Device : %SERIAL%
-echo APK changed or not installed. Installing without restart...
+if defined REMOTE_SHA (
+  echo Local  SHA : %LOCAL_SHA%
+  echo Remote SHA : %REMOTE_SHA%
+  echo APK changed. Installing update...
+) else (
+  echo Causentry app not installed on device. Installing fresh APK...
+)
 "%ADB%" -s "%SERIAL%" install -r "%APK%" || exit /b 1
-echo APK installed. Device not restarted.
+echo APK installed successfully. Device not restarted.
+echo Launching Causentry UI on device...
+"%ADB%" -s "%SERIAL%" shell "am start -n com.causentry.app/.MainActivity" >nul 2>&1
 exit /b 0
 
 :find_adb
@@ -92,8 +119,10 @@ if %COUNT% EQU 0 (
 exit /b 1
 
 :help
-echo Usage: %~nx0 [device-serial]
-echo        %~nx0 --check [device-serial]
-echo Builds source, compares root-module\payload\Causentry.apk with installed com.causentry.app, then installs only when hash differs.
-echo This script never restarts device.
+echo Usage: %~nx0 [device-serial] [--force] [--check]
+echo.
+echo Builds source, compares root-module\payload\Causentry.apk with installed com.causentry.app,
+echo and installs only when hash differs (or when --force is given).
+echo Automatically launches Causentry UI on device after install.
+echo Works universally on Magisk, KernelSU, APatch, and unrooted dev setups.
 exit /b 0

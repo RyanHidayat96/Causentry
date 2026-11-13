@@ -46,18 +46,29 @@ echo "== staging live runtime =="
   cd $D
   for f in *.sh webroot/cgi-bin/*.sh; do tr -d \"\r\" < \$f > \$f.tmp && mv \$f.tmp \$f; done
   chmod 700 $D; chmod 755 $D/*.sh $D/webroot/cgi-bin/*.sh
+  . $D/lib.sh
   sh $D/apply.sh deploy >/dev/null 2>&1
   kill \$(cat $D/daemon.pid 2>/dev/null) 2>/dev/null
   pkill -f \"httpd -p 127.0.0.1:8899\" 2>/dev/null
   sleep 1
   setsid /system/bin/sh $D/causentry-loop.sh >/dev/null 2>&1 < /dev/null &
-  setsid /data/adb/ksu/bin/busybox httpd -p 127.0.0.1:8899 -h $D/webroot >/dev/null 2>&1 < /dev/null &
+  BB=\$(find_busybox 2>/dev/null)
+  [ -n \"\$BB\" ] && setsid \"\$BB\" httpd -p 127.0.0.1:8899 -h $D/webroot >/dev/null 2>&1 < /dev/null &
   sleep 2
   echo daemon=\$(cat $D/daemon.pid)
 '"
 
 TOKEN=$("${ADB[@]}" shell "su -c 'cat $D/ui.token'" | tr -d '\r\n')
 echo "== api check =="
-"${ADB[@]}" shell "su -c '/data/adb/ksu/bin/busybox wget -qO- \"http://127.0.0.1:8899/cgi-bin/api.sh?t=$TOKEN&action=status\"'" | head -c 400
+"${ADB[@]}" shell "su -c '
+  D=/data/adb/causentry
+  . \$D/lib.sh
+  BB=\$(find_busybox 2>/dev/null)
+  if [ -n \"\$BB\" ]; then
+    \"\$BB\" wget -qO- \"http://127.0.0.1:8899/cgi-bin/api.sh?t=$TOKEN&action=status\"
+  else
+    sh \$D/uirpc.sh status
+  fi
+'" | head -c 400
 echo
 echo "UI: http://127.0.0.1:8899/index.html?t=$TOKEN"

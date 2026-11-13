@@ -8,12 +8,14 @@ DIR=/data/adb/causentry
 
 # --- common root managers / patchers / injectors
 DB="com.topjohnwu.magisk com.topjohnwu.magisk.debug com.topjohnwu.magisk.canary
+io.github.huskydg.magisk io.github.vvb2060.magisk
+org.bndev.apatch org.bndev.apatch.debug org.bndev.apatch.canary
 eu.chainfire.supersu eu.chainfire.supersu.pro com.noshufou.android.su
 com.noshufou.android.su.elite com.koushikdutta.superuser com.thirdparty.superuser
 com.yellowes.su com.kingroot.kinguser com.kingo.root com.smedialink.oneclickroot
 com.zhiqupk.root.global com.alephzain.framaroot com.geohot.towelroot
 com.ramdroid.appquarantine com.ramdroid.appquarantinepro me.phh.superuser
-me.weishu.kernelsu com.rifsxd.ksunext com.saurik.substrate
+me.weishu.kernelsu com.rifsxd.ksunext com.sukisu.ultra com.saurik.substrate
 de.robv.android.xposed.installer org.lsposed.manager com.solohsu.android.edxp.manager
 org.meowcat.edxposed.manager com.chelpus.lackypatch com.dimonvideo.luckypatcher
 com.forpix.valet com.keramidas.TitaniumBackup"

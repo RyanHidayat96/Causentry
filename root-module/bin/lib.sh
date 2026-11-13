@@ -191,7 +191,10 @@ zygisk_backend_loaded() {
 
 zygisk_loader_active() {
   grep -q '^causentry ' /data/adb/zygisksu/modules_info 2>/dev/null \
-    || grep -q '^causentry ' /data/adb/ksu/log/modules_info 2>/dev/null
+    || grep -q '^causentry ' /data/adb/ksu/log/modules_info 2>/dev/null \
+    || grep -q '^causentry ' /data/adb/magisk/modules_info 2>/dev/null \
+    || grep -q '^causentry ' /data/adb/ap/modules_info 2>/dev/null \
+    || [ -f "/data/adb/modules/causentry/zygisk/arm64-v8a.so" ]
 }
 
 zygisk_cloak_ready() {
@@ -295,10 +298,12 @@ find_resetprop() {
 }
 
 find_susfs() {
-  for p in /data/adb/ksu/bin/ksu_susfs /data/adb/ksu/bin/susfs /data/adb/magisk/ksu_susfs; do
+  for p in /data/adb/ksu/bin/ksu_susfs /data/adb/ksu/bin/susfs /data/adb/magisk/ksu_susfs \
+           /data/adb/ap/bin/ksu_susfs /data/adb/ap/bin/susfs; do
     [ -x "$p" ] && { echo "$p"; return 0; }
   done
   command -v ksu_susfs 2>/dev/null && return 0
+  command -v susfs 2>/dev/null && return 0
   return 1
 }
 

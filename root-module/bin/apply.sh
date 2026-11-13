@@ -130,7 +130,7 @@ log "mock-location flag left to daemon state machine"
 SUSFS=$(find_susfs)
 if [ "$(jbool susfs)" = 1 ] && [ -n "$SUSFS" ] && "$SUSFS" support >/dev/null 2>&1; then
   "$SUSFS" hide_sus_mnts_for_non_su_procs 1 2>/dev/null
-  for p in /data/adb /data/adb/modules /data/adb/ksu /data/magisk /sbin/.magisk /debug_ramdisk; do
+  for p in /data/adb /data/adb/modules /data/adb/ksu /data/adb/magisk /data/adb/ap /data/magisk /sbin/.magisk /debug_ramdisk; do
     [ -e "$p" ] && "$SUSFS" add_sus_path "$p" >/dev/null 2>&1
   done
   log "susfs hiding refreshed"
