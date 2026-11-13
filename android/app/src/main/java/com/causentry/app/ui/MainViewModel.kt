@@ -78,7 +78,8 @@ class MainViewModel @Inject constructor(
             val matchesPkg = pkg.isNullOrEmpty() ||
                 entry.packageName.equals(pkg, ignoreCase = true) ||
                 entry.message.contains(pkg, ignoreCase = true) ||
-                entry.tag.contains(pkg, ignoreCase = true)
+                entry.tag.contains(pkg, ignoreCase = true) ||
+                forensicManager.isPidForPackage(entry.pid, pkg)
 
             val matchesLevel = level == null || entry.level == level ||
                 (level == LogLevel.ERROR && (entry.level == LogLevel.FATAL || entry.level == LogLevel.ERROR))

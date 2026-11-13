@@ -1,5 +1,6 @@
 package com.causentry.zygote;
 
+import android.content.ComponentName;
 import android.util.Log;
 
 import com.v7878.unsafe.Reflection;
@@ -12,6 +13,8 @@ import java.lang.reflect.Executable;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Blocks app-zygote service starts for targets that opt into isolate protection. */
 final class AppZygoteHooks {
@@ -37,32 +40,56 @@ final class AppZygoteHooks {
                     }, Hooks.EntryPointType.DIRECT);
                     installed++;
                     Log.i(TAG, "hooked HostingRecord#usesAppZygote");
+                } else if ("byAppZygote".equals(m.getName()) && m.getReturnType() == hostingRecordClass) {
+                    Hooks.hook(m, Hooks.EntryPointType.DIRECT, (original, frame) -> {
+                        Transformers.invokeExactNoChecks(original, frame);
+                        Object record = frame.accessor().getReference(EmulatedStackFrame.RETURN_VALUE_IDX);
+                        if (record != null) {
+                            String packageName = definingPackage(record);
+                            if (packageName != null && CloakPolicy.blocksAppZygote(packageName)) {
+                                disableUsesAppZygote(record);
+                                Log.i(TAG, "byAppZygote demoted to regular zygote for " + packageName);
+                            }
+                        }
+                    }, Hooks.EntryPointType.DIRECT);
+                    installed++;
+                    Log.i(TAG, "hooked HostingRecord.byAppZygote");
                 }
             }
         } catch (Throwable e) {
-            Log.w(TAG, "failed to hook HostingRecord#usesAppZygote", e);
+            Log.w(TAG, "failed to hook HostingRecord methods", e);
         }
 
         try {
             Class<?> processList = Class.forName("com.android.server.am.ProcessList", true, loader);
-            Executable target = findStartProcessLocked(processList);
-            if (target == null) {
+            List<Executable> targets = findStartProcessLockedMethods(processList);
+            if (targets.isEmpty()) {
                 Log.w(TAG, "appzygote hook unavailable ProcessList#startProcessLocked");
                 return installed;
             }
 
-            HookTransformer transformer = (original, frame) -> {
-                Object hostingRecord = referenceArgument(frame, 1);
-                String packageName = definingPackage(hostingRecord);
-                if (packageName != null && CloakPolicy.blocksAppZygote(packageName)) {
-                    disableUsesAppZygote(hostingRecord);
-                    Log.i(TAG, "demoted app zygote to regular process for " + packageName);
+            for (Executable target : targets) {
+                try {
+                    HookTransformer transformer = (original, frame) -> {
+                        for (int i = 1; i < frame.type().parameterCount(); i++) {
+                            Object arg = referenceArgument(frame, i);
+                            if (arg != null && "com.android.server.am.HostingRecord".equals(arg.getClass().getName())) {
+                                String packageName = definingPackage(arg);
+                                if (packageName != null && CloakPolicy.blocksAppZygote(packageName)) {
+                                    disableUsesAppZygote(arg);
+                                    Log.i(TAG, "demoted app zygote in startProcessLocked for " + packageName);
+                                }
+                            }
+                        }
+                        Transformers.invokeExactNoChecks(original, frame);
+                    };
+                    Hooks.hook(target, Hooks.EntryPointType.DIRECT, transformer, Hooks.EntryPointType.DIRECT);
+                    Log.i(TAG, "hooked ProcessList#startProcessLocked overload: " + target);
+                    installed++;
+                } catch (Throwable t) {
+                    Log.w(TAG, "failed to hook startProcessLocked overload: " + target, t);
                 }
-                Transformers.invokeExactNoChecks(original, frame);
-            };
-            Hooks.hook(target, Hooks.EntryPointType.DIRECT, transformer, Hooks.EntryPointType.DIRECT);
-            Log.i(TAG, "hooked ProcessList#startProcessLocked for app zygote");
-            installed++;
+            }
             return installed;
         } catch (Throwable error) {
             Log.e(TAG, "appzygote hook failed", error);
@@ -74,12 +101,23 @@ final class AppZygoteHooks {
         if (hostingRecord == null) return;
         for (Class<?> cursor = hostingRecord.getClass(); cursor != null; cursor = cursor.getSuperclass()) {
             for (Field field : cursor.getDeclaredFields()) {
-                if (field.getType() == boolean.class && !Modifier.isStatic(field.getModifiers())) {
+                if (!Modifier.isStatic(field.getModifiers())) {
                     try {
                         field.setAccessible(true);
-                        if (field.getBoolean(hostingRecord) && (field.getName().toLowerCase().contains("zygote") || field.getName().equals("mUsesAppZygote"))) {
+                        // 1. Android 10/11 boolean mUsesAppZygote
+                        if (field.getType() == boolean.class && field.getBoolean(hostingRecord)
+                                && (field.getName().toLowerCase().contains("zygote") || field.getName().equals("mUsesAppZygote"))) {
                             field.setBoolean(hostingRecord, false);
-                            Log.i(TAG, "demoted HostingRecord field " + field.getName() + " to false");
+                            Log.i(TAG, "demoted HostingRecord boolean field " + field.getName() + " to false");
+                        }
+                        // 2. Android 12+ (14/15/16) int mHostingZygote (0=REGULAR_ZYGOTE, 1=WEBVIEW_ZYGOTE, 2=APP_ZYGOTE)
+                        if (field.getType() == int.class
+                                && (field.getName().equals("mHostingZygote") || field.getName().toLowerCase().contains("zygote"))) {
+                            int val = field.getInt(hostingRecord);
+                            if (val != 0) {
+                                field.setInt(hostingRecord, 0); // REGULAR_ZYGOTE
+                                Log.i(TAG, "demoted HostingRecord int field " + field.getName() + " from " + val + " to 0 (REGULAR_ZYGOTE)");
+                            }
                         }
                     } catch (Throwable ignored) {}
                 }
@@ -87,19 +125,25 @@ final class AppZygoteHooks {
         }
     }
 
-    private static Executable findStartProcessLocked(Class<?> clazz) {
+    private static List<Executable> findStartProcessLockedMethods(Class<?> clazz) {
+        List<Executable> list = new ArrayList<>();
         for (Executable executable : executablesInHierarchy(clazz)) {
             if (!(executable instanceof Method)) continue;
             Method method = (Method) executable;
             if (!"startProcessLocked".equals(method.getName())) continue;
-            if (method.getReturnType() != boolean.class) continue;
             Class<?>[] types = method.getParameterTypes();
-            if (types.length < 3) continue;
-            if (!"com.android.server.am.HostingRecord".equals(types[0].getName())) continue;
-            if (!"com.android.server.am.ProcessRecord".equals(types[2].getName())) continue;
-            return executable;
+            boolean hasHostingRecord = false;
+            for (Class<?> t : types) {
+                if ("com.android.server.am.HostingRecord".equals(t.getName())) {
+                    hasHostingRecord = true;
+                    break;
+                }
+            }
+            if (hasHostingRecord) {
+                list.add(executable);
+            }
         }
-        return null;
+        return list;
     }
 
     private static Executable[] executablesInHierarchy(Class<?> clazz) {
@@ -116,25 +160,42 @@ final class AppZygoteHooks {
         return frame.accessor().getReference(index);
     }
 
-    private static boolean usesAppZygote(Object hostingRecord) {
-        Object result = callNoArg(hostingRecord, "usesAppZygote");
-        return result instanceof Boolean && (Boolean) result;
-    }
-
     private static String definingPackage(Object hostingRecord) {
-        Object result = callNoArg(hostingRecord, "getDefiningPackageName");
-        if (result instanceof String && !((String) result).isEmpty()) return (String) result;
-
         if (hostingRecord == null) return null;
         CloakPolicy.refreshNow();
+
+        Object result = callNoArg(hostingRecord, "getDefiningPackageName");
+        if (result instanceof String && !((String) result).isEmpty()) {
+            String pkg = (String) result;
+            if (CloakPolicy.blocksAppZygote(pkg)) return pkg;
+        }
+
+        Object nameObj = callNoArg(hostingRecord, "getName");
+        if (nameObj instanceof String && !((String) nameObj).isEmpty()) {
+            String name = (String) nameObj;
+            if (name.startsWith("{") && name.contains("/")) {
+                String pkg = name.substring(1, name.indexOf('/'));
+                if (CloakPolicy.blocksAppZygote(pkg)) return pkg;
+            }
+            if (CloakPolicy.blocksAppZygote(name)) return name;
+        }
+
         for (Field field : hostingRecord.getClass().getDeclaredFields()) {
-            if (field.getType() != String.class || Modifier.isStatic(field.getModifiers())) continue;
+            if (Modifier.isStatic(field.getModifiers())) continue;
             try {
                 field.setAccessible(true);
                 Object value = field.get(hostingRecord);
-                if (!(value instanceof String)) continue;
-                String packageName = (String) value;
-                if (CloakPolicy.blocksAppZygote(packageName)) return packageName;
+                if (value instanceof String) {
+                    String str = (String) value;
+                    if (str.startsWith("{") && str.contains("/")) {
+                        String pkg = str.substring(1, str.indexOf('/'));
+                        if (CloakPolicy.blocksAppZygote(pkg)) return pkg;
+                    }
+                    if (CloakPolicy.blocksAppZygote(str)) return str;
+                } else if (value instanceof ComponentName) {
+                    ComponentName cn = (ComponentName) value;
+                    if (CloakPolicy.blocksAppZygote(cn.getPackageName())) return cn.getPackageName();
+                }
             } catch (Throwable ignored) {
                 // Some framework builds rename or harden HostingRecord fields.
             }

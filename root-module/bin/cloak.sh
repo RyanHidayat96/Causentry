@@ -58,7 +58,7 @@ template_json_array() {
   if [ ! -f "$cache_file" ]; then
     pfirst=1
     printf '[' > "$cache_file"
-    for p in $(target_hidden_list "$tpl" | sort -u); do
+    for p in $(target_hidden_list "$tpl" 2>/dev/null | sort -u); do
       valid_package_name "$p" || continue
       [ $pfirst -eq 1 ] || printf ',' >> "$cache_file"
       pfirst=0
@@ -66,7 +66,7 @@ template_json_array() {
     done
     printf ']' >> "$cache_file"
   fi
-  cat "$cache_file"
+  cat "$cache_file" 2>/dev/null
 }
 
 # Directory ownership/context are established once at boot. Re-running four
@@ -75,8 +75,8 @@ template_json_array() {
 
 T="$(mktemp 2>/dev/null || echo "$DIR/.cloak.tmp")"
 TARGET_FILE="$DIR/.cloak-targets.$$"
-trap 'rm -f "$T" "$OUT_DIR/.cloak.$$" "$TARGET_FILE" "$DIR"/.cloak-template."$$".*' EXIT
-PKG_UIDS=$(cmd package list packages -U --user 0 2>/dev/null)
+trap 'rm -f "$T" "$OUT_DIR/.cloak.$$" "$TARGET_FILE" "$DIR"/.cloak-template."$$".* "$DIR"/.cloak-tpl."$$".*' EXIT
+[ -f /data/system/packages.list ] || PKG_UIDS=$(cmd package list packages -U --user 0 2>/dev/null)
 TARGETS=$(jlist targets)
 DENYLIST=$(jlist denylist)
 CLOAK_PACKAGES=$(jlist cloakPackages)
@@ -85,17 +85,51 @@ CLOAK_PACKAGES=$(jlist cloakPackages)
 # invalid policy when a configured target was not installed: the UID list became
 # shorter than targets, so another app could receive its rules.
 : > "$TARGET_FILE"
-for t in $TARGETS; do
-  valid_package_name "$t" || continue
-  u=$(uid_of "$t")
-  [ -n "$u" ] || continue
-  tpl=$(app_hide_template "$t")
-  iso=$(app_feat "$t" isolate)
-  dev=$(app_feat_or "$t" devOff autoDevOff)
-  [ -n "$tpl" ] || tpl=@
-  [ -n "$iso" ] || iso=@
-  printf '%s %s %s %s %s\n' "$t" "$u" "$tpl" "$iso" "$dev" >> "$TARGET_FILE"
-done
+if [ -f /data/system/packages.list ] && command -v awk >/dev/null 2>&1; then
+  awk '
+  BEGIN {
+    while ((getline line < "/data/system/packages.list") > 0) {
+      split(line, f, " ");
+      uids[f[1]] = f[2];
+    }
+    RS = "}";
+  }
+  /"devOff"/ {
+    if (match($0, /"[a-zA-Z0-9_.]+"[[:space:]]*:[[:space:]]*\{/)) {
+      s = substr($0, RSTART + 1, RLENGTH - 1);
+      sub(/".*/, "", s);
+      pkg = s;
+      if (pkg in uids) {
+        uid = uids[pkg];
+        dev = ($0 ~ /"devOff"[[:space:]]*:[[:space:]]*true/) ? 1 : 0;
+        iso = ($0 ~ /"isolate"[[:space:]]*:[[:space:]]*true/) ? 1 : 0;
+        tpl = "stealth";
+        if (match($0, /"hideTemplate"[[:space:]]*:[[:space:]]*"[^"]+"/)) {
+          ts = substr($0, RSTART, RLENGTH);
+          sub(/.*"hideTemplate"[[:space:]]*:[[:space:]]*"/, "", ts);
+          sub(/".*/, "", ts);
+          tpl = ts;
+        }
+        print pkg, uid, tpl, iso, dev;
+      }
+    }
+  }
+  ' "$CONF" > "$TARGET_FILE" 2>/dev/null
+fi
+
+if [ ! -s "$TARGET_FILE" ]; then
+  for t in $TARGETS; do
+    valid_package_name "$t" || continue
+    u=$(uid_of "$t")
+    [ -n "$u" ] || continue
+    tpl=$(app_hide_template "$t")
+    iso=$(app_feat "$t" isolate)
+    dev=$(app_feat_or "$t" devOff autoDevOff)
+    [ -n "$tpl" ] || tpl=@
+    [ -n "$iso" ] || iso=@
+    printf '%s %s %s %s %s\n' "$t" "$u" "$tpl" "$iso" "$dev" >> "$TARGET_FILE"
+  done
+fi
 
 printf '{"targetUids":[' > "$T"
 first=1
@@ -125,15 +159,7 @@ while read -r t u tpl iso dev; do
   [ $first -eq 1 ] || printf ',' >> "$T"
   first=0
   json_package "$t" >> "$T"
-  printf ':[' >> "$T"
-  inner=1
-  for p in $(target_hidden_list "$tpl" | sort -u); do
-    valid_package_name "$p" || continue
-    [ $inner -eq 1 ] || printf ',' >> "$T"
-    inner=0
-    json_package "$p" >> "$T"
-  done
-  printf ']' >> "$T"
+  printf ':%s' "$(template_json_array "$tpl")" >> "$T"
 done < "$TARGET_FILE"
 printf '}' >> "$T"
 printf ',"appZygote":[' >> "$T"

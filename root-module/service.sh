@@ -65,6 +65,7 @@ setsid /system/bin/sh "$DIR/causentry-loop.sh" >/dev/null 2>&1 < /dev/null &
 echo "$(date '+%m-%d %H:%M:%S') [service] daemon supervisor restarted" >> "$LOG"
 
 # --- control UI: loopback only, token protected ---
+pm grant com.causentry.app android.permission.READ_LOGS >/dev/null 2>&1 &
 if ensure_ui; then
   echo "$(date '+%m-%d %H:%M:%S') [service] ui ready" >> "$LOG"
 else

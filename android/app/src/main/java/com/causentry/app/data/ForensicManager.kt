@@ -69,9 +69,30 @@ class ForensicManager @Inject constructor(
     private var activeCrashType = CrashType.JAVA_CRASH
 
     init {
+        preloadRunningProcesses()
         streamJob = scope.launch {
             runLogcatLoop()
         }
+    }
+
+    private fun preloadRunningProcesses() {
+        try {
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+            val running = am?.runningAppProcesses ?: return
+            for (proc in running) {
+                if (proc.pkgList != null && proc.pkgList.isNotEmpty()) {
+                    pidToPackage[proc.pid] = proc.pkgList[0]
+                } else if (proc.processName != null) {
+                    val pName = proc.processName.split(":")[0]
+                    pidToPackage[proc.pid] = pName
+                }
+            }
+        } catch (_: Throwable) {}
+    }
+
+    fun isPidForPackage(pid: Int, packageName: String): Boolean {
+        val cached = pidToPackage[pid] ?: return false
+        return cached.equals(packageName, ignoreCase = true) || cached.startsWith("$packageName:")
     }
 
     fun startStreaming() {
@@ -124,11 +145,19 @@ class ForensicManager @Inject constructor(
             try {
                 // Try reading logcat via root su first for all buffers (main, system, crash)
                 val proc = try {
-                    ProcessBuilder("su", "-c", "logcat -v threadtime -b main -b system -b crash")
+                    val p = ProcessBuilder("su", "-c", "logcat -v threadtime -b main -b system -b crash")
                         .redirectErrorStream(true)
                         .start()
-                } catch (_: Exception) {
-                    ProcessBuilder("logcat", "-v", "threadtime")
+                    // Check if su process immediately died with error (e.g. not found, permission denied)
+                    val exited = try {
+                        p.waitFor(200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    } catch (_: Exception) { false }
+                    if (exited && p.exitValue() != 0) {
+                        throw java.io.IOException("su exited with code " + p.exitValue())
+                    }
+                    p
+                } catch (_: Throwable) {
+                    ProcessBuilder("logcat", "-v", "threadtime", "-b", "main", "-b", "system", "-b", "crash")
                         .redirectErrorStream(true)
                         .start()
                 }
@@ -192,11 +221,15 @@ class ForensicManager @Inject constructor(
             else -> LogLevel.INFO
         }
 
-        // Cache package mappings from system activity logs
+        // Cache package mappings from system activity logs and runtime logs
         if (tag == "ActivityManager") {
             if (msg.contains("Start proc") && msg.contains(":")) {
                 extractPkgFromStartProc(pid, msg)
             }
+        } else if (tag == "AndroidRuntime" && msg.contains("Process: ") && msg.contains("PID: ")) {
+            extractPkgFromAndroidRuntime(msg)
+        } else if (tag == "Zygote" && msg.contains("process_name_ptr:")) {
+            extractPkgFromZygote(msg)
         }
 
         val pkg = pidToPackage[pid]
@@ -227,6 +260,40 @@ class ForensicManager @Inject constructor(
                 }
             }
         }
+    }
+
+    private fun extractPkgFromAndroidRuntime(msg: String) {
+        // e.g.: Process: com.bcadigital.blu, PID: 12307
+        try {
+            val pIdx = msg.indexOf("Process: ")
+            val pidIdx = msg.indexOf("PID: ")
+            if (pIdx >= 0 && pidIdx > pIdx) {
+                val pkgPart = msg.substring(pIdx + 9, pidIdx).replace(",", "").trim()
+                val pidPart = msg.substring(pidIdx + 5).trim().takeWhile { it.isDigit() }
+                val p = pidPart.toIntOrNull()
+                if (p != null && pkgPart.isNotEmpty()) {
+                    pidToPackage[p] = pkgPart.split(":")[0]
+                }
+            }
+        } catch (_: Throwable) {}
+    }
+
+    private fun extractPkgFromZygote(msg: String) {
+        // e.g.: process_name_ptr:12307 com.bcadigital.blu
+        try {
+            val idx = msg.indexOf("process_name_ptr:")
+            if (idx >= 0) {
+                val sub = msg.substring(idx + 17).trim()
+                val parts = sub.split("\\s+".toRegex())
+                if (parts.size >= 2) {
+                    val p = parts[0].toIntOrNull()
+                    val pkg = parts[1].split(":")[0]
+                    if (p != null && pkg.isNotEmpty()) {
+                        pidToPackage[p] = pkg
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
     }
 
     private fun detectThreatsAndCrashes(entry: LogEntry) {

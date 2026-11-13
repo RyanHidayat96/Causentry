@@ -194,6 +194,7 @@ log "daemon start (pid $$)"
 log "power profile: watchdog=${WATCHDOG_INTERVAL}s ui=${UI_SERVE_INTERVAL}s appScan=${APP_SCAN_INTERVAL}s"
 
 # initial sync with reality (foreground only)
+pm grant com.causentry.app android.permission.READ_LOGS >/dev/null 2>&1 &
 locked_evaluate
 ensure_ui
 start_ui_command_watcher
