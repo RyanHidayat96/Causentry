@@ -31,6 +31,10 @@ target_hidden_list() {
 
 uid_of() {
   valid_package_name "$1" || return 1
+  if [ -f /data/system/packages.list ]; then
+    u=$(grep -m1 "^$1 " /data/system/packages.list 2>/dev/null | cut -d' ' -f2)
+    [ -n "$u" ] && { echo "$u"; return 0; }
+  fi
   needle="package:$1 uid:"
   old_ifs=$IFS
   IFS='
@@ -46,6 +50,23 @@ uid_of() {
   done
   IFS=$old_ifs
   return 1
+}
+
+template_json_array() {
+  tpl="$1"
+  cache_file="$DIR/.cloak-tpl.$$.$(echo "$tpl" | tr -c 'A-Za-z0-9_.-' '_')"
+  if [ ! -f "$cache_file" ]; then
+    pfirst=1
+    printf '[' > "$cache_file"
+    for p in $(target_hidden_list "$tpl" | sort -u); do
+      valid_package_name "$p" || continue
+      [ $pfirst -eq 1 ] || printf ',' >> "$cache_file"
+      pfirst=0
+      json_package "$p" >> "$cache_file"
+    done
+    printf ']' >> "$cache_file"
+  fi
+  cat "$cache_file"
 }
 
 # Directory ownership/context are established once at boot. Re-running four

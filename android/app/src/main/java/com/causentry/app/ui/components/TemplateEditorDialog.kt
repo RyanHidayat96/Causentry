@@ -4,12 +4,14 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -17,11 +19,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
@@ -57,6 +62,13 @@ import com.causentry.app.ui.theme.TextPrimary
 import com.causentry.app.ui.theme.TextSecondary
 import com.causentry.app.ui.theme.WarningAmber
 
+enum class TemplateAppFilter {
+    ALL,
+    SELECTED,
+    USER,
+    SYSTEM
+}
+
 @Composable
 fun TemplateEditorDialog(
     initialName: String = "",
@@ -69,22 +81,31 @@ fun TemplateEditorDialog(
     var templateName by remember { mutableStateOf(initialName) }
     var selectedPackages by remember { mutableStateOf(initialPackages.toSet()) }
     var searchQuery by remember { mutableStateOf("") }
+    var appFilter by remember { mutableStateOf(TemplateAppFilter.ALL) }
 
-    val filteredApps = remember(allApps, searchQuery) {
+    val userCount = remember(allApps) { allApps.count { !it.isSystem } }
+    val systemCount = remember(allApps) { allApps.count { it.isSystem } }
+
+    val filteredApps = remember(allApps, searchQuery, appFilter, selectedPackages) {
         val q = searchQuery.trim().lowercase()
-        if (q.isEmpty()) {
-            allApps.sortedWith(
-                compareByDescending<AppInfo> { selectedPackages.contains(it.packageName) }
-                    .thenBy { it.label.lowercase() }
-            )
-        } else {
-            allApps.filter {
-                it.label.lowercase().contains(q) || it.packageName.lowercase().contains(q)
-            }.sortedWith(
-                compareByDescending<AppInfo> { selectedPackages.contains(it.packageName) }
-                    .thenBy { it.label.lowercase() }
-            )
-        }
+        allApps.filter { app ->
+            val matchesCategory = when (appFilter) {
+                TemplateAppFilter.ALL -> true
+                TemplateAppFilter.SELECTED -> selectedPackages.contains(app.packageName)
+                TemplateAppFilter.USER -> !app.isSystem
+                TemplateAppFilter.SYSTEM -> app.isSystem
+            }
+            if (!matchesCategory) return@filter false
+
+            if (q.isNotEmpty()) {
+                app.label.lowercase().contains(q) || app.packageName.lowercase().contains(q)
+            } else {
+                true
+            }
+        }.sortedWith(
+            compareByDescending<AppInfo> { selectedPackages.contains(it.packageName) }
+                .thenBy { it.label.lowercase() }
+        )
     }
 
     val isNameValid = templateName.isNotBlank()
@@ -181,8 +202,44 @@ fun TemplateEditorDialog(
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            // Category Filter Chips
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TemplateFilterChipItem(
+                    label = "All",
+                    count = allApps.size,
+                    selected = appFilter == TemplateAppFilter.ALL,
+                    onClick = { appFilter = TemplateAppFilter.ALL }
+                )
+                TemplateFilterChipItem(
+                    label = "Selected",
+                    count = selectedPackages.size,
+                    selected = appFilter == TemplateAppFilter.SELECTED,
+                    onClick = { appFilter = TemplateAppFilter.SELECTED }
+                )
+                TemplateFilterChipItem(
+                    label = "User",
+                    count = userCount,
+                    selected = appFilter == TemplateAppFilter.USER,
+                    onClick = { appFilter = TemplateAppFilter.USER }
+                )
+                TemplateFilterChipItem(
+                    label = "System",
+                    count = systemCount,
+                    selected = appFilter == TemplateAppFilter.SYSTEM,
+                    onClick = { appFilter = TemplateAppFilter.SYSTEM }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
             // Virtualized App selection list
-            LazyColumn(
+            Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -190,65 +247,80 @@ fun TemplateEditorDialog(
                     .background(SurfaceHighDark)
                     .border(1.dp, BorderDark, RoundedCornerShape(10.dp))
             ) {
-                items(filteredApps, key = { it.packageName }) { app ->
-                    val isChecked = selectedPackages.contains(app.packageName)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                selectedPackages = if (isChecked) {
-                                    selectedPackages - app.packageName
-                                } else {
-                                    selectedPackages + app.packageName
+                if (filteredApps.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No applications found",
+                            color = TextSecondary,
+                            fontSize = 13.sp
+                        )
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(filteredApps, key = { it.packageName }) { app ->
+                            val isChecked = selectedPackages.contains(app.packageName)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedPackages = if (isChecked) {
+                                            selectedPackages - app.packageName
+                                        } else {
+                                            selectedPackages + app.packageName
+                                        }
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = isChecked,
+                                    onCheckedChange = { checked ->
+                                        selectedPackages = if (checked) {
+                                            selectedPackages + app.packageName
+                                        } else {
+                                            selectedPackages - app.packageName
+                                        }
+                                    },
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = PrimaryBlue,
+                                        uncheckedColor = TextSecondary,
+                                        checkmarkColor = TextPrimary
+                                    )
+                                )
+
+                                Spacer(modifier = Modifier.width(6.dp))
+
+                                AppIconItem(
+                                    packageName = app.packageName,
+                                    label = app.label,
+                                    iconLoader = iconLoader,
+                                    size = 36.dp
+                                )
+
+                                Spacer(modifier = Modifier.width(10.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = app.label,
+                                        color = TextPrimary,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = app.packageName,
+                                        color = TextSecondary,
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
                             }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = isChecked,
-                            onCheckedChange = { checked ->
-                                selectedPackages = if (checked) {
-                                    selectedPackages + app.packageName
-                                } else {
-                                    selectedPackages - app.packageName
-                                }
-                            },
-                            colors = CheckboxDefaults.colors(
-                                checkedColor = PrimaryBlue,
-                                uncheckedColor = TextSecondary,
-                                checkmarkColor = TextPrimary
-                            )
-                        )
-
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        AppIconItem(
-                            packageName = app.packageName,
-                            label = app.label,
-                            iconLoader = iconLoader,
-                            size = 36.dp
-                        )
-
-                        Spacer(modifier = Modifier.width(10.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = app.label,
-                                color = TextPrimary,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = app.packageName,
-                                color = TextSecondary,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
                         }
                     }
                 }
@@ -301,5 +373,36 @@ fun TemplateEditorDialog(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TemplateFilterChipItem(
+    label: String,
+    count: Int,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val haptic = LocalHapticFeedback.current
+
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) PrimaryBlue.copy(alpha = 0.2f) else SurfaceDark)
+            .border(1.dp, if (selected) PrimaryBlue else BorderDark, RoundedCornerShape(8.dp))
+            .clickable {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            }
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "$label ($count)",
+            fontSize = 11.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = if (selected) PrimaryBlue else TextSecondary,
+            maxLines = 1
+        )
     }
 }

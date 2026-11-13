@@ -15,7 +15,7 @@ valid_package_name() {
 
 valid_template_name() {
   case "$1" in ""|[dD][eE][fF][aA][uU][lL][tT]) return 1;; esac
-  case "$1" in *[!A-Za-z0-9_.-]*) return 1;; esac
+  case "$1" in *[!A-Za-z0-9_ .-]*) return 1;; esac
   return 0
 }
 
@@ -93,14 +93,17 @@ extract_app_entries() {   # extract_app_entries [config-file]
 
 hide_template_pairs() {
   tr -d '\r\n' < "$CONF" 2>/dev/null | sed -nE 's/.*"hideTemplates"[[:space:]]*:[[:space:]]*\{([^}]*)\}.*/\1/p' \
-    | head -1 | grep -oE '"[A-Za-z0-9_.-]+"[[:space:]]*:[[:space:]]*\[[^]]*\]' 2>/dev/null
+    | head -1 | grep -oE '"[A-Za-z0-9_ .-]+"[[:space:]]*:[[:space:]]*\[[^]]*\]' 2>/dev/null
 }
 
 hide_template_list() {
   name="$1"
   valid_template_name "$name" || return 0
   esc=$(ere_escape "$name")
-  out=$(tr -d '\r\n' < "$CONF" 2>/dev/null | sed -nE "s/.*\"hideTemplates\"[[:space:]]*:[[:space:]]*\{.*\"$esc\"[[:space:]]*:[[:space:]]*\[([^]]*)\].*/\1/p" \
+  out=$(tr -d '\r\n' < "$CONF" 2>/dev/null \
+    | grep -oE '"[A-Za-z0-9_ .-]+"[[:space:]]*:[[:space:]]*\[[^]]*\]' 2>/dev/null \
+    | grep -E "^\"$esc\"" 2>/dev/null \
+    | sed -nE "s/^\"$esc\"[[:space:]]*:[[:space:]]*\[([^]]*)\].*/\1/p" \
     | head -1 | tr ',' '\n' | sed 's/[", ]//g' | grep -v '^$')
   if [ -n "$out" ]; then
     printf '%s\n' "$out"
