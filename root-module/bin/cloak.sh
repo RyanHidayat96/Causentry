@@ -92,26 +92,36 @@ if [ -f /data/system/packages.list ] && command -v awk >/dev/null 2>&1; then
       split(line, f, " ");
       uids[f[1]] = f[2];
     }
-    RS = "}";
   }
-  /"devOff"/ {
-    if (match($0, /"[a-zA-Z0-9_.]+"[[:space:]]*:[[:space:]]*\{/)) {
-      s = substr($0, RSTART + 1, RLENGTH - 1);
-      sub(/".*/, "", s);
-      pkg = s;
-      if (pkg in uids) {
-        uid = uids[pkg];
-        dev = ($0 ~ /"devOff"[[:space:]]*:[[:space:]]*true/) ? 1 : 0;
-        iso = ($0 ~ /"isolate"[[:space:]]*:[[:space:]]*true/) ? 1 : 0;
-        tpl = "stealth";
-        if (match($0, /"hideTemplate"[[:space:]]*:[[:space:]]*"[^"]+"/)) {
-          ts = substr($0, RSTART, RLENGTH);
-          sub(/.*"hideTemplate"[[:space:]]*:[[:space:]]*"/, "", ts);
-          sub(/".*/, "", ts);
-          tpl = ts;
-        }
-        print pkg, uid, tpl, iso, dev;
+  { buf = buf $0 }
+  END {
+    s = buf;
+    idx = index(s, "\"apps\"");
+    if (idx == 0) exit;
+    s = substr(s, idx);
+    idx = index(s, "{");
+    if (idx == 0) exit;
+    s = substr(s, idx + 1);
+    while (match(s, /"[a-zA-Z0-9_.]+"[[:space:]]*:[[:space:]]*\{/)) {
+      pr = substr(s, RSTART, RLENGTH);
+      sub(/^"/, "", pr); sub(/".*/, "", pr);
+      pkg = pr;
+      s = substr(s, RSTART + RLENGTH);
+      brace = index(s, "}");
+      if (brace == 0) break;
+      body = substr(s, 1, brace - 1);
+      s = substr(s, brace + 1);
+      if (!(pkg in uids)) continue;
+      dev = (body ~ /"devOff"[[:space:]]*:[[:space:]]*true/) ? 1 : 0;
+      iso = (body ~ /"isolate"[[:space:]]*:[[:space:]]*true/) ? 1 : 0;
+      tpl = "stealth";
+      if (match(body, /"hideTemplate"[[:space:]]*:[[:space:]]*"[^"]+"/)) {
+        ts = substr(body, RSTART, RLENGTH);
+        sub(/.*"hideTemplate"[[:space:]]*:[[:space:]]*"/, "", ts);
+        sub(/".*/, "", ts);
+        tpl = ts;
       }
+      print pkg, uids[pkg], tpl, iso, dev;
     }
   }
   ' "$CONF" > "$TARGET_FILE" 2>/dev/null
