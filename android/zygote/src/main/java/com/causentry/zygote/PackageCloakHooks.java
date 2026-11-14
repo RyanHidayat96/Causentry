@@ -40,7 +40,7 @@ final class PackageCloakHooks {
             if (hookBefore("com.android.server.pm.ComputerEngine", "getApplicationInfoInternal",
                     PackageCloakHooks::shouldHideStringQuery, null)) installed++;
             if (hookBefore("com.android.server.pm.ComputerEngine", "getApplicationInfo",
-                    frame -> CloakPolicy.hides(Binder.getCallingUid(), firstString(frame)), null)) installed++;
+                    PackageCloakHooks::shouldHideStringQuery, null)) installed++;
             installed += hookVisibilityChecks();
             if (hookBefore("com.android.server.pm.ComputerEngine", "generatePackageInfo",
                     PackageCloakHooks::shouldHideGeneratedPackageInfo, null)) installed++;
@@ -191,7 +191,24 @@ final class PackageCloakHooks {
     private static boolean shouldHideStringQuery(EmulatedStackFrame frame) {
         int uid = findCallingUid(frame);
         String packageName = firstString(frame);
-        return CloakPolicy.hides(uid, packageName);
+        if (!CloakPolicy.hides(uid, packageName)) return false;
+
+        // Check if query specifies MATCH_ANY_USER (0x00400000 = 4194304).
+        // If caller does not hold cross-user permissions, let ComputerEngine execute so it throws SecurityException.
+        EmulatedStackFrame.StackFrameAccessor accessor = frame.accessor();
+        for (int i = 1; i < frame.type().parameterCount(); i++) {
+            char shorty = accessor.getArgumentShorty(i);
+            long flags = 0;
+            if (shorty == 'J') {
+                flags = accessor.getLong(i);
+            } else if (shorty == 'I') {
+                flags = accessor.getInt(i);
+            }
+            if ((flags & 0x00400000L) != 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean shouldHideObjectQuery(EmulatedStackFrame frame) {
@@ -248,6 +265,31 @@ final class PackageCloakHooks {
             }
             if (changed) {
                 frame.accessor().setValue(EmulatedStackFrame.RETURN_VALUE_IDX, visible);
+            }
+            return;
+        }
+        if (result != null && result.getClass().getName().endsWith("ParceledListSlice")) {
+            try {
+                Method getListMethod = result.getClass().getMethod("getList");
+                List<?> entries = (List<?>) getListMethod.invoke(result);
+                if (entries != null) {
+                    ArrayList<Object> visible = new ArrayList<>(entries.size());
+                    boolean changed = false;
+                    for (Object entry : entries) {
+                        if (CloakPolicy.hides(uid, packageName(entry))) {
+                            changed = true;
+                        } else {
+                            visible.add(entry);
+                        }
+                    }
+                    if (changed) {
+                        Constructor<?> ctor = result.getClass().getConstructor(List.class);
+                        Object newSlice = ctor.newInstance(visible);
+                        frame.accessor().setValue(EmulatedStackFrame.RETURN_VALUE_IDX, newSlice);
+                    }
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "failed to filter ParceledListSlice", t);
             }
             return;
         }
@@ -321,20 +363,26 @@ final class PackageCloakHooks {
             String result = (String) value;
             return result.contains(".") ? result : null;
         }
-        for (String methodName : new String[]{"getPackageName", "getManifestPackageName"}) {
+        for (String methodName : new String[]{"getPackageName", "getManifestPackageName",
+                "getActivityInfo", "getComponentName", "getComponent"}) {
             for (Class<?> cursor = value.getClass(); cursor != null; cursor = cursor.getSuperclass()) {
                 try {
                     Method method = Reflection.getDeclaredMethod(cursor, methodName);
                     method.setAccessible(true);
                     Object result = method.invoke(value);
                     if (result instanceof String) return (String) result;
+                    if (result != null && depth < 2) {
+                        String pkg = packageName(result, depth + 1);
+                        if (pkg != null) return pkg;
+                    }
                 } catch (Throwable ignored) {
                     // Hidden framework accessors can live on a superclass.
                 }
             }
         }
         for (String fieldName : new String[]{"packageName", "mName", "name",
-                "activityInfo", "serviceInfo", "providerInfo", "applicationInfo"}) {
+                "activityInfo", "mActivityInfo", "serviceInfo", "providerInfo",
+                "applicationInfo", "component", "mComponent", "componentName"}) {
             String result = packageName(readField(value, fieldName), depth + 1);
             if (result != null) return result;
         }

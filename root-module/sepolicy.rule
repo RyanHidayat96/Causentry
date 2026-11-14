@@ -7,6 +7,8 @@
 # and force-close. Blocking app_zygote's access to selinuxfs neutralises the probe entirely -
 # no in-process injection, no framework hook required (KernelSU loads these rules at boot).
 deny app_zygote security_t:dir { open read search getattr };
-deny app_zygote security_t:file { open read getattr ioctl map };
+deny app_zygote security_t:file { open read write append getattr ioctl map };
 deny app_zygote selinuxfs:dir { open read search getattr };
-deny app_zygote selinuxfs:file { open read getattr ioctl map };
+deny app_zygote selinuxfs:file { open read write append getattr ioctl map };
+deny app_zygote self:process { setcurrent dyntransition };
+deny system_server self:process execmem;

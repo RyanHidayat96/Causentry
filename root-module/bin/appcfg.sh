@@ -39,12 +39,12 @@ uniq_list() {   # uniq_list <newline list> -> space separated, unique
 
 emit() {   # emit <targets> <denylist> <hardened> <appentries>
   eval "$(tr -d '\r\n' < "$CONF" 2>/dev/null | sed -nE 's/.*"autoDevOff"[[:space:]]*:[[:space:]]*(true|false).*/B_dev=\1/p; s/.*"hideMockLocation"[[:space:]]*:[[:space:]]*(true|false).*/B_mock=\1/p; s/.*"alwaysHidden"[[:space:]]*:[[:space:]]*(true|false).*/B_always=\1/p; s/.*"susfs"[[:space:]]*:[[:space:]]*(true|false).*/B_susfs=\1/p; s/.*"hideRootApps"[[:space:]]*:[[:space:]]*(true|false).*/B_root=\1/p; s/.*"uiApk"[[:space:]]*:[[:space:]]*(true|false).*/B_ui=\1/p; s/.*"systemCloak"[[:space:]]*:[[:space:]]*(true|false).*/B_sys=\1/p')"
-  TPL_JSON=$(tr -d '\r\n' < "$CONF" 2>/dev/null | sed -nE 's/.*"hideTemplates"[[:space:]]*:[[:space:]]*(\{[^}]*\}).*/\1/p')
   printf '{"targets":['
   f=1; for i in $1; do valid_package_name "$i" || continue; [ $f -eq 1 ] || printf ','; f=0; printf '"%s"' "$i"; done
   printf '],"denylist":['
   f=1; for i in $2; do valid_package_name "$i" || continue; [ $f -eq 1 ] || printf ','; f=0; printf '"%s"' "$i"; done
-  printf '],"hideTemplates":%s' "${TPL_JSON:-{}}"
+  printf '],"hideTemplates":'
+  emit_hide_templates_json
   printf ',"hardened":['
   f=1; for i in $3; do valid_package_name "$i" || continue; [ $f -eq 1 ] || printf ','; f=0; printf '"%s"' "$i"; done
   printf '],"apps":{'
@@ -63,6 +63,10 @@ emit() {   # emit <targets> <denylist> <hardened> <appentries>
   printf ',"cloakPackages":['
   f=1; for p in $(jlist cloakPackages); do valid_package_name "$p" || continue; [ $f -eq 1 ] || printf ','; f=0; printf '"%s"' "$p"; done
   printf ']'
+  sr=$(tr -d '\r\n' < "$CONF" 2>/dev/null | sed -nE 's/.*"storageRules"[[:space:]]*:[[:space:]]*(\{[^}]*\}).*/\1/p')
+  if [ -n "$sr" ]; then
+    printf ',"storageRules":%s' "$sr"
+  fi
   printf '}'
 }
 

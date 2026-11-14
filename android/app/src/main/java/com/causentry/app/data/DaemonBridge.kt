@@ -473,7 +473,7 @@ class DaemonBridge @Inject constructor(
             .split(",").map { it.trim() }.filter { it.isNotEmpty() }
 
         val cfg = json.optJSONObject("config") ?: JSONObject()
-        val appsObj = cfg.optJSONObject("apps") ?: JSONObject()
+        val appsObj = cfg.optJSONObject("apps") ?: json.optJSONObject("apps") ?: JSONObject()
         val perAppMap = mutableMapOf<String, PerAppConfig>()
         val appKeys = appsObj.keys()
         while (appKeys.hasNext()) {
@@ -488,7 +488,7 @@ class DaemonBridge @Inject constructor(
             )
         }
 
-        val templatesObj = cfg.optJSONObject("hideTemplates") ?: JSONObject()
+        val templatesObj = cfg.optJSONObject("hideTemplates") ?: json.optJSONObject("hideTemplates") ?: JSONObject()
         val templatesMap = mutableMapOf<String, List<String>>()
         val tplKeys = templatesObj.keys()
         while (tplKeys.hasNext()) {
@@ -502,7 +502,7 @@ class DaemonBridge @Inject constructor(
         val fuseCovered = fuseObj?.optBoolean("covered", false) ?: false
         val fuseTargetCount = fuseObj?.optInt("targetCount", 0) ?: targetsList.size
 
-        val storageRulesObj = cfg.optJSONObject("storageRules")
+        val storageRulesObj = cfg.optJSONObject("storageRules") ?: json.optJSONObject("storageRules")
         val storageRoots = jsonList(storageRulesObj?.optJSONArray("hiddenRootEntryNames"))
         val storageRelatives = jsonList(storageRulesObj?.optJSONArray("hiddenRelativePaths"))
 
