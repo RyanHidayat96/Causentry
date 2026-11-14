@@ -30,6 +30,30 @@ if [ -f "$DIR/devsaved" ]; then
   log "flags restored"
 fi
 
+# 2b) restore original partition properties if modified
+if [ -f "$DIR/.orig_props" ]; then
+  RESETPROP=$(find_resetprop)
+  if [ -n "$RESETPROP" ]; then
+    while IFS='=' read -r prop val; do
+      [ -n "$prop" ] && [ -n "$val" ] && "$RESETPROP" "$prop" "$val"
+    done < "$DIR/.orig_props"
+    log "original partition props restored"
+  fi
+  rm -f "$DIR/.orig_props"
+fi
+
+# 2c) restore quarantined recovery artifacts
+if [ -d "$DIR/quarantine" ]; then
+  for p in /data/recovery /cache/recovery; do
+    base="${p#/}"
+    src="$DIR/quarantine/${base//\//_}"
+    if [ -e "$src" ] && [ ! -e "$p" ]; then
+      mv "$src" "$p" 2>/dev/null && log "restored recovery artifact: $p"
+    fi
+  done
+  rm -rf "$DIR/quarantine" 2>/dev/null
+fi
+
 # 3) old runtime scratch files only; no Vector/LSPosed scoping is used.
 rm -f /data/local/tmp/causentry/config.json 2>/dev/null
 

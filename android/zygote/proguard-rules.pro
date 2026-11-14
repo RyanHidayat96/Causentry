@@ -14,3 +14,7 @@
 
 # Pinned AndroidVMTools / PanamaPort uses reflection and hidden ART members.
 -dontwarn com.v7878.**
+
+# FUSE Storage Cloak backend & JNI bridges
+-keep class com.causentry.zygote.MediaProviderBackend { *; }
+-keep class io.github.xiaotong6666.fusehide.** { *; }

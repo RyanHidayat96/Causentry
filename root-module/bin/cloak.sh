@@ -203,7 +203,7 @@ BEGIN {
   n++;
 }
 END {
-  printf "{\"targetUids\":[%s],\"targets\":[%s],\"hidden\":%s,\"hiddenByTarget\":{%s},\"appZygote\":[%s],\"developerOptionsUids\":[%s],\"accessibilityUids\":[%s],\"storageRules\":{\"hiddenRootEntryNames\":[\"MT2\",\"TWRP\",\"Fox\",\"su\",\"daemonsu\",\".magisk\",\"busybox\",\"TitaniumBackup\",\"SwiftBackup\",\"xinhao\"],\"hiddenRelativePaths\":[\"Download/KernelSU\",\"Download/Magisk\",\"Download/APatch\"]}}\n",
+  printf "{\"targetUids\":[%s],\"targets\":[%s],\"hidden\":%s,\"hiddenByTarget\":{%s},\"appZygote\":[%s],\"developerOptionsUids\":[%s],\"accessibilityUids\":[%s],\"storageRules\":{\"hiddenRootEntryNames\":[\"MT2\",\"TWRP\",\"twrp\",\"Fox\",\"OrangeFox\",\"su\",\"daemonsu\",\"Magisk\",\"magisk\",\".magisk\",\"SuperSU\",\"KernelSU\",\"APatch\",\"busybox\",\"TitaniumBackup\",\"SwiftBackup\",\"xinhao\"],\"hiddenRelativePaths\":[\"Download/KernelSU\",\"Download/KernelSU.apk\",\"Download/kernelsu.apk\",\"Download/Magisk\",\"Download/Magisk.apk\",\"Download/magisk.apk\",\"Download/Magisk.zip\",\"Download/APatch\",\"Download/APatch.apk\",\"TWRP/TWRP.app\"]}}\n",
     targetUids, targets, all_hidden_json, hiddenByTarget, appZygote, devUids, accUids;
 }
 ' "$TARGET_FILE" > "$T"

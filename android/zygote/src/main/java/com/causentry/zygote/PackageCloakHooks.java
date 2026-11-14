@@ -15,6 +15,7 @@ import com.v7878.unsafe.invoke.Transformers;
 import com.v7878.vmtools.HookTransformer;
 import com.v7878.vmtools.Hooks;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -55,6 +56,12 @@ final class PackageCloakHooks {
                     "queryIntentReceiversInternal", PackageCloakHooks::filterIntentResult);
             installed += hookAfter("com.android.server.pm.ResolveIntentHelper",
                     "queryIntentContentProvidersInternal", PackageCloakHooks::filterIntentResult);
+            installed += hookAfter("com.android.server.pm.LauncherAppsService$LauncherAppsImpl",
+                    "getLauncherActivities", PackageCloakHooks::filterIntentResult);
+            installed += hookAfter("com.android.server.pm.LauncherAppsService$LauncherAppsImpl",
+                    "getShortcutConfigActivities", PackageCloakHooks::filterIntentResult);
+            installed += hookAfter("com.android.server.pm.LauncherAppsService$LauncherAppsImpl",
+                    "getActivityList", PackageCloakHooks::filterIntentResult);
             FramePredicate appFilter = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
                     ? PackageCloakHooks::shouldFilterApplicationApi34
                     : PackageCloakHooks::shouldFilterApplication;

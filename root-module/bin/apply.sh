@@ -100,7 +100,48 @@ if [ -n "$RESETPROP" ]; then
   "$RESETPROP" ro.boot.vbmeta.device_state locked
   "$RESETPROP" sys.oem_unlock_allowed 0
   log "boot props applied"
+
+  # 0b) cross-partition fingerprint & build incremental coherence (CTS / RASP alignment)
+  FP=$(getprop ro.build.fingerprint)
+  INC=$(getprop ro.build.version.incremental)
+  if [ -n "$FP" ]; then
+    [ -f "$DIR/.orig_props" ] || {
+      for p in ro.system.build.fingerprint ro.system_ext.build.fingerprint \
+               ro.system.build.version.incremental ro.system_ext.build.version.incremental; do
+        v=$(getprop "$p")
+        [ -n "$v" ] && echo "$p=$v" >> "$DIR/.orig_props"
+      done
+    }
+    for p in ro.system.build.fingerprint ro.system_ext.build.fingerprint; do
+      curr=$(getprop "$p")
+      if [ -n "$curr" ] && [ "$curr" != "$FP" ]; then
+        "$RESETPROP" "$p" "$FP"
+        log "aligned $p to primary fingerprint"
+      fi
+    done
+    if [ -n "$INC" ]; then
+      for p in ro.system.build.version.incremental ro.system_ext.build.version.incremental; do
+        curr=$(getprop "$p")
+        if [ -n "$curr" ] && [ "$curr" != "$INC" ]; then
+          "$RESETPROP" "$p" "$INC"
+          log "aligned $p to primary incremental ($INC)"
+        fi
+      done
+    fi
+  fi
 fi
+
+# 0c) recovery residue cloaking/quarantine (non-destructive, auto-restored on restore/uninstall)
+mkdir -p "$DIR/quarantine" 2>/dev/null
+for p in /data/recovery /cache/recovery; do
+  if [ -e "$p" ]; then
+    base="${p#/}"
+    dest="$DIR/quarantine/${base//\//_}"
+    if [ ! -e "$dest" ]; then
+      mv "$p" "$dest" 2>/dev/null && log "quarantined recovery artifact: $p -> $dest"
+    fi
+  fi
+done
 
 # 1) hidden-app list. Causentry keeps this target-scoped: packages stay installed
 #    and visible to the user, while the system-side cloak config filters what

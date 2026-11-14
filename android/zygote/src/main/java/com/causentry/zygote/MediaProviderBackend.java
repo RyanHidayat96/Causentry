@@ -40,10 +40,17 @@ public final class MediaProviderBackend {
     private static final String[] DEFAULT_HIDDEN_ROOT_ENTRIES = {
             "MT2",
             "TWRP",
+            "twrp",
             "Fox",
+            "OrangeFox",
             "su",
             "daemonsu",
+            "Magisk",
+            "magisk",
             ".magisk",
+            "SuperSU",
+            "KernelSU",
+            "APatch",
             "busybox",
             "TitaniumBackup",
             "SwiftBackup",
@@ -52,8 +59,15 @@ public final class MediaProviderBackend {
 
     private static final String[] DEFAULT_HIDDEN_RELATIVE_PATHS = {
             "Download/KernelSU",
+            "Download/KernelSU.apk",
+            "Download/kernelsu.apk",
             "Download/Magisk",
-            "Download/APatch"
+            "Download/Magisk.apk",
+            "Download/magisk.apk",
+            "Download/Magisk.zip",
+            "Download/APatch",
+            "Download/APatch.apk",
+            "TWRP/TWRP.app"
     };
 
     private static volatile Context sContext;
