@@ -1,6 +1,7 @@
 package com.causentry.app.data
 
 import android.content.Context
+import android.os.FileObserver
 import com.causentry.app.model.DaemonStatus
 import com.causentry.app.model.PerAppConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -18,7 +19,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,15 +31,36 @@ class DaemonBridge @Inject constructor(
     private val _statusFlow = MutableStateFlow(DaemonStatus())
     val statusFlow: StateFlow<DaemonStatus> = _statusFlow.asStateFlow()
 
+    private val _isSyncing = MutableStateFlow(false)
+    val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+
     private var lastStatusModified: Long = 0L
     private var lastStatusLength: Long = 0L
+    private var fileObserver: FileObserver? = null
 
     init {
-        // Start background polling loop
+        // Fast instant FileObserver on files directory to catch status.json MOVED_TO immediately
+        try {
+            fileObserver = object : FileObserver(context.filesDir, CLOSE_WRITE or MOVED_TO) {
+                override fun onEvent(event: Int, path: String?) {
+                    if (path == "status.json") {
+                        scope.launch {
+                            checkAndUpdateStatus()
+                            _isSyncing.value = false
+                        }
+                    }
+                }
+            }
+            fileObserver?.startWatching()
+        } catch (t: Throwable) {
+            android.util.Log.w("DaemonBridge", "FileObserver initialization skipped", t)
+        }
+
+        // Heartbeat fallback polling loop (every 2.5s)
         scope.launch {
             while (isActive) {
                 checkAndUpdateStatus()
-                delay(2000L)
+                delay(2500L)
             }
         }
     }
@@ -51,19 +72,82 @@ class DaemonBridge @Inject constructor(
         checkAndUpdateStatus()
     }
 
+    /**
+     * Instant Optimistic UI Update: Mutates in-memory StateFlow immediately (0ms latency),
+     * so Jetpack Compose UI updates at 120Hz without waiting for root shell I/O.
+     */
+    private fun applyOptimisticUpdate(
+        targetPackages: Collection<String>,
+        devOff: Boolean? = null,
+        mock: Boolean? = null,
+        isolate: Boolean? = null,
+        accOff: Boolean? = null,
+        template: String? = null,
+        remove: Boolean = false
+    ) {
+        val current = _statusFlow.value
+        val targetsList = current.targets.toMutableList()
+        val hardenedList = current.hardened.toMutableList()
+        val perAppMap = current.perAppConfigs.toMutableMap()
+
+        for (pkg in targetPackages) {
+            if (remove) {
+                targetsList.remove(pkg)
+                hardenedList.remove(pkg)
+                perAppMap.remove(pkg)
+            } else {
+                if (!targetsList.contains(pkg)) {
+                    targetsList.add(pkg)
+                }
+                val existing = perAppMap[pkg] ?: PerAppConfig()
+                val nextDev = devOff ?: existing.devOff
+                val nextMock = mock ?: existing.mock
+                val nextIsolate = isolate ?: existing.isolate
+                val nextAcc = accOff ?: existing.accOff
+                val nextTpl = if (template != null) template.takeIf { it.isNotEmpty() } else existing.hideTemplate
+
+                if (nextIsolate) {
+                    if (!hardenedList.contains(pkg)) hardenedList.add(pkg)
+                } else {
+                    hardenedList.remove(pkg)
+                }
+
+                perAppMap[pkg] = PerAppConfig(
+                    devOff = nextDev,
+                    mock = nextMock,
+                    isolate = nextIsolate,
+                    accOff = nextAcc,
+                    hideTemplate = nextTpl
+                )
+            }
+        }
+
+        _statusFlow.value = current.copy(
+            targets = targetsList,
+            hardened = hardenedList,
+            perAppConfigs = perAppMap
+        )
+    }
+
     suspend fun setApp(
         pkg: String,
         devOff: Boolean,
         mock: Boolean,
         isolate: Boolean,
+        accOff: Boolean = true,
         template: String?
     ): String = withContext(Dispatchers.IO) {
+        // 1. Instant optimistic in-memory update (0ms UI latency)
+        applyOptimisticUpdate(listOf(pkg), devOff, mock, isolate, accOff, template, remove = false)
+
         val op = "set-" + System.currentTimeMillis()
         val feats = mutableListOf<String>()
         if (devOff) feats.add("devOff")
         if (mock) feats.add("mock")
         if (isolate) feats.add("isolate")
+        if (accOff) feats.add("accOff")
 
+        // 2. Persist to daemon via RPC
         sendCommand(JSONObject().apply {
             put("action", "setapp")
             put("pkg", pkg)
@@ -73,18 +157,159 @@ class DaemonBridge @Inject constructor(
             }
             put("op", op)
         })
-        checkAndUpdateStatus()
         op
     }
 
+    suspend fun batchConfigureApps(
+        targetPackages: List<String>,
+        devOff: Boolean? = null,
+        mock: Boolean? = null,
+        isolate: Boolean? = null,
+        accOff: Boolean? = null,
+        template: String? = null,
+        remove: Boolean = false
+    ): String = withContext(Dispatchers.IO) {
+        // 1. Instant optimistic in-memory update (0ms UI latency)
+        applyOptimisticUpdate(targetPackages, devOff, mock, isolate, accOff, template, remove)
+
+        val file = File(context.filesDir, "status.json")
+        val content = if (file.exists()) file.readText(Charsets.UTF_8).replace("﻿", "").trim() else ""
+        val statusJson = try { JSONObject(content) } catch (_: Throwable) { JSONObject() }
+        val configJson = statusJson.optJSONObject("config") ?: JSONObject()
+
+        val targetsArray = configJson.optJSONArray("targets") ?: JSONArray()
+        val targetsList = (0 until targetsArray.length()).map { targetsArray.getString(it) }.toMutableList()
+
+        val appsObj = configJson.optJSONObject("apps") ?: JSONObject()
+
+        for (pkg in targetPackages) {
+            if (remove) {
+                targetsList.remove(pkg)
+                appsObj.remove(pkg)
+            } else {
+                if (!targetsList.contains(pkg)) {
+                    targetsList.add(pkg)
+                }
+                val existing = appsObj.optJSONObject(pkg) ?: JSONObject()
+                if (devOff != null) existing.put("devOff", devOff)
+                if (mock != null) existing.put("mock", mock)
+                if (isolate != null) existing.put("isolate", isolate)
+                if (accOff != null) existing.put("accOff", accOff)
+                if (template != null) existing.put("hideTemplate", template)
+                appsObj.put(pkg, existing)
+            }
+        }
+
+        configJson.put("targets", JSONArray(targetsList))
+        configJson.put("apps", appsObj)
+
+        importConfig(configJson.toString())
+    }
+
+    suspend fun batchConfigureFeature(
+        featureKey: String,
+        enabledPackages: Set<String>,
+        allPackages: Set<String>
+    ): String = withContext(Dispatchers.IO) {
+        // 1. Instant optimistic update for the selected feature
+        val current = _statusFlow.value
+        val targetsList = current.targets.toMutableList()
+        val hardenedList = current.hardened.toMutableList()
+        val perAppMap = current.perAppConfigs.toMutableMap()
+
+        for (pkg in allPackages) {
+            val isEnabled = enabledPackages.contains(pkg)
+            val existing = perAppMap[pkg] ?: PerAppConfig()
+
+            val nextDev = if (featureKey == "devOff") isEnabled else existing.devOff
+            val nextMock = if (featureKey == "mock") isEnabled else existing.mock
+            val nextIsolate = if (featureKey == "isolate") isEnabled else existing.isolate
+            val nextAcc = if (featureKey == "accOff") isEnabled else existing.accOff
+
+            val hasAny = nextDev || nextMock || nextIsolate || nextAcc
+            if (hasAny) {
+                if (!targetsList.contains(pkg)) targetsList.add(pkg)
+                if (nextIsolate) {
+                    if (!hardenedList.contains(pkg)) hardenedList.add(pkg)
+                } else {
+                    hardenedList.remove(pkg)
+                }
+                perAppMap[pkg] = existing.copy(
+                    devOff = nextDev,
+                    mock = nextMock,
+                    isolate = nextIsolate,
+                    accOff = nextAcc
+                )
+            } else {
+                targetsList.remove(pkg)
+                hardenedList.remove(pkg)
+                perAppMap.remove(pkg)
+            }
+        }
+
+        _statusFlow.value = current.copy(
+            targets = targetsList,
+            hardened = hardenedList,
+            perAppConfigs = perAppMap
+        )
+
+        // 2. Persist to config.json
+        val file = File(context.filesDir, "status.json")
+        val content = if (file.exists()) file.readText(Charsets.UTF_8).replace("﻿", "").trim() else ""
+        val statusJson = try { JSONObject(content) } catch (_: Throwable) { JSONObject() }
+        val configJson = statusJson.optJSONObject("config") ?: JSONObject()
+
+        val cfgTargetsArray = configJson.optJSONArray("targets") ?: JSONArray()
+        val cfgTargetsList = (0 until cfgTargetsArray.length()).map { cfgTargetsArray.getString(it) }.toMutableList()
+        val appsObj = configJson.optJSONObject("apps") ?: JSONObject()
+
+        for (pkg in allPackages) {
+            val isEnabled = enabledPackages.contains(pkg)
+            val existing = appsObj.optJSONObject(pkg)
+
+            if (isEnabled) {
+                if (!cfgTargetsList.contains(pkg)) {
+                    cfgTargetsList.add(pkg)
+                }
+                val o = existing ?: JSONObject().apply {
+                    put("devOff", false)
+                    put("mock", false)
+                    put("isolate", false)
+                    put("accOff", false)
+                }
+                o.put(featureKey, true)
+                appsObj.put(pkg, o)
+            } else {
+                if (existing != null) {
+                    existing.put(featureKey, false)
+                    val hasAny = existing.optBoolean("devOff", false) ||
+                                 existing.optBoolean("mock", false) ||
+                                 existing.optBoolean("isolate", false) ||
+                                 existing.optBoolean("accOff", false)
+                    if (!hasAny) {
+                        cfgTargetsList.remove(pkg)
+                        appsObj.remove(pkg)
+                    } else {
+                        appsObj.put(pkg, existing)
+                    }
+                }
+            }
+        }
+
+        configJson.put("targets", JSONArray(cfgTargetsList))
+        configJson.put("apps", appsObj)
+
+        importConfig(configJson.toString())
+    }
+
     suspend fun delApp(pkg: String): String = withContext(Dispatchers.IO) {
+        applyOptimisticUpdate(listOf(pkg), remove = true)
         val op = "del-" + System.currentTimeMillis()
         sendCommand(JSONObject().apply {
             put("action", "delapp")
             put("pkg", pkg)
             put("op", op)
         })
-        checkAndUpdateStatus()
         op
     }
 
@@ -111,7 +336,7 @@ class DaemonBridge @Inject constructor(
     suspend fun deleteTemplate(name: String): String = saveTemplate("", emptyList(), deleteName = name)
 
     suspend fun apply(): String = withContext(Dispatchers.IO) {
-        val op = "app-" + System.currentTimeMillis()
+        val op = "apply-" + System.currentTimeMillis()
         sendCommand(JSONObject().apply {
             put("action", "apply")
             put("op", op)
@@ -148,7 +373,7 @@ class DaemonBridge @Inject constructor(
     suspend fun saveStorageRules(roots: List<String>, relatives: List<String>): String = withContext(Dispatchers.IO) {
         val file = File(context.filesDir, "status.json")
         val currentJson = if (file.exists()) {
-            val content = file.readText(Charsets.UTF_8).replace("\uFEFF", "").trim()
+            val content = file.readText(Charsets.UTF_8).replace("﻿", "").trim()
             try {
                 JSONObject(content).optJSONObject("config") ?: JSONObject()
             } catch (_: Throwable) {
@@ -168,7 +393,8 @@ class DaemonBridge @Inject constructor(
     }
 
     private fun sendCommand(obj: JSONObject): Boolean {
-        return try {
+        _isSyncing.value = true
+        val success = try {
             val cmdDir = File(context.filesDir, "cmd")
             if (!cmdDir.exists() && !cmdDir.mkdirs()) return false
 
@@ -189,9 +415,26 @@ class DaemonBridge @Inject constructor(
         } catch (t: Throwable) {
             false
         }
+
+        if (success) {
+            // Immediate root execution wake-up so daemon does not wait for inotify interval
+            scope.launch {
+                try {
+                    val p = ProcessBuilder("su", "-c", "timeout 6 sh /data/adb/modules/causentry/bin/uirpc.sh serve >/dev/null 2>&1")
+                        .redirectErrorStream(true)
+                        .start()
+                    p.waitFor(5000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                } catch (_: Throwable) {}
+                checkAndUpdateStatus(force = true)
+                _isSyncing.value = false
+            }
+        } else {
+            _isSyncing.value = false
+        }
+        return success
     }
 
-    suspend fun checkAndUpdateStatus() = withContext(Dispatchers.IO) {
+    suspend fun checkAndUpdateStatus(force: Boolean = false) = withContext(Dispatchers.IO) {
         try {
             val file = File(context.filesDir, "status.json")
             if (!file.exists()) {
@@ -203,8 +446,8 @@ class DaemonBridge @Inject constructor(
 
             val modified = file.lastModified()
             val length = file.length()
-            if (modified == lastStatusModified && length == lastStatusLength) {
-                // File unchanged, avoid JSON re-parse
+            if (!force && modified == lastStatusModified && length == lastStatusLength) {
+                // File unchanged on disk, keep memory state
                 return@withContext
             }
 
@@ -240,6 +483,7 @@ class DaemonBridge @Inject constructor(
                 devOff = o.optBoolean("devOff", false),
                 mock = o.optBoolean("mock", false),
                 isolate = o.optBoolean("isolate", false),
+                accOff = o.optBoolean("accOff", false),
                 hideTemplate = o.optString("hideTemplate", "").takeIf { it.isNotEmpty() }
             )
         }

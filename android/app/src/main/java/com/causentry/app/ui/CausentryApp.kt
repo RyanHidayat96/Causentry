@@ -11,9 +11,11 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,6 +40,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -102,6 +105,7 @@ fun CausentryApp(
     val selectedApp by viewModel.selectedApp.collectAsState()
     val currentTab by viewModel.currentTab.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val isSyncing by viewModel.isSyncing.collectAsState()
 
     // Forensic live log & crash stream
     val logs by viewModel.filteredLogs.collectAsState()
@@ -119,6 +123,7 @@ fun CausentryApp(
         topBar = {
             TopAppBar(
                 isRefreshing = isRefreshing,
+                isSyncing = isSyncing,
                 onRefresh = { viewModel.refreshAll() }
             )
         }
@@ -164,6 +169,17 @@ fun CausentryApp(
                         )
                     }
                     1 -> {
+                        // Features Tab: Feature-centric policy configuration for all apps
+                        FeaturesScreen(
+                            allApps = allApps,
+                            iconLoader = viewModel.iconLoader,
+                            isSyncing = isSyncing,
+                            onSaveFeature = { featureKey, enabledPackages, allPackages ->
+                                viewModel.batchConfigureFeature(featureKey, enabledPackages, allPackages)
+                            }
+                        )
+                    }
+                    2 -> {
                         // Templates Tab: Multi-select interactive cloaking manager
                         TemplatesScreen(
                             status = status,
@@ -173,7 +189,7 @@ fun CausentryApp(
                             onDeleteTemplate = { name -> viewModel.deleteTemplate(name) }
                         )
                     }
-                    2 -> {
+                    3 -> {
                         // Forensics Tab: Real-time LogCat, Crash Detector & Threat Heuristics
                         ForensicsScreen(
                             logs = logs,
@@ -202,7 +218,7 @@ fun CausentryApp(
                             }
                         )
                     }
-                    3 -> {
+                    4 -> {
                         // Actions & Diagnostics Tab
                         ActionsScreen(
                             status = status,
@@ -226,8 +242,8 @@ fun CausentryApp(
             app = app,
             availableTemplates = status.templates.keys.toList(),
             iconLoader = viewModel.iconLoader,
-            onSave = { devOff, mock, isolate, template ->
-                viewModel.setAppConfig(app.packageName, devOff, mock, isolate, template)
+            onSave = { devOff, mock, isolate, accOff, template ->
+                viewModel.setAppConfig(app.packageName, devOff, mock, isolate, accOff, template)
                 viewModel.onSelectApp(null)
             },
             onDelete = {
@@ -243,6 +259,7 @@ fun CausentryApp(
 @Composable
 private fun TopAppBar(
     isRefreshing: Boolean,
+    isSyncing: Boolean,
     onRefresh: () -> Unit
 ) {
     Row(
@@ -254,15 +271,35 @@ private fun TopAppBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Causentry",
+                    color = TextPrimary,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                if (isSyncing) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(WarningAmber.copy(alpha = 0.2f))
+                            .border(1.dp, WarningAmber.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "SYNCING",
+                            color = WarningAmber,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
             Text(
-                text = "Causentry",
-                color = TextPrimary,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Anti-Detection Control",
-                color = TextSecondary,
+                text = if (isSyncing) "Applying policies via root daemon..." else "Anti-Detection Control",
+                color = if (isSyncing) PrimaryBlue else TextSecondary,
                 fontSize = 12.sp
             )
         }
@@ -270,16 +307,16 @@ private fun TopAppBar(
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(10.dp))
-                .clickable(enabled = !isRefreshing, onClick = onRefresh)
+                .clickable(enabled = !isRefreshing && !isSyncing, onClick = onRefresh)
                 .background(SurfaceDark)
                 .border(1.dp, BorderDark, RoundedCornerShape(10.dp))
                 .padding(8.dp)
         ) {
-            if (isRefreshing) {
+            if (isRefreshing || isSyncing) {
                 CircularProgressIndicator(
                     modifier = Modifier.width(18.dp).height(18.dp),
                     strokeWidth = 2.dp,
-                    color = PrimaryBlue
+                    color = if (isSyncing) WarningAmber else PrimaryBlue
                 )
             } else {
                 Icon(
@@ -298,16 +335,17 @@ private fun TabRowSelector(
     selectedTab: Int,
     onTabSelect: (Int) -> Unit
 ) {
-    val tabs = listOf("Apps", "Templates", "Forensics", "Diagnostics")
+    val tabs = listOf("Apps", "Features", "Templates", "Forensics", "Diagnostics")
     val haptic = LocalHapticFeedback.current
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 4.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(SurfaceDark)
             .border(1.dp, BorderDark, RoundedCornerShape(12.dp))
+            .horizontalScroll(rememberScrollState())
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -321,20 +359,19 @@ private fun TabRowSelector(
 
             Box(
                 modifier = Modifier
-                    .weight(1f)
                     .clip(RoundedCornerShape(8.dp))
                     .background(animatedTabBg)
                     .clickable {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         onTabSelect(index)
                     }
-                    .padding(vertical = 10.dp),
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = label,
                     color = if (isSelected) TextPrimary else TextSecondary,
-                    fontSize = 13.sp,
+                    fontSize = 12.5.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                 )
             }
@@ -356,184 +393,184 @@ private fun AppsScreen(
 ) {
     val focusManager = LocalFocusManager.current
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        item {
-            HeroStatusCard(
-                status = status,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
-            )
-        }
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Pinned Top Section: Compact Hero Card, Search Bar, and Filter Chips
+        HeroStatusCard(
+            status = status,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp)
+        )
 
-        item {
-            // High-performance search bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchChange,
-                placeholder = { Text("Search app name or package...", color = TextSecondary, fontSize = 14.sp) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-                shape = RoundedCornerShape(12.dp),
-                leadingIcon = {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_search),
-                        contentDescription = null,
-                        tint = TextSecondary,
-                        modifier = Modifier.padding(2.dp).width(18.dp).height(18.dp)
-                    )
-                },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = PrimaryBlue,
-                    unfocusedBorderColor = BorderDark,
-                    focusedContainerColor = SurfaceDark,
-                    unfocusedContainerColor = SurfaceDark,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary
-                ),
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { onSearchChange("") }) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_close),
-                                contentDescription = "Clear",
-                                tint = TextSecondary,
-                                modifier = Modifier.padding(2.dp).width(16.dp).height(16.dp)
-                            )
-                        }
-                    }
-                }
-            )
-        }
-
-        item {
-            FilterChipRow(
-                selectedFilter = selectedFilter,
-                onFilterSelect = onFilterSelect,
-                allCount = allApps.size,
-                protectedCount = allApps.count { it.isProtected },
-                userCount = allApps.count { !it.isSystem },
-                systemCount = allApps.count { it.isSystem },
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-            )
-        }
-
-        if (allApps.isEmpty()) {
-            item {
-                ShimmerAppList(count = 7)
-            }
-        } else if (apps.isEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 48.dp, horizontal = 24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (searchQuery.isNotEmpty()) {
-                        Text(
-                            text = "No applications match '$searchQuery'",
-                            color = TextSecondary,
-                            fontSize = 14.sp
-                        )
-                    } else if (selectedFilter == AppFilter.PROTECTED) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_shield),
-                                contentDescription = null,
-                                tint = PrimaryBlue.copy(alpha = 0.5f),
-                                modifier = Modifier.size(48.dp)
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "No Protected Applications",
-                                color = TextPrimary,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Tap any application from the list to configure anti-detection protection.",
-                                color = TextSecondary,
-                                fontSize = 12.sp,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                        }
-                    } else if (selectedFilter == AppFilter.USER) {
-                        Text(
-                            text = "No user-installed applications found.",
-                            color = TextSecondary,
-                            fontSize = 14.sp
-                        )
-                    } else if (selectedFilter == AppFilter.SYSTEM) {
-                        Text(
-                            text = "No system applications found.",
-                            color = TextSecondary,
-                            fontSize = 14.sp
-                        )
-                    } else {
-                        Text(
-                            text = "No applications found.",
-                            color = TextSecondary,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-            }
-        } else if (searchQuery.isEmpty() && selectedFilter == AppFilter.ALL) {
-            val protectedApps = apps.filter { it.isProtected }
-            val otherApps = apps.filter { !it.isProtected }
-
-            if (protectedApps.isNotEmpty()) {
-                item {
-                    SectionHeader(title = "PROTECTED APPLICATIONS", count = protectedApps.size)
-                }
-                items(
-                    items = protectedApps,
-                    key = { it.packageName }
-                ) { app ->
-                    AppItemCard(
-                        app = app,
-                        iconLoader = iconLoader,
-                        onClick = { onAppClick(app) }
-                    )
-                }
-            }
-
-            if (otherApps.isNotEmpty()) {
-                item {
-                    SectionHeader(title = "ALL OTHER APPLICATIONS", count = otherApps.size)
-                }
-                items(
-                    items = otherApps,
-                    key = { it.packageName }
-                ) { app ->
-                    AppItemCard(
-                        app = app,
-                        iconLoader = iconLoader,
-                        onClick = { onAppClick(app) }
-                    )
-                }
-            }
-        } else {
-            items(
-                items = apps,
-                key = { it.packageName }
-            ) { app ->
-                AppItemCard(
-                    app = app,
-                    iconLoader = iconLoader,
-                    onClick = { onAppClick(app) }
+        // High-performance search bar
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchChange,
+            placeholder = { Text("Search app name or package...", color = TextSecondary, fontSize = 13.5.sp) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 2.dp),
+            shape = RoundedCornerShape(12.dp),
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_search),
+                    contentDescription = null,
+                    tint = TextSecondary,
+                    modifier = Modifier.padding(2.dp).width(18.dp).height(18.dp)
                 )
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = PrimaryBlue,
+                unfocusedBorderColor = BorderDark,
+                focusedContainerColor = SurfaceDark,
+                unfocusedContainerColor = SurfaceDark,
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary
+            ),
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { onSearchChange("") }) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_close),
+                            contentDescription = "Clear",
+                            tint = TextSecondary,
+                            modifier = Modifier.padding(2.dp).width(16.dp).height(16.dp)
+                        )
+                    }
+                }
             }
-        }
+        )
 
-        item {
-            Spacer(modifier = Modifier.height(30.dp))
+        FilterChipRow(
+            selectedFilter = selectedFilter,
+            onFilterSelect = onFilterSelect,
+            allCount = allApps.size,
+            protectedCount = allApps.count { it.isProtected },
+            userCount = allApps.count { !it.isSystem },
+            systemCount = allApps.count { it.isSystem },
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp)
+        )
+
+        // Scrollable Apps List (Only the applications list scrolls beneath pinned top controls)
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+            if (allApps.isEmpty()) {
+                item {
+                    ShimmerAppList(count = 7)
+                }
+            } else if (apps.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 48.dp, horizontal = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (searchQuery.isNotEmpty()) {
+                            Text(
+                                text = "No applications match '$searchQuery'",
+                                color = TextSecondary,
+                                fontSize = 14.sp
+                            )
+                        } else if (selectedFilter == AppFilter.PROTECTED) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_shield),
+                                    contentDescription = null,
+                                    tint = PrimaryBlue.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(48.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "No Protected Applications",
+                                    color = TextPrimary,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "Tap any application from the list to configure anti-detection protection.",
+                                    color = TextSecondary,
+                                    fontSize = 12.sp,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        } else if (selectedFilter == AppFilter.USER) {
+                            Text(
+                                text = "No user-installed applications found.",
+                                color = TextSecondary,
+                                fontSize = 14.sp
+                            )
+                        } else if (selectedFilter == AppFilter.SYSTEM) {
+                            Text(
+                                text = "No system applications found.",
+                                color = TextSecondary,
+                                fontSize = 14.sp
+                            )
+                        } else {
+                            Text(
+                                text = "No applications found.",
+                                color = TextSecondary,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+            } else if (searchQuery.isEmpty() && selectedFilter == AppFilter.ALL) {
+                val protectedApps = apps.filter { it.isProtected }
+                val otherApps = apps.filter { !it.isProtected }
+
+                if (protectedApps.isNotEmpty()) {
+                    item {
+                        SectionHeader(title = "PROTECTED APPLICATIONS", count = protectedApps.size)
+                    }
+                    items(
+                        items = protectedApps,
+                        key = { it.packageName }
+                    ) { app ->
+                        AppItemCard(
+                            app = app,
+                            iconLoader = iconLoader,
+                            onClick = { onAppClick(app) }
+                        )
+                    }
+                }
+
+                if (otherApps.isNotEmpty()) {
+                    item {
+                        SectionHeader(title = "ALL OTHER APPLICATIONS", count = otherApps.size)
+                    }
+                    items(
+                        items = otherApps,
+                        key = { it.packageName }
+                    ) { app ->
+                        AppItemCard(
+                            app = app,
+                            iconLoader = iconLoader,
+                            onClick = { onAppClick(app) }
+                        )
+                    }
+                }
+            } else {
+                items(
+                    items = apps,
+                    key = { it.packageName }
+                ) { app ->
+                    AppItemCard(
+                        app = app,
+                        iconLoader = iconLoader,
+                        onClick = { onAppClick(app) }
+                    )
+                }
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(30.dp))
+            }
         }
     }
 }
@@ -595,11 +632,13 @@ private fun TemplatesScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(20.dp)
-            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
     ) {
+        // Pinned Header
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -631,35 +670,42 @@ private fun TemplatesScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
-
-        if (status.templates.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 40.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "No custom templates configured yet. Tap '+ New' to create one.",
-                    color = TextSecondary,
-                    fontSize = 14.sp
-                )
-            }
-        } else {
-            status.templates.forEach { (name, pkgs) ->
-                TemplateCard(
-                    name = name,
-                    packages = pkgs,
-                    onEdit = {
-                        editingInitialName = name
-                        editingName = name
-                        editingPackages = pkgs
-                        showEditor = true
-                    },
-                    onDelete = { onDeleteTemplate(name) },
-                    modifier = Modifier.padding(vertical = 6.dp)
-                )
+        // Scrollable Templates List (Only template cards scroll beneath pinned header)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 20.dp)
+        ) {
+            if (status.templates.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No custom templates configured yet. Tap '+ New' to create one.",
+                        color = TextSecondary,
+                        fontSize = 14.sp
+                    )
+                }
+            } else {
+                status.templates.forEach { (name, pkgs) ->
+                    TemplateCard(
+                        name = name,
+                        packages = pkgs,
+                        onEdit = {
+                            editingInitialName = name
+                            editingName = name
+                            editingPackages = pkgs
+                            showEditor = true
+                        },
+                        onDelete = { onDeleteTemplate(name) },
+                        modifier = Modifier.padding(vertical = 6.dp)
+                    )
+                }
             }
         }
     }

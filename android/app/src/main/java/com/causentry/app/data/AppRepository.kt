@@ -88,6 +88,7 @@ class AppRepository @Inject constructor(
                 devOff = cfg?.devOff ?: (isTarget && status.autoDevOff),
                 mock = cfg?.mock ?: (isTarget && status.hideMockLocation),
                 isolate = cfg?.isolate ?: (isTarget && hardenedSet.contains(pkg)),
+                accOff = cfg?.accOff ?: (isTarget && (cfg?.devOff ?: status.autoDevOff)),
                 hideTemplate = cfg?.hideTemplate,
                 isHiddenInAnyTemplate = allHiddenPackages.contains(pkg)
             )

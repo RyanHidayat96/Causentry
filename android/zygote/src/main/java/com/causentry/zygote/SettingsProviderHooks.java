@@ -97,7 +97,7 @@ final class SettingsProviderHooks {
         }
         // Hide accessibility services from protected apps so VGuard cannot detect them
         String secureKey = hiddenSecureSetting(frame);
-        if (secureKey != null && CloakPolicy.hidesDeveloperOptions(callingUid)) {
+        if (secureKey != null && CloakPolicy.hidesAccessibility(callingUid)) {
             Bundle result = new Bundle();
             result.putString(Settings.NameValueTable.NAME, secureKey);
             if ("enabled_accessibility_services".equals(secureKey)) {

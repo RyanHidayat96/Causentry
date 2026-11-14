@@ -114,6 +114,7 @@ if [ -f /data/system/packages.list ] && command -v awk >/dev/null 2>&1; then
       if (!(pkg in uids)) continue;
       dev = (body ~ /"devOff"[[:space:]]*:[[:space:]]*true/) ? 1 : 0;
       iso = (body ~ /"isolate"[[:space:]]*:[[:space:]]*true/) ? 1 : 0;
+      acc = (body ~ /"accOff"[[:space:]]*:[[:space:]]*true/) ? 1 : dev;
       tpl = "stealth";
       if (match(body, /"hideTemplate"[[:space:]]*:[[:space:]]*"[^"]+"/)) {
         ts = substr(body, RSTART, RLENGTH);
@@ -121,7 +122,7 @@ if [ -f /data/system/packages.list ] && command -v awk >/dev/null 2>&1; then
         sub(/".*/, "", ts);
         tpl = ts;
       }
-      print pkg, uids[pkg], tpl, iso, dev;
+      print pkg, uids[pkg], tpl, iso, dev, acc;
     }
   }
   ' "$CONF" > "$TARGET_FILE" 2>/dev/null
@@ -135,74 +136,73 @@ if [ ! -s "$TARGET_FILE" ]; then
     tpl=$(app_hide_template "$t")
     iso=$(app_feat "$t" isolate)
     dev=$(app_feat_or "$t" devOff autoDevOff)
+    acc=$(app_feat "$t" accOff)
     [ -n "$tpl" ] || tpl=@
     [ -n "$iso" ] || iso=@
-    printf '%s %s %s %s %s\n' "$t" "$u" "$tpl" "$iso" "$dev" >> "$TARGET_FILE"
+    [ -n "$acc" ] || acc="$dev"
+    printf '%s %s %s %s %s %s\n' "$t" "$u" "$tpl" "$iso" "$dev" "$acc" >> "$TARGET_FILE"
   done
 fi
 
-printf '{"targetUids":[' > "$T"
-first=1
-while read -r t u tpl iso dev; do
-  [ $first -eq 1 ] || printf ',' >> "$T"
-  first=0
-  printf '%s' "$u" >> "$T"
-done < "$TARGET_FILE"
-printf '],"targets":[' >> "$T"
-first=1
-while read -r t u tpl iso dev; do
-  [ $first -eq 1 ] || printf ',' >> "$T"
-  first=0
-  json_package "$t" >> "$T"
-done < "$TARGET_FILE"
-printf '],"hidden":[' >> "$T"
-first=1
-for p in $(hidden_list | sort -u); do
+# Pre-render standard template JSON arrays once
+STEALTH_JSON="["
+pfirst=1
+for p in $(target_hidden_list stealth 2>/dev/null | sort -u); do
   valid_package_name "$p" || continue
-  [ $first -eq 1 ] || printf ',' >> "$T"
-  first=0
-  json_package "$p" >> "$T"
+  [ $pfirst -eq 1 ] || STEALTH_JSON="$STEALTH_JSON,"
+  pfirst=0
+  STEALTH_JSON="$STEALTH_JSON\"$p\""
 done
-printf '],"hiddenByTarget":{' >> "$T"
-first=1
-while read -r t u tpl iso dev; do
-  [ $first -eq 1 ] || printf ',' >> "$T"
-  first=0
-  json_package "$t" >> "$T"
-  printf ':%s' "$(template_json_array "$tpl")" >> "$T"
-done < "$TARGET_FILE"
-printf '}' >> "$T"
-printf ',"appZygote":[' >> "$T"
-first=1
-while read -r t u tpl iso dev; do
-  [ "$iso" = 0 ] && continue
-  [ $first -eq 1 ] || printf ',' >> "$T"
-  first=0
-  json_package "$t" >> "$T"
-done < "$TARGET_FILE"
-printf '],"developerOptionsUids":[' >> "$T"
-first=1
-while read -r t u tpl iso dev; do
-  [ "$dev" = 1 ] || continue
-  [ $first -eq 1 ] || printf ',' >> "$T"
-  first=0
-  printf '%s' "$u" >> "$T"
-done < "$TARGET_FILE"
-printf '],"storageRules":{"hiddenRootEntryNames":[' >> "$T"
-sfirst=1
-for se in MT2 TWRP Fox su daemonsu .magisk busybox TitaniumBackup SwiftBackup xinhao; do
-  [ $sfirst -eq 1 ] || printf ',' >> "$T"
-  sfirst=0
-  json_package "$se" >> "$T"
+STEALTH_JSON="$STEALTH_JSON]"
+
+ALL_HIDDEN_JSON="["
+pfirst=1
+for p in $(hidden_list 2>/dev/null | sort -u); do
+  valid_package_name "$p" || continue
+  [ $pfirst -eq 1 ] || ALL_HIDDEN_JSON="$ALL_HIDDEN_JSON,"
+  pfirst=0
+  ALL_HIDDEN_JSON="$ALL_HIDDEN_JSON\"$p\""
 done
-printf '],"hiddenRelativePaths":[' >> "$T"
-sfirst=1
-for sp in "Download/KernelSU" "Download/Magisk" "Download/APatch"; do
-  [ $sfirst -eq 1 ] || printf ',' >> "$T"
-  sfirst=0
-  json_package "$sp" >> "$T"
-done
-printf ']}}' >> "$T"
+ALL_HIDDEN_JSON="$ALL_HIDDEN_JSON]"
+
+awk -v stealth_json="$STEALTH_JSON" -v all_hidden_json="$ALL_HIDDEN_JSON" '
+BEGIN {
+  targetUids = ""; targets = ""; appZygote = ""; devUids = ""; accUids = ""; hiddenByTarget = "";
+  n = 0; n_iso = 0; n_dev = 0; n_acc = 0;
+}
+{
+  pkg = $1; uid = $2; tpl = $3; iso = $4; dev = $5; acc = $6;
+  if (n > 0) {
+    targetUids = targetUids ",";
+    targets = targets ",";
+    hiddenByTarget = hiddenByTarget ",";
+  }
+  targetUids = targetUids uid;
+  targets = targets "\"" pkg "\"";
+  hiddenByTarget = hiddenByTarget "\"" pkg "\":" stealth_json;
+
+  if (iso == 1) {
+    if (n_iso > 0) appZygote = appZygote ",";
+    appZygote = appZygote "\"" pkg "\"";
+    n_iso++;
+  }
+  if (dev == 1) {
+    if (n_dev > 0) devUids = devUids ",";
+    devUids = devUids uid;
+    n_dev++;
+  }
+  if (acc == 1) {
+    if (n_acc > 0) accUids = accUids ",";
+    accUids = accUids uid;
+    n_acc++;
+  }
+  n++;
+}
+END {
+  printf "{\"targetUids\":[%s],\"targets\":[%s],\"hidden\":%s,\"hiddenByTarget\":{%s},\"appZygote\":[%s],\"developerOptionsUids\":[%s],\"accessibilityUids\":[%s],\"storageRules\":{\"hiddenRootEntryNames\":[\"MT2\",\"TWRP\",\"Fox\",\"su\",\"daemonsu\",\".magisk\",\"busybox\",\"TitaniumBackup\",\"SwiftBackup\",\"xinhao\"],\"hiddenRelativePaths\":[\"Download/KernelSU\",\"Download/Magisk\",\"Download/APatch\"]}}\n",
+    targetUids, targets, all_hidden_json, hiddenByTarget, appZygote, devUids, accUids;
+}
+' "$TARGET_FILE" > "$T"
 
 # Publish a complete policy so concurrent PackageManager calls never read half a save.
 cp -f "$T" "$OUT_DIR/.cloak.$$" \

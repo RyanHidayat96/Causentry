@@ -35,6 +35,7 @@ final class CloakPolicy {
     private static volatile Map<Integer, Set<String>> hiddenByUid = Collections.emptyMap();
     private static volatile Set<String> appZygoteBlocked = Collections.emptySet();
     private static volatile Set<Integer> developerOptionsUids = Collections.emptySet();
+    private static volatile Set<Integer> accessibilityUids = Collections.emptySet();
 
     private CloakPolicy() {}
 
@@ -64,6 +65,12 @@ final class CloakPolicy {
         if (uid < 10000) return false;
         refresh(false);
         return developerOptionsUids.contains(uid);
+    }
+
+    static boolean hidesAccessibility(int uid) {
+        if (uid < 10000) return false;
+        refresh(false);
+        return accessibilityUids.contains(uid);
     }
 
     static void refreshNow() {
@@ -114,6 +121,7 @@ final class CloakPolicy {
                 Map<Integer, Set<String>> next = new HashMap<>();
                 Set<String> nextAppZygote = new HashSet<>();
                 Set<Integer> nextDeveloperOptions = new HashSet<>();
+                Set<Integer> nextAccessibility = new HashSet<>();
 
                 if (uids == null || targets == null || byTarget == null
                         || uids.length() != targets.length()) {
@@ -148,9 +156,21 @@ final class CloakPolicy {
                     }
                 }
 
+                JSONArray accessibility = root.optJSONArray("accessibilityUids");
+                if (accessibility != null) {
+                    for (int i = 0; i < accessibility.length(); i++) {
+                        int uid = accessibility.optInt(i, -1);
+                        if (uid >= 10000) nextAccessibility.add(uid);
+                    }
+                } else {
+                    // Fallback to developerOptions for backward compatibility
+                    nextAccessibility.addAll(nextDeveloperOptions);
+                }
+
                 hiddenByUid = Collections.unmodifiableMap(next);
                 appZygoteBlocked = Collections.unmodifiableSet(nextAppZygote);
                 developerOptionsUids = Collections.unmodifiableSet(nextDeveloperOptions);
+                accessibilityUids = Collections.unmodifiableSet(nextAccessibility);
                 lastModified = modified;
                 lastLength = length;
                 lastPolicyPath = path;
@@ -158,6 +178,7 @@ final class CloakPolicy {
                 Log.i(TAG, "policy refreshed targets=" + next.size()
                         + " appZygote=" + nextAppZygote.size()
                         + " developerOptions=" + nextDeveloperOptions.size()
+                        + " accessibility=" + nextAccessibility.size()
                         + " source=" + path);
                 return;
             } catch (Throwable error) {

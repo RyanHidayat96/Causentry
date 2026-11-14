@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.causentry.app.model.DaemonStatus
@@ -49,48 +51,54 @@ fun HeroStatusCard(
         else -> "STANDBY"
     }
 
-    val zygiskColor = if (status.cloakReady) SuccessGreen else WarningAmber
     val zygiskText = when {
-        status.cloakReady -> "Zygisk hook active (system_server)"
+        status.cloakReady -> "Zygisk active"
         status.zygisk.contains("ready") -> "Zygisk ready"
-        else -> "Zygisk hook standby"
+        else -> "Zygisk standby"
     }
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(SurfaceDark, RoundedCornerShape(16.dp))
-            .border(1.dp, BorderDark, RoundedCornerShape(16.dp))
-            .padding(16.dp)
+            .background(SurfaceDark, RoundedCornerShape(12.dp))
+            .border(1.dp, BorderDark, RoundedCornerShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 9.dp)
     ) {
+        // Top line: Status indicator dot + Title & Subtitle + Status Pill
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
                 Box(
                     modifier = Modifier
-                        .size(10.dp)
-                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .size(8.dp)
+                        .clip(CircleShape)
                         .background(daemonColor)
                 )
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
-                Column {
-                    Text(
-                        text = "System Protection",
-                        color = TextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = zygiskText,
-                        color = TextSecondary,
-                        fontSize = 12.sp
-                    )
-                }
+                Text(
+                    text = "System Protection",
+                    color = TextPrimary,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                Text(
+                    text = "• $zygiskText",
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
 
             StatusPill(
@@ -99,25 +107,26 @@ fun HeroStatusCard(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(7.dp))
 
+        // Bottom line: 3 compact horizontal metric chips
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            MetricTile(
+            CompactMetricChip(
                 label = "TARGETS",
                 value = status.targets.size.toString(),
                 accent = SuccessGreen,
                 modifier = Modifier.weight(1f)
             )
-            MetricTile(
+            CompactMetricChip(
                 label = "TEMPLATES",
                 value = status.templates.size.toString(),
                 accent = PrimaryBlue,
                 modifier = Modifier.weight(1f)
             )
-            MetricTile(
+            CompactMetricChip(
                 label = "HEARTBEAT",
                 value = if (status.heartbeatAge > 999) "--" else "${status.heartbeatAge}s",
                 accent = if (status.heartbeatAge <= 15) SuccessGreen else DangerRed,
@@ -128,29 +137,31 @@ fun HeroStatusCard(
 }
 
 @Composable
-private fun MetricTile(
+private fun CompactMetricChip(
     label: String,
     value: String,
     accent: Color,
     modifier: Modifier = Modifier
 ) {
-    Column(
+    Row(
         modifier = modifier
-            .background(Color.Black.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
-            .border(1.dp, BorderDark.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
-            .padding(vertical = 8.dp, horizontal = 10.dp)
+            .background(Color.Black.copy(alpha = 0.25f), RoundedCornerShape(7.dp))
+            .border(1.dp, BorderDark.copy(alpha = 0.5f), RoundedCornerShape(7.dp))
+            .padding(horizontal = 9.dp, vertical = 5.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label,
             color = TextSecondary,
-            fontSize = 10.sp,
+            fontSize = 9.5.sp,
             fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.5.sp
+            letterSpacing = 0.4.sp
         )
         Text(
             text = value,
             color = accent,
-            fontSize = 16.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.Bold
         )
     }

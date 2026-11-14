@@ -9,6 +9,7 @@ data class AppInfo(
     val devOff: Boolean = false,
     val mock: Boolean = false,
     val isolate: Boolean = false,
+    val accOff: Boolean = false,
     val hideTemplate: String? = null,
     val isHiddenInAnyTemplate: Boolean = false
 )

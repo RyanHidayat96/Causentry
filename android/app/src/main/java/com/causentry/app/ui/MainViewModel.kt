@@ -38,6 +38,7 @@ class MainViewModel @Inject constructor(
 ) : ViewModel() {
 
     val daemonStatus: StateFlow<DaemonStatus> = daemonBridge.statusFlow
+    val isSyncing: StateFlow<Boolean> = daemonBridge.isSyncing
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -48,7 +49,7 @@ class MainViewModel @Inject constructor(
     private val _selectedApp = MutableStateFlow<AppInfo?>(null)
     val selectedApp: StateFlow<AppInfo?> = _selectedApp.asStateFlow()
 
-    private val _currentTab = MutableStateFlow(0) // 0 = Apps, 1 = Templates, 2 = Forensics, 3 = Diagnostics
+    private val _currentTab = MutableStateFlow(0) // 0 = Apps, 1 = Features, 2 = Templates, 3 = Forensics, 4 = Diagnostics
     val currentTab: StateFlow<Int> = _currentTab.asStateFlow()
 
     private val _isRefreshing = MutableStateFlow(false)
@@ -199,10 +200,35 @@ class MainViewModel @Inject constructor(
         devOff: Boolean,
         mock: Boolean,
         isolate: Boolean,
+        accOff: Boolean = true,
         template: String?
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            daemonBridge.setApp(pkg, devOff, mock, isolate, template)
+            daemonBridge.setApp(pkg, devOff, mock, isolate, accOff, template)
+        }
+    }
+
+    fun batchConfigureApps(
+        pkgs: List<String>,
+        devOff: Boolean? = null,
+        mock: Boolean? = null,
+        isolate: Boolean? = null,
+        accOff: Boolean? = null,
+        template: String? = null,
+        remove: Boolean = false
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            daemonBridge.batchConfigureApps(pkgs, devOff, mock, isolate, accOff, template, remove)
+        }
+    }
+
+    fun batchConfigureFeature(
+        featureKey: String,
+        enabledPackages: Set<String>,
+        allPackages: Set<String>
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            daemonBridge.batchConfigureFeature(featureKey, enabledPackages, allPackages)
         }
     }
 
@@ -256,7 +282,7 @@ class MainViewModel @Inject constructor(
 
     fun inspectAppLogs(packageName: String) {
         _forensicSelectedPackage.value = packageName
-        _currentTab.value = 2 // Tab Forensics
+        _currentTab.value = 3 // Tab Forensics
         _selectedApp.value = null
     }
 }

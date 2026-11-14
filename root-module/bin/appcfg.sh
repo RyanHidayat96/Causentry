@@ -38,35 +38,30 @@ uniq_list() {   # uniq_list <newline list> -> space separated, unique
 }
 
 emit() {   # emit <targets> <denylist> <hardened> <appentries>
-  printf '{"targets":'
-  printf '['
-  f=1; for i in $1; do valid_package_name "$i" || continue; [ $f -eq 1 ] || printf ','; f=0; json_string "$i"; done
-  printf ']'
-  printf ',"denylist":'
-  printf '['
-  f=1; for i in $2; do valid_package_name "$i" || continue; [ $f -eq 1 ] || printf ','; f=0; json_string "$i"; done
-  printf ']'
-  printf ',"hideTemplates":'
-  emit_hide_templates_json
-  printf ',"hardened":'
-  printf '['
-  f=1; for i in $3; do valid_package_name "$i" || continue; [ $f -eq 1 ] || printf ','; f=0; json_string "$i"; done
-  printf ']'
-  printf ',"apps":{'
+  eval "$(tr -d '\r\n' < "$CONF" 2>/dev/null | sed -nE 's/.*"autoDevOff"[[:space:]]*:[[:space:]]*(true|false).*/B_dev=\1/p; s/.*"hideMockLocation"[[:space:]]*:[[:space:]]*(true|false).*/B_mock=\1/p; s/.*"alwaysHidden"[[:space:]]*:[[:space:]]*(true|false).*/B_always=\1/p; s/.*"susfs"[[:space:]]*:[[:space:]]*(true|false).*/B_susfs=\1/p; s/.*"hideRootApps"[[:space:]]*:[[:space:]]*(true|false).*/B_root=\1/p; s/.*"uiApk"[[:space:]]*:[[:space:]]*(true|false).*/B_ui=\1/p; s/.*"systemCloak"[[:space:]]*:[[:space:]]*(true|false).*/B_sys=\1/p')"
+  TPL_JSON=$(tr -d '\r\n' < "$CONF" 2>/dev/null | sed -nE 's/.*"hideTemplates"[[:space:]]*:[[:space:]]*(\{[^}]*\}).*/\1/p')
+  printf '{"targets":['
+  f=1; for i in $1; do valid_package_name "$i" || continue; [ $f -eq 1 ] || printf ','; f=0; printf '"%s"' "$i"; done
+  printf '],"denylist":['
+  f=1; for i in $2; do valid_package_name "$i" || continue; [ $f -eq 1 ] || printf ','; f=0; printf '"%s"' "$i"; done
+  printf '],"hideTemplates":%s' "${TPL_JSON:-{}}"
+  printf ',"hardened":['
+  f=1; for i in $3; do valid_package_name "$i" || continue; [ $f -eq 1 ] || printf ','; f=0; printf '"%s"' "$i"; done
+  printf '],"apps":{'
   emit_entries "$4"
   printf '}'
-  printf ',"autoDevOff":%s' "$( [ "$(jbool autoDevOff)" = 1 ] && echo true || echo false )"
-  printf ',"hideMockLocation":%s' "$( [ "$(jbool hideMockLocation)" = 1 ] && echo true || echo false )"
-  printf ',"alwaysHidden":%s' "$( [ "$(jbool alwaysHidden)" = 1 ] && echo true || echo false )"
-  printf ',"susfs":%s' "$( [ "$(jbool susfs)" = 1 ] && echo true || echo false )"
-  printf ',"hideRootApps":%s' "$( [ "$(jbool hideRootApps)" = 1 ] && echo true || echo false )"
-  printf ',"uiApk":%s' "$( [ "$(jbool uiApk)" = 1 ] && echo true || echo false )"
-  printf ',"systemCloak":%s' "$( [ "$(jbool systemCloak)" = 1 ] && echo true || echo false )"
+  printf ',"autoDevOff":%s' "${B_dev:-false}"
+  printf ',"hideMockLocation":%s' "${B_mock:-false}"
+  printf ',"alwaysHidden":%s' "${B_always:-false}"
+  printf ',"susfs":%s' "${B_susfs:-false}"
+  printf ',"hideRootApps":%s' "${B_root:-false}"
+  printf ',"uiApk":%s' "${B_ui:-false}"
+  printf ',"systemCloak":%s' "${B_sys:-false}"
   # keys this script does not edit must survive a rewrite
   M=$(jstr hideMode); [ -n "$M" ] || M=none
   printf ',"hideMode":"%s"' "$M"
   printf ',"cloakPackages":['
-  f=1; for p in $(jlist cloakPackages); do valid_package_name "$p" || continue; [ $f -eq 1 ] || printf ','; f=0; json_string "$p"; done
+  f=1; for p in $(jlist cloakPackages); do valid_package_name "$p" || continue; [ $f -eq 1 ] || printf ','; f=0; printf '"%s"' "$p"; done
   printf ']'
   printf '}'
 }
@@ -76,11 +71,12 @@ case "${1:-show}" in
     pkg="$APP_PKG_NEW"; feats="${APP_FEATS_NEW-devOff,mock}"; tpl="${APP_HIDE_TEMPLATE_NEW-}"
     valid_package_name "$pkg" || { echo "invalid package"; exit 1; }
     valid_template_name "$tpl" || tpl=""
-    d=false; m=false; i=true
+    d=false; m=false; i=true; a=true
     case ",$feats," in *",devOff,"*) d=true;; esac
     case ",$feats," in *",mock,"*)   m=true;; esac
     case ",$feats," in *",isolate,"*) i=true;; *) i=false;; esac
-    blk="$(json_string "$pkg"):{\"devOff\":$d,\"mock\":$m,\"isolate\":$i,\"hideTemplate\":$(json_string "$tpl")}"
+    case ",$feats," in *",accOff,"*) a=true;; *) a=false;; esac
+    blk="$(json_string "$pkg"):{\"devOff\":$d,\"mock\":$m,\"isolate\":$i,\"accOff\":$a,\"hideTemplate\":$(json_string "$tpl")}"
     T=$(uniq_list "$(jlist targets | tr '\n' ' ')")
     H=$(uniq_list "$(jlist hardened | tr '\n' ' ')")
     case " $T " in *" $pkg "*) ;; *) T="$T $pkg";; esac

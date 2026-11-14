@@ -57,9 +57,24 @@ ere_escape() {
 
 # list items of a JSON string array: jlist targets
 jlist() {
-  tr -d '\r\n' < "$CONF" 2>/dev/null \
-    | sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*\[([^]]*)\].*/\1/p" \
-    | head -1 | tr ',' '\n' | sed 's/[", ]//g' | grep -v '^$'
+  awk -v k="$1" '
+  BEGIN { RS="^$"; }
+  {
+    target = "\"" k "\"";
+    idx = index($0, target);
+    if (idx == 0) exit;
+    s = substr($0, idx + length(target));
+    b1 = index(s, "[");
+    b2 = index(s, "]");
+    if (b1 == 0 || b2 == 0 || b2 <= b1) exit;
+    body = substr(s, b1 + 1, b2 - b1 - 1);
+    gsub(/["[:space:]]/, "", body);
+    n = split(body, a, ",");
+    for (i = 1; i <= n; i++) {
+      if (length(a[i]) > 0) print a[i];
+    }
+  }
+  ' "$CONF" 2>/dev/null
 }
 
 csv_package_json_array() {

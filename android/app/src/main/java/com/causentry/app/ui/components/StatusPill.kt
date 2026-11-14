@@ -19,20 +19,20 @@ fun StatusPill(
     color: Color,
     modifier: Modifier = Modifier,
     fillAlpha: Float = 0.12f,
-    borderAlpha: Float = 0.4f
+    borderAlpha: Float = 0.45f
 ) {
     Box(
         modifier = modifier
-            .background(color.copy(alpha = fillAlpha), RoundedCornerShape(8.dp))
-            .border(1.dp, color.copy(alpha = borderAlpha), RoundedCornerShape(8.dp))
-            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .background(color.copy(alpha = fillAlpha), RoundedCornerShape(6.dp))
+            .border(1.dp, color.copy(alpha = borderAlpha), RoundedCornerShape(6.dp))
+            .padding(horizontal = 5.dp, vertical = 1.5.dp)
     ) {
         Text(
             text = text,
             color = color,
-            fontSize = 11.sp,
+            fontSize = 9.5.sp,
             fontWeight = FontWeight.Bold,
-            letterSpacing = 0.5.sp,
+            letterSpacing = 0.3.sp,
             maxLines = 1
         )
     }
