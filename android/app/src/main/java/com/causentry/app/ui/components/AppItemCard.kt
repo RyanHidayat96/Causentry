@@ -104,10 +104,8 @@ fun AppItemCard(
                 if (app.accOff) {
                     StatusPill(text = "ACC", color = Color(0xFFFFB74D))
                 }
-                if (app.hideTemplate != null) {
+                if (!app.hideTemplate.isNullOrEmpty() && app.hideTemplate.lowercase() != "none") {
                     StatusPill(text = app.hideTemplate.uppercase(), color = SuccessGreen)
-                } else if (app.isProtected) {
-                    StatusPill(text = "CLOAKED", color = SuccessGreen)
                 }
                 if (!app.isProtected && !app.devOff && !app.mock && !app.isolate && !app.accOff && app.hideTemplate == null) {
                     StatusPill(text = "UNPROTECTED", color = TextTertiary.copy(alpha = 0.5f))

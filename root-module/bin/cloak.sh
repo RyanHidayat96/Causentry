@@ -115,12 +115,12 @@ if [ -f /data/system/packages.list ] && command -v awk >/dev/null 2>&1; then
       dev = (body ~ /"devOff"[[:space:]]*:[[:space:]]*true/) ? 1 : 0;
       iso = (body ~ /"isolate"[[:space:]]*:[[:space:]]*true/) ? 1 : 0;
       acc = (body ~ /"accOff"[[:space:]]*:[[:space:]]*true/) ? 1 : dev;
-      tpl = "stealth";
+      tpl = "@";
       if (match(body, /"hideTemplate"[[:space:]]*:[[:space:]]*"[^"]+"/)) {
         ts = substr(body, RSTART, RLENGTH);
         sub(/.*"hideTemplate"[[:space:]]*:[[:space:]]*"/, "", ts);
         sub(/".*/, "", ts);
-        tpl = ts;
+        if (ts != "" && ts != "none") tpl = ts;
       }
       print pkg, uids[pkg], tpl, iso, dev, acc;
     }
@@ -179,7 +179,11 @@ BEGIN {
   }
   targetUids = targetUids uid;
   targets = targets "\"" pkg "\"";
-  hiddenByTarget = hiddenByTarget "\"" pkg "\":" stealth_json;
+  if (tpl == "stealth") {
+    hiddenByTarget = hiddenByTarget "\"" pkg "\":" stealth_json;
+  } else {
+    hiddenByTarget = hiddenByTarget "\"" pkg "\":[]";
+  }
 
   if (iso == 1) {
     if (n_iso > 0) appZygote = appZygote ",";
