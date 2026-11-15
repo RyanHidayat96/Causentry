@@ -94,6 +94,58 @@ release_command_lock() {
   rmdir "$COMMAND_LOCK" 2>/dev/null
 }
 
+# status.json has many producers (watchdog serve/snapshot, apply-async publish,
+# the app's own wake-up, uirpc-wake). Without mutual exclusion a snapshot that
+# copied the config before a config write can publish after the write and revert
+# the UI to the previous state. The lock serialises publication; the config
+# stamp check below drops a snapshot whose config went stale while it was built.
+SNAPSHOT_LOCK=$DIR/.snapshot.lock
+SNAPSHOT_LOCK_TTL=60  # hard ceiling (s) for one snapshot; guards a killed holder
+
+lock_owner_alive() {  # lock_owner_alive <pid>
+  _o="$1"
+  [ -n "$_o" ] && [ -d "/proc/$_o" ] || return 1
+  # A recycled PID must not impersonate the holder: the owner has to be one of us.
+  _c=$(tr '\0' ' ' < "/proc/$_o/cmdline" 2>/dev/null)
+  case "$_c" in *uirpc*) return 0;; esac
+  return 1
+}
+
+_snapshot_lock_take() {
+  mkdir "$SNAPSHOT_LOCK" 2>/dev/null || return 1
+  echo "$$" > "$SNAPSHOT_LOCK/pid" 2>/dev/null
+  date +%s > "$SNAPSHOT_LOCK/ts" 2>/dev/null
+  return 0
+}
+
+acquire_snapshot_lock() {
+  _snapshot_lock_take && return 0
+  owner=$(cat "$SNAPSHOT_LOCK/pid" 2>/dev/null)
+  lts=$(cat "$SNAPSHOT_LOCK/ts" 2>/dev/null)
+  now=$(date +%s 2>/dev/null)
+  stale=0
+  lock_owner_alive "$owner" || stale=1
+  case "$lts" in
+    ''|*[!0-9]*) ;;
+    *) [ -n "$now" ] && [ $((now - lts)) -gt "$SNAPSHOT_LOCK_TTL" ] && stale=1 ;;
+  esac
+  [ "$stale" = 1 ] || return 1
+  # Reap the dead/overrun holder, then race once for the lock.
+  rm -rf "$SNAPSHOT_LOCK" 2>/dev/null
+  _snapshot_lock_take
+}
+
+release_snapshot_lock() {
+  owner=$(cat "$SNAPSHOT_LOCK/pid" 2>/dev/null)
+  [ "$owner" = "$$" ] || return 0
+  rm -f "$SNAPSHOT_LOCK/pid" 2>/dev/null
+  rmdir "$SNAPSHOT_LOCK" 2>/dev/null
+}
+
+conf_stamp() {
+  stat -c '%y/%s' "$1" 2>/dev/null || echo ""
+}
+
 schedule_root_cache_refresh() {
   root_cache_valid && return 0
   pid=$(cat "$ROOT_REFRESH_PID" 2>/dev/null)
@@ -145,10 +197,23 @@ schedule_apps_snapshot() {
 snapshot() {
   [ -d "/data/data/$APP_PKG" ] || return 0
   ensure_app_dirs
+  # Serialise with every other producer of status.json. Wait briefly instead of
+  # skipping so a click right after a watchdog snapshot still publishes.
+  _snap_wait=0
+  while ! acquire_snapshot_lock; do
+    _snap_wait=$((_snap_wait+1))
+    [ "$_snap_wait" -gt 50 ] && return 1
+    sleep 0.1 2>/dev/null || sleep 1
+  done
+  trap 'release_snapshot_lock' EXIT
+  trap 'exit 124' HUP INT TERM
   T=$(mktemp 2>/dev/null || echo "$DIR/.status.$$.tmp")
   SNAP_CONF=$(mktemp 2>/dev/null || echo "$DIR/.status-config.$$.tmp")
   cp -f "$CONF" "$SNAP_CONF" 2>/dev/null || printf '{}' > "$SNAP_CONF"
   CONF_LIVE=$CONF
+  # Stamp of the live config this snapshot is built from. If it moves before we
+  # publish, the result is already obsolete and must not overwrite newer state.
+  CONF_STAMP=$(conf_stamp "$CONF_LIVE")
   CONF=$SNAP_CONF
   state=$(cat "$DIR/runtime.state" 2>/dev/null); [ -z "$state" ] && state=unknown
   dpid=$(cat "$DIR/daemon.pid" 2>/dev/null); dalive=false
@@ -202,6 +267,14 @@ snapshot() {
     printf '"config":%s,' "$(tr -d '\n' < "$CONF" 2>/dev/null || echo '{}')"
     printf '"log":'; json_log_string; printf '}'
   } > "$T"
+  # Drop the publish when the config moved while this snapshot was being built:
+  # the newer config already has (or will get) its own snapshot, and writing this
+  # one would revert the UI to the state the user just changed.
+  if [ -n "$CONF_STAMP" ] && [ "$(conf_stamp "$CONF_LIVE")" != "$CONF_STAMP" ]; then
+    CONF=$CONF_LIVE
+    rm -f "$SNAP_CONF" "$T" 2>/dev/null
+    return 0
+  fi
   put "$T" "$APP_DIR/status.json"
   rc=$?
   CONF=$CONF_LIVE
@@ -239,8 +312,33 @@ apps_snapshot() {
 process_cmds() {
   [ -d "$CMD_DIR" ] || return 0
   acquire_command_lock || return 0
+  # A pending command for the same package that is *newer* than the one being
+  # executed supersedes it: per-app protection state is absolute, not a delta, so
+  # running the older command only burns serve cycles and drags the UI through an
+  # intermediate state. The queue drains at roughly one command per serve cycle
+  # (~4-6s), so a four-tap burst took 20s+ -- longer than the optimistic UI
+  # window, which is exactly what produced the "applied -> reverted -> applied"
+  # flicker. mtime ties (writes inside the same second) break by filename: ops are
+  # 'set-<epochMillis>' / 'del-<epochMillis>', so lexical order == chronological.
+  cmd_superseded() {  # cmd_superseded <pkg> <file> <mtime>
+    for c in "$CMD_DIR"/*.json; do
+      [ -f "$c" ] || continue
+      [ "$c" = "$2" ] && continue
+      l=$(cat "$c" 2>/dev/null | tr -d '\n')
+      a=$(printf '%s' "$l" | sed -nE 's/.*"action"[[:space:]]*:[[:space:]]*"([a-z]+)".*/\1/p')
+      case "$a" in setapp|delapp) ;; *) continue ;; esac
+      p=$(printf '%s' "$l" | sed -nE 's/.*"pkg"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' | head -1)
+      [ "$p" = "$1" ] || continue
+      m=$(stat -c %Y "$c" 2>/dev/null); case "$m" in ''|*[!0-9]*) m=0 ;; esac
+      if [ "$m" -gt "$3" ]; then return 0; fi
+      if [ "$m" -eq "$3" ] && [ "$c" \> "$2" ]; then return 0; fi
+    done
+    return 1
+  }
+
   for f in "$CMD_DIR"/*.json; do
     [ -f "$f" ] || continue
+    f_mtime=$(stat -c %Y "$f" 2>/dev/null); case "$f_mtime" in ''|*[!0-9]*) f_mtime=0 ;; esac
     line=$(cat "$f" 2>/dev/null | tr -d '\n')
     rm -f "$f"
     act=$(printf '%s' "$line" | sed -nE 's/.*"action"[[:space:]]*:[[:space:]]*"([a-z]+)".*/\1/p')
@@ -359,6 +457,10 @@ process_cmds() {
       setapp)
         # {"action":"setapp","pkg":"x","features":"devOff,mock"} -> enable + set features
         pkg=$(getf pkg); feats=$(getf features); template=$(getf template); op=$(getf op); rc=1
+        if valid_package_name "$pkg" && cmd_superseded "$pkg" "$f" "$f_mtime"; then
+          log "setapp superseded by a newer command for $pkg (op=$op)"
+          continue
+        fi
         if valid_package_name "$pkg"; then
           APP_PKG_NEW="$pkg" APP_FEATS_NEW="$feats" APP_HIDE_TEMPLATE_NEW="$template" sh "$DIR/appcfg.sh" set >> "$LOG" 2>&1
           config_rc=$?
@@ -380,6 +482,10 @@ process_cmds() {
         ;;
       delapp)
         pkg=$(getf pkg); op=$(getf op); rc=1
+        if valid_package_name "$pkg" && cmd_superseded "$pkg" "$f" "$f_mtime"; then
+          log "delapp superseded by a newer command for $pkg (op=$op)"
+          continue
+        fi
         if valid_package_name "$pkg"; then
           APP_PKG_NEW="$pkg" sh "$DIR/appcfg.sh" del >> "$LOG" 2>&1
           config_rc=$?

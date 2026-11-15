@@ -73,6 +73,96 @@ class DaemonBridge @Inject constructor(
     }
 
     /**
+     * In-flight optimistic expectations. status.json is published by several
+     * concurrent daemon writers, so a snapshot built from the pre-change config
+     * can still land after a save. Until the daemon confirms the change with its
+     * own snapshot, the expected value wins and the badge never dips back to
+     * UNPROTECTED in the middle of an apply.
+     */
+    private class PendingEdit(
+        val config: PerAppConfig?,
+        val remove: Boolean,
+        var expiresAt: Long,
+        val hardExpiresAt: Long
+    )
+
+    private val pendingEdits = java.util.concurrent.ConcurrentHashMap<String, PendingEdit>()
+    private val pendingTtlMs = 20_000L
+
+    /**
+     * Hard ceiling for an unconfirmed edit. While the daemon reports applyBusy the
+     * soft TTL is extended, because a queued apply legitimately takes several
+     * seconds; this cap stops an edit whose command never landed (superseded or
+     * dropped) from masking the real state forever.
+     */
+    private val pendingHardTtlMs = 90_000L
+
+    private fun recordPending(pkg: String, config: PerAppConfig?, remove: Boolean) {
+        val now = System.currentTimeMillis()
+        pendingEdits[pkg] = PendingEdit(config, remove, now + pendingTtlMs, now + pendingHardTtlMs)
+    }
+
+    /**
+     * Re-applies unconfirmed edits over a snapshot read from disk. An entry is
+     * dropped once the snapshot agrees with it (confirmed) or it goes stale.
+     */
+    private fun overlayPending(
+        targets: List<String>,
+        hardened: List<String>,
+        perApp: Map<String, PerAppConfig>,
+        applyBusy: Boolean = false
+    ): Triple<List<String>, List<String>, Map<String, PerAppConfig>> {
+        if (pendingEdits.isEmpty()) return Triple(targets, hardened, perApp)
+
+        val t = targets.toMutableList()
+        val h = hardened.toMutableList()
+        val a = perApp.toMutableMap()
+        val now = System.currentTimeMillis()
+
+        val iter = pendingEdits.entries.iterator()
+        while (iter.hasNext()) {
+            val (pkg, edit) = iter.next()
+            if (now > edit.hardExpiresAt) {
+                iter.remove()
+                continue
+            }
+            if (now > edit.expiresAt) {
+                if (applyBusy) {
+                    // Daemon is still working through the queue: keep the edit on
+                    // screen instead of flickering back to the stale state.
+                    edit.expiresAt = now + pendingTtlMs
+                } else {
+                    iter.remove()
+                    continue
+                }
+            }
+            if (edit.remove) {
+                if (!t.contains(pkg) && !a.containsKey(pkg)) {
+                    iter.remove()
+                    continue
+                }
+                t.remove(pkg)
+                h.remove(pkg)
+                a.remove(pkg)
+            } else {
+                val want = edit.config ?: continue
+                if (t.contains(pkg) && a[pkg] == want) {
+                    iter.remove()
+                    continue
+                }
+                if (!t.contains(pkg)) t.add(pkg)
+                if (want.isolate) {
+                    if (!h.contains(pkg)) h.add(pkg)
+                } else {
+                    h.remove(pkg)
+                }
+                a[pkg] = want
+            }
+        }
+        return Triple(t, h, a)
+    }
+
+    /**
      * Instant Optimistic UI Update: Mutates in-memory StateFlow immediately (0ms latency),
      * so Jetpack Compose UI updates at 120Hz without waiting for root shell I/O.
      */
@@ -95,6 +185,7 @@ class DaemonBridge @Inject constructor(
                 targetsList.remove(pkg)
                 hardenedList.remove(pkg)
                 perAppMap.remove(pkg)
+                recordPending(pkg, null, true)
             } else {
                 if (!targetsList.contains(pkg)) {
                     targetsList.add(pkg)
@@ -112,13 +203,15 @@ class DaemonBridge @Inject constructor(
                     hardenedList.remove(pkg)
                 }
 
-                perAppMap[pkg] = PerAppConfig(
+                val nextCfg = PerAppConfig(
                     devOff = nextDev,
                     mock = nextMock,
                     isolate = nextIsolate,
                     accOff = nextAcc,
                     hideTemplate = nextTpl
                 )
+                perAppMap[pkg] = nextCfg
+                recordPending(pkg, nextCfg, false)
             }
         }
 
@@ -240,10 +333,12 @@ class DaemonBridge @Inject constructor(
                     isolate = nextIsolate,
                     accOff = nextAcc
                 )
+                recordPending(pkg, perAppMap[pkg], false)
             } else {
                 targetsList.remove(pkg)
                 hardenedList.remove(pkg)
                 perAppMap.remove(pkg)
+                recordPending(pkg, null, true)
             }
         }
 
@@ -510,6 +605,12 @@ class DaemonBridge @Inject constructor(
         val storageRoots = jsonList(storageRulesObj?.optJSONArray("hiddenRootEntryNames"))
         val storageRelatives = jsonList(storageRulesObj?.optJSONArray("hiddenRelativePaths"))
 
+        // Keep unconfirmed edits visible over a snapshot that raced the save. While
+        // the daemon reports an apply in flight the edit is held past its soft TTL,
+        // so a slow queue no longer produces the applied -> reverted -> applied dip.
+        val uiApplyBusy = json.optBoolean("applyBusy", false)
+        val (uiTargets, uiHardened, uiPerApp) = overlayPending(targetsList, hardenedList, perAppMap, uiApplyBusy)
+
         return DaemonStatus(
             state = json.optString("state", "unknown"),
             daemonAlive = json.optBoolean("daemon", false),
@@ -518,8 +619,8 @@ class DaemonBridge @Inject constructor(
             susfs = json.optString("susfs", "unsupported"),
             zygisk = json.optString("zygisk", "unknown"),
             cloakReady = json.optBoolean("cloakReady", false),
-            targets = targetsList,
-            hardened = hardenedList,
+            targets = uiTargets,
+            hardened = uiHardened,
             denylist = denylistList,
             autoDevOff = json.optBoolean("autoDevOff", true),
             hideMockLocation = json.optBoolean("hideMockLocation", true),
@@ -536,7 +637,7 @@ class DaemonBridge @Inject constructor(
             commandRc = json.optInt("commandRc", 0),
             commandToken = json.optString("commandToken", ""),
             templates = templatesMap,
-            perAppConfigs = perAppMap,
+            perAppConfigs = uiPerApp,
             log = json.optString("log", ""),
             fuseActive = fuseActive,
             fuseCovered = fuseCovered,
