@@ -392,6 +392,27 @@ refresh_cloak_policy() {
   return "$policy_rc"
 }
 
+# Some targets persist their own security verdicts (Bibit stores every Talsec/
+# freeRASP watcher result as a DataStore boolean, e.g. talsecRoot). That stored
+# flag outlives the cloak and gates the next launch, so hiding the signal alone
+# never re-opens the app. Clear it only while the process is dead, and only the
+# bytes that hold a false-by-default bool, so the repair stays non-destructive.
+reset_app_security_state() {
+  pkg="$1"
+  case "$pkg" in
+    com.bibit.bibitid)
+      [ -f "$DIR/bin/bibit-state.sh" ] || return 0
+      # Run it through sh: the helper's shebang is /system/bin/sh, which does not
+      # always resolve when the caller was started from a different shell.
+      if sh "$DIR/bin/bibit-state.sh" clear >/dev/null 2>&1; then
+        log "cleared persisted talsec flags: $pkg"
+      else
+        log "talsec flag clear failed: $pkg"
+      fi
+      ;;
+  esac
+}
+
 # A per-app toggle also restarts only that target, so its first process observes
 # the new policy. Template edits deliberately use refresh_cloak_policy() alone.
 per_app_refresh() {
@@ -402,6 +423,7 @@ per_app_refresh() {
   policy_rc=$?
   if valid_package_name "$pkg"; then
     am force-stop "$pkg" >/dev/null 2>&1 && log "force-stopped target after config change: $pkg"
+    reset_app_security_state "$pkg"
   fi
   return "$policy_rc"
 }

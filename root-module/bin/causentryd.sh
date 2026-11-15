@@ -272,6 +272,9 @@ logcat -b events -s "$EV" -s am_proc_died 2>/dev/null | while read -r line; do
           *",$t,"*|*",$t]"*)
             log "event: died $t"
             sleep 1
+            # The target is gone, so a stored security verdict can be cleared
+            # without its DataStore cache rewriting the file on exit.
+            reset_app_security_state "$t"
             locked_evaluate
             ;;
         esac

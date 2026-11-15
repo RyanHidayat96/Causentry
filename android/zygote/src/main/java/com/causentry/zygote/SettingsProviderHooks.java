@@ -43,7 +43,9 @@ final class SettingsProviderHooks {
     private static final Set<String> HIDDEN_SECURE_SETTINGS = Collections.unmodifiableSet(
             new HashSet<>(Arrays.asList(
                     "enabled_accessibility_services",
-                    "accessibility_enabled")));
+                    "accessibility_enabled",
+                    "touch_exploration_enabled",
+                    "touch_exploration_granted_accessibility_services")));
     private static volatile int installedHooks;
 
     private SettingsProviderHooks() {}
@@ -100,7 +102,7 @@ final class SettingsProviderHooks {
         if (secureKey != null && CloakPolicy.hidesAccessibility(callingUid)) {
             Bundle result = new Bundle();
             result.putString(Settings.NameValueTable.NAME, secureKey);
-            if ("enabled_accessibility_services".equals(secureKey)) {
+            if (secureKey.endsWith("accessibility_services")) {
                 // Return empty — no accessibility services enabled
                 result.putString(Settings.NameValueTable.VALUE, "");
             } else {

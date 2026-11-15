@@ -73,6 +73,33 @@ final class CloakPolicy {
         return accessibilityUids.contains(uid);
     }
 
+    /**
+     * True when at least one protected app asks for developer-mode cloaking.
+     * Used by hooks that run inside system_server, where the caller UID is
+     * always 1000 and cannot be matched against the target list.
+     */
+    static boolean anyDeveloperOptionsHidden() {
+        refresh(false);
+        return !developerOptionsUids.isEmpty();
+    }
+
+    private static final File PROBE_FLAG = new File("/data/system/causentry/probe");
+    private static volatile long probeCheckedAt;
+    private static volatile boolean probeOn;
+
+    /**
+     * Diagnostic switch: toggled by creating /data/system/causentry/probe.
+     * While enabled, every package-query hit from a protected UID is logged,
+     * so a detector's exact probe path can be identified without guessing.
+     */
+    static boolean probeEnabled() {
+        long now = System.currentTimeMillis();
+        if (now - probeCheckedAt < REFRESH_MS) return probeOn;
+        probeCheckedAt = now;
+        probeOn = PROBE_FLAG.exists();
+        return probeOn;
+    }
+
     static void refreshNow() {
         refresh(true);
     }

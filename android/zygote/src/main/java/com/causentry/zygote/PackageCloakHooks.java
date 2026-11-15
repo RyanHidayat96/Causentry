@@ -4,6 +4,7 @@ import android.content.ComponentName;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ComponentInfo;
 import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.ResolveInfo;
 import android.os.Binder;
 import android.os.Build;
@@ -36,18 +37,18 @@ final class PackageCloakHooks {
 
             int installed = 0;
             if (hookBefore("com.android.server.pm.ComputerEngine", "getPackageInfoInternal",
-                    PackageCloakHooks::shouldHideStringQuery, null)) installed++;
+                    PackageCloakHooks::shouldHideStringQuery, THROW_NAME_NOT_FOUND)) installed++;
             if (hookBefore("com.android.server.pm.ComputerEngine", "getApplicationInfoInternal",
-                    PackageCloakHooks::shouldHideStringQuery, null)) installed++;
+                    PackageCloakHooks::shouldHideStringQuery, THROW_NAME_NOT_FOUND)) installed++;
             if (hookBefore("com.android.server.pm.ComputerEngine", "getApplicationInfo",
-                    PackageCloakHooks::shouldHideStringQuery, null)) installed++;
+                    PackageCloakHooks::shouldHideStringQuery, THROW_NAME_NOT_FOUND)) installed++;
             installed += hookVisibilityChecks();
             if (hookBefore("com.android.server.pm.ComputerEngine", "generatePackageInfo",
-                    PackageCloakHooks::shouldHideGeneratedPackageInfo, null)) installed++;
+                    PackageCloakHooks::shouldHideGeneratedPackageInfo, THROW_NAME_NOT_FOUND)) installed++;
             if (hookBefore("com.android.server.pm.ComputerEngine", "getPackageUidInternal",
                     PackageCloakHooks::shouldHidePackageUid, -1)) installed++;
             if (hookBefore("com.android.server.pm.ComputerEngine", "getActivityInfoInternal",
-                    PackageCloakHooks::shouldHideObjectQuery, null)) installed++;
+                    PackageCloakHooks::shouldHideObjectQuery, THROW_NAME_NOT_FOUND)) installed++;
             installed += hookAfter("com.android.server.pm.ComputerEngine",
                     "queryIntentActivitiesInternal", PackageCloakHooks::filterIntentResult);
             installed += hookAfter("com.android.server.pm.ComputerEngine",
@@ -62,6 +63,16 @@ final class PackageCloakHooks {
                     "getShortcutConfigActivities", PackageCloakHooks::filterIntentResult);
             installed += hookAfter("com.android.server.pm.LauncherAppsService$LauncherAppsImpl",
                     "getActivityList", PackageCloakHooks::filterIntentResult);
+            // Inventory queries are the classic RootBeer "root management app" probe:
+            // a single getInstalledPackages() call would otherwise expose every module app.
+            installed += hookAfter("com.android.server.pm.ComputerEngine",
+                    "getInstalledPackagesInternal", PackageCloakHooks::filterIntentResult);
+            installed += hookAfter("com.android.server.pm.ComputerEngine",
+                    "getInstalledApplicationsInternal", PackageCloakHooks::filterIntentResult);
+            installed += hookAfter("com.android.server.pm.ComputerEngine",
+                    "getInstalledPackages", PackageCloakHooks::filterIntentResult);
+            installed += hookAfter("com.android.server.pm.ComputerEngine",
+                    "getInstalledApplications", PackageCloakHooks::filterIntentResult);
             FramePredicate appFilter = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
                     ? PackageCloakHooks::shouldFilterApplicationApi34
                     : PackageCloakHooks::shouldFilterApplication;
@@ -69,6 +80,9 @@ final class PackageCloakHooks {
                     appFilter, true)) installed++;
             installed += AppZygoteHooks.install(systemServerLoader);
             installed += ActiveServicesHooks.install(systemServerLoader);
+            // Binder-level accessibility state must be cloaked too, otherwise
+            // AccessibilityManagerService leaks the live service list to apps.
+            AccessibilityHooks.install(systemServerLoader);
 
             if (installed >= 2) {
                 SystemServerBackend.markCloakReady(installed);
@@ -79,6 +93,9 @@ final class PackageCloakHooks {
             Log.e(TAG, "package hook initialization failed", error);
         }
     }
+
+    /** Sentinel: a hidden package must behave exactly like an uninstalled one. */
+    private static final Object THROW_NAME_NOT_FOUND = new Object();
 
     private static boolean hookBefore(
             String className,
@@ -94,6 +111,16 @@ final class PackageCloakHooks {
             }
             HookTransformer transformer = (original, frame) -> {
                 if (predicate.matches(frame)) {
+                    String hidden = hiddenPackageFor(frame);
+                    if (CloakPolicy.probeEnabled()) {
+                        Log.i(TAG, "probe " + methodName + " uid=" + findCallingUid(frame)
+                                + " pkg=" + hidden);
+                    }
+                    if (replacement == THROW_NAME_NOT_FOUND) {
+                        // Returning null made callers treat a cloaked package as present.
+                        // An uninstalled package raises NameNotFoundException, so mirror that.
+                        throw new NameNotFoundException(hidden == null ? "" : hidden);
+                    }
                     frame.accessor().setValue(EmulatedStackFrame.RETURN_VALUE_IDX, replacement);
                     return;
                 }
@@ -106,6 +133,11 @@ final class PackageCloakHooks {
             Log.e(TAG, "hook failed " + className + "#" + methodName, error);
             return false;
         }
+    }
+
+    private static String hiddenPackageFor(EmulatedStackFrame frame) {
+        String packageName = firstString(frame);
+        return packageName != null ? packageName : packageNameFromObjects(frame);
     }
 
     private static Executable findExecutable(Class<?> clazz, String name) {
@@ -265,6 +297,10 @@ final class PackageCloakHooks {
             }
             if (changed) {
                 frame.accessor().setValue(EmulatedStackFrame.RETURN_VALUE_IDX, visible);
+            }
+            if (CloakPolicy.probeEnabled()) {
+                Log.i(TAG, "probe list uid=" + uid + " in=" + entries.size()
+                        + " out=" + visible.size());
             }
             return;
         }

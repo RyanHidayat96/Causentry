@@ -1,0 +1,207 @@
+== Causentry build ==
+   root    : C:\Users\exery\Documents\MyProject\Causentry
+   java    : C:\Program Files\Java\jdk-21\bin\java.exe
+   sdk     : C:\Users\exery\Documents\MyProject\Causentry\tools\sdk
+   version : v1.1.0
+   zygisk  : included when native .so artifacts are present
+[1/1] compiling modern Compose M3 control UI (:app:assembleRelease)
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.8.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Configure project :zygote
+WARNING: androidTestReleaseImplementation dependencies are ignored because androidTest is disabled.
+
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:mergeReleaseJniLibFolders
+> Task :app:mergeReleaseNativeLibs
+
+> Task :app:stripReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so, libdatastore_shared_counter.so. Run with --info option to learn more.
+
+> Task :app:mergeReleaseArtProfile
+> Task :app:extractReleaseNativeSymbolTables FROM-CACHE
+> Task :app:checkReleaseDuplicateClasses
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:generateReleaseBuildConfig FROM-CACHE
+> Task :app:generateReleaseResources FROM-CACHE
+> Task :app:packageReleaseResources FROM-CACHE
+> Task :app:processReleaseNavigationResources FROM-CACHE
+> Task :app:parseReleaseLocalResources FROM-CACHE
+> Task :app:generateReleaseRFile FROM-CACHE
+> Task :app:kspReleaseKotlin FROM-CACHE
+> Task :app:compileReleaseKotlin FROM-CACHE
+> Task :app:javaPreCompileRelease FROM-CACHE
+> Task :app:compileReleaseJavaWithJavac FROM-CACHE
+> Task :app:hiltCollectClassesRelease UP-TO-DATE
+> Task :app:hiltAggregateDepsRelease FROM-CACHE
+> Task :app:hiltJavaCompileRelease FROM-CACHE
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:compileReleaseNavigationResources FROM-CACHE
+> Task :app:checkReleaseAarMetadata
+> Task :app:mergeReleaseResources FROM-CACHE
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease FROM-CACHE
+> Task :app:processReleaseMainManifest FROM-CACHE
+> Task :app:processReleaseManifest FROM-CACHE
+> Task :app:processReleaseManifestForPackage FROM-CACHE
+> Task :app:processReleaseResources FROM-CACHE
+> Task :app:transformReleaseClassesWithAsm FROM-CACHE
+> Task :app:expandReleaseArtProfileWildcards FROM-CACHE
+> Task :app:extractProguardFiles
+> Task :app:mergeReleaseGeneratedProguardFiles
+> Task :app:processReleaseJavaRes
+> Task :app:mergeReleaseStartupProfile UP-TO-DATE
+> Task :app:produceReleaseComposeMapping FROM-CACHE
+> Task :app:reportReleaseComposeMappingErrors
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets
+> Task :app:compressReleaseAssets FROM-CACHE
+> Task :app:extractReleaseVersionControlInfo
+> Task :app:generateReleaseLintVitalReportModel
+> Task :app:lintVitalAnalyzeRelease FROM-CACHE
+> Task :app:collectReleaseDependencies
+> Task :app:sdkReleaseDependencyData
+> Task :app:validateSigningRelease
+> Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
+> Task :app:mergeReleaseJavaResource
+> Task :app:minifyReleaseWithR8 FROM-CACHE
+> Task :app:mergeReleaseComposeMapping
+> Task :app:compileReleaseArtProfile FROM-CACHE
+> Task :app:convertShrunkResourcesToBinaryRelease FROM-CACHE
+> Task :app:optimizeReleaseResources FROM-CACHE
+> Task :app:lintVitalReportRelease
+> Task :app:lintVitalRelease
+> Task :app:packageRelease
+> Task :app:createReleaseApkListingFileRedirect
+> Task :app:assembleRelease
+
+[Incubating] Problems report is available at: file:///C:/Users/exery/Documents/MyProject/Causentry/android/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.8.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 46s
+56 actionable tasks: 26 executed, 29 from cache, 1 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.8.1/userguide/configuration_cache_enabling.html
+      payload ok: C:\Users\exery\Documents\MyProject\Causentry\root-module\payload\Causentry.apk (1,521,849 bytes)
+
+== building Zygisk system_server backend ==
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.8.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Configure project :zygote
+WARNING: androidTestReleaseImplementation dependencies are ignored because androidTest is disabled.
+
+> Task :zygote:compileMainRaung UP-TO-DATE
+> Task :zygote:jarMainRaung UP-TO-DATE
+> Task :zygote:compileReleaseRaung NO-SOURCE
+> Task :zygote:jarReleaseRaung UP-TO-DATE
+> Task :zygote:preBuild UP-TO-DATE
+> Task :zygote:preReleaseBuild UP-TO-DATE
+> Task :zygote:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :zygote:mergeReleaseNativeLibs UP-TO-DATE
+> Task :zygote:stripReleaseDebugSymbols UP-TO-DATE
+> Task :zygote:extractReleaseNativeSymbolTables UP-TO-DATE
+> Task :zygote:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :zygote:checkReleaseDuplicateClasses UP-TO-DATE
+> Task :zygote:generateReleaseBuildConfig UP-TO-DATE
+> Task :zygote:generateReleaseResources UP-TO-DATE
+> Task :zygote:packageReleaseResources UP-TO-DATE
+> Task :zygote:processReleaseNavigationResources UP-TO-DATE
+> Task :zygote:parseReleaseLocalResources UP-TO-DATE
+> Task :zygote:generateReleaseRFile UP-TO-DATE
+> Task :zygote:compileReleaseKotlin NO-SOURCE
+> Task :zygote:javaPreCompileRelease UP-TO-DATE
+> Task :zygote:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :zygote:mergeReleaseArtProfile UP-TO-DATE
+> Task :zygote:checkReleaseAarMetadata UP-TO-DATE
+> Task :zygote:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :zygote:compileReleaseNavigationResources UP-TO-DATE
+> Task :zygote:mergeReleaseResources UP-TO-DATE
+> Task :zygote:createReleaseCompatibleScreenManifests UP-TO-DATE
+> Task :zygote:extractDeepLinksRelease UP-TO-DATE
+> Task :zygote:processReleaseMainManifest UP-TO-DATE
+> Task :zygote:processReleaseManifest UP-TO-DATE
+> Task :zygote:processReleaseManifestForPackage UP-TO-DATE
+> Task :zygote:processReleaseResources UP-TO-DATE
+> Task :zygote:expandReleaseArtProfileWildcards UP-TO-DATE
+> Task :zygote:extractProguardFiles UP-TO-DATE
+> Task :zygote:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :zygote:processReleaseJavaRes NO-SOURCE
+> Task :zygote:mergeReleaseJavaResource UP-TO-DATE
+> Task :zygote:mergeReleaseStartupProfile UP-TO-DATE
+> Task :zygote:minifyReleaseWithR8 UP-TO-DATE
+> Task :zygote:compileReleaseArtProfile UP-TO-DATE
+> Task :zygote:generateReleaseAssets UP-TO-DATE
+> Task :zygote:mergeReleaseAssets UP-TO-DATE
+> Task :zygote:compressReleaseAssets UP-TO-DATE
+> Task :zygote:extractReleaseVersionControlInfo UP-TO-DATE
+> Task :zygote:generateReleaseLintVitalReportModel UP-TO-DATE
+> Task :zygote:optimizeReleaseResources UP-TO-DATE
+> Task :zygote:collectReleaseDependencies UP-TO-DATE
+> Task :zygote:sdkReleaseDependencyData UP-TO-DATE
+> Task :zygote:writeReleaseAppMetadata UP-TO-DATE
+> Task :zygote:writeReleaseSigningConfigVersions UP-TO-DATE
+> Task :zygote:generateInitialPackagesRelease UP-TO-DATE
+> Task :zygote:lintVitalAnalyzeRelease
+> Task :zygote:lintVitalReportRelease
+> Task :zygote:lintVitalRelease
+> Task :zygote:packageRelease UP-TO-DATE
+> Task :zygote:createReleaseApkListingFileRedirect UP-TO-DATE
+> Task :zygote:generateModulePropRelease UP-TO-DATE
+> Task :zygote:mergeMagiskRelease UP-TO-DATE
+> Task :zygote:generateChecksumRelease UP-TO-DATE
+> Task :zygote:generateCustomizeRelease UP-TO-DATE
+> Task :zygote:zipMagiskRelease UP-TO-DATE
+> Task :zygote:assembleRelease UP-TO-DATE
+
+[Incubating] Problems report is available at: file:///C:/Users/exery/Documents/MyProject/Causentry/android/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.8.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 45s
+54 actionable tasks: 3 executed, 51 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.8.1/userguide/configuration_cache_enabling.html
+   backend ok : 1 DEX file(s) + 4 package marker(s) + 4 Zygisk loader libraries
+   compiling native C++ FUSE cloaker & Zygisk engine (arm64-v8a)...
+-- 
+-- ********* build environment check ***********
+-- 	Compiler: 	 Clang
+-- 	Processor:	 aarch64
+-- 	System:   	 Android
+-- ***************************************
+-- 
+-- CMAKE_C_COMPILER: C:/Users/exery/Documents/MyProject/Causentry/tools/sdk/ndk/26.1.10909125/toolchains/llvm/prebuilt/windows-x86_64/bin/clang.exe
+-- CMAKE_CXX_COMPILER: C:/Users/exery/Documents/MyProject/Causentry/tools/sdk/ndk/26.1.10909125/toolchains/llvm/prebuilt/windows-x86_64/bin/clang++.exe
+-- CMAKE_C_FLAGS: -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  -fomit-frame-pointer -ffunction-sections -fdata-sections -O3 -fno-rtti -fvisibility=hidden -fvisibility-inlines-hidden
+-- CMAKE_CXX_FLAGS: -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  
+-- CMAKE_SHARED_LINKER_FLAGS: -static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments 
+-- [Dobby] Enable near branch trampoline
+-- [Dobby] Enable symbol resolver
+-- [Dobby] Dobby
+-- [Dobby] Generate static library
+-- Configuring done
+-- Generating done
+-- Build files have been written to: C:/Users/exery/Documents/MyProject/Causentry/android/zygote/src/main/cpp/build-arm64
+ninja: no work to do.
+   native FUSE storage cloaker & Zygisk engine integrated successfully!
+
+== packing module zip ==
+   module.prop : v1.1.0
+   zip ok      : C:\Users\exery\Documents\MyProject\Causentry\release\Causentry-KSUN-v1.1.0.zip (1,923,289 bytes, 43 files)
+
+DONE
+   APK : C:\Users\exery\Documents\MyProject\Causentry\root-module\payload\Causentry.apk
+   ZIP : C:\Users\exery\Documents\MyProject\Causentry\release\Causentry-KSUN-v1.1.0.zip
+
+Install : KernelSU/Magisk manager -> Modules -> Install from storage -> Causentry-KSUN-v1.1.0.zip
+Then    : reboot, tap the module Action button to open the control UI

@@ -55,6 +55,24 @@ final class SystemServerBackend {
         }
         PackageCloakHooks.install();
         installSystemSettingsHooks();
+        installUsbStateHooks();
+    }
+
+    /**
+     * Keeps the sticky USB_STATE broadcast honest (adb=false) for protected
+     * apps. Runs even when SettingsProvider lives in another process, because
+     * the broadcast never passes through that provider.
+     */
+    private static void installUsbStateHooks() {
+        try {
+            int hooks = UsbStateHooks.install();
+            if (hooks > 0) {
+                writeMarker("zygisk.usb.ready", Integer.toString(Process.myPid()) + " " + hooks);
+            }
+            Log.i(TAG, "usb state hooks=" + hooks);
+        } catch (Throwable error) {
+            Log.w(TAG, "usb state hook install failed", error);
+        }
     }
 
     private static void installSystemSettingsHooks() {
