@@ -166,6 +166,19 @@ complete_command() {
   printf '%s' "$token" > "$DIR/.command.done.token" 2>/dev/null
 }
 
+mark_apply_done() {
+  # Publish the apply-completion markers consumers match against their op token.
+  # Paths that reconcile policies in-process (setapp/delapp/template save) must
+  # report here too, otherwise every waiter spins until its timeout, reverts its
+  # optimistic UI, and the real value lands later as a visible flicker.
+  rc="${1:-0}"
+  op="${2:-}"
+  case "$rc" in ''|*[!0-9]*) rc=1;; esac
+  date +%s > "$DIR/.apply.done" 2>/dev/null
+  printf '%s' "$rc" > "$DIR/.apply.rc" 2>/dev/null
+  [ -n "$op" ] && printf '%s' "$op" > "$DIR/.apply.done.token" 2>/dev/null
+}
+
 schedule_apply() {
   mode="${1:-app}"
   op="$2"
@@ -226,6 +239,14 @@ snapshot() {
   if [ "$dage" -gt 20 ]; then dalive=false; fi
   apply_busy=false
   if [ -d "$DIR/apply.lock" ] || [ -f "$DIR/.apply.pending" ]; then apply_busy=true; fi
+  # Queued commands still waiting to be drained count as busy too: the UI holds
+  # its optimistic state while this is true, so a backlog of taps cannot expire
+  # the overlay and flash the previous state back.
+  if [ "$apply_busy" = false ]; then
+    queue_depth=$(ls "$CMD_DIR" 2>/dev/null | grep -c '^cmd-')
+    case "$queue_depth" in ''|*[!0-9]*) queue_depth=0;; esac
+    [ "$queue_depth" -gt 0 ] && apply_busy=true
+  fi
   apply_done=$(cat "$DIR/.apply.done" 2>/dev/null); case "$apply_done" in ""|*[!0-9]*) apply_done=0;; esac
   apply_rc=$(cat "$DIR/.apply.rc" 2>/dev/null); case "$apply_rc" in ""|*[!0-9]*) apply_rc=0;; esac
   apply_token=$(cat "$DIR/.apply.done.token" 2>/dev/null)
@@ -409,7 +430,13 @@ process_cmds() {
           log "config saved (control-UI app)"
           if [ "$scope" = template ]; then
             refresh_cloak_policy >> "$LOG" 2>&1
-            complete_command "$op" "$?"
+            # A template-scope save must still report completion (see mark_apply_done).
+            complete_command "$op" 0
+            if [ -x "$DIR/apply-async.sh" ] || [ -x "$DIR/apply.sh" ]; then
+              schedule_apply app "$op"
+            else
+              mark_apply_done 0 "$op"
+            fi
           else
             schedule_apply app "$op"
           fi
@@ -417,8 +444,7 @@ process_cmds() {
         else
           rm -f "$CONF_NEW"
           log "config save failed (control-UI app)"
-          printf '%s' 1 > "$DIR/.apply.rc" 2>/dev/null
-          [ -n "$op" ] && printf '%s' "$op" > "$DIR/.apply.done.token" 2>/dev/null
+          mark_apply_done 1 "$op"
           complete_command "$op" 1
         fi
         ;;
@@ -439,10 +465,43 @@ process_cmds() {
           T="$CONF.new"
           if printf '%s' "$b64" | base64 -d 2>/dev/null | tr -d '\r\n\xef\xbb\xbf' > "$T"; then
             if [ -s "$T" ]; then
+              PREV="$DIR/.config.prev"
+              cp -f "$CONF" "$PREV" 2>/dev/null
+              OLD_TARGETS=$(jlist targets)
               mv -f "$T" "$CONF"
               chmod 644 "$CONF"
               sh "$DIR/cloak.sh" >> "$LOG" 2>&1
               sh "$DIR/apply.sh" app >> "$LOG" 2>&1
+              # A restore changes policies for apps that may already be running.
+              # Restart only the targets whose state actually changed, exactly like a
+              # per-app toggle does; otherwise they keep their pre-restore process.
+              NEW_TARGETS=$(jlist targets)
+              CHANGED="$DIR/.restore-restart"
+              : > "$CHANGED"
+              # union of old+new targets: added, changed, and dropped apps all need a
+              # fresh process, otherwise a dropped app keeps running with root hidden.
+              for p in $NEW_TARGETS $OLD_TARGETS; do
+                [ -n "$p" ] || continue
+                case " $(echo $NEW_TARGETS) " in
+                  *" $p "*)
+                    case " $(echo $OLD_TARGETS) " in
+                      *" $p "*) new_e=$(apps_entry "$CONF" "$p"); old_e=$(apps_entry "$PREV" "$p")
+                              [ "$new_e" = "$old_e" ] && continue ;;
+                    esac ;;
+                esac
+                grep -qxF "$p" "$CHANGED" 2>/dev/null || printf '%s\n' "$p" >> "$CHANGED"
+              done
+              if [ -s "$CHANGED" ]; then
+                while IFS= read -r p; do
+                  [ -n "$p" ] || continue
+                  # never force-stop ourselves: killing the UI mid-restore drops the
+                  # adb/uirpc session that is running this very command.
+                  [ "$p" = "$APP_PKG" ] && { reset_app_verdict_cache "$p"; continue; }
+                  am force-stop "$p" >/dev/null 2>&1 && log "restore: restarted target $p"
+                  reset_app_verdict_cache "$p"
+                done < "$CHANGED"
+              fi
+              rm -f "$CHANGED" "$PREV"
               mark_changed
               schedule_apps_snapshot
               rc=0
@@ -452,6 +511,7 @@ process_cmds() {
             fi
           fi
         fi
+        mark_apply_done "$rc" "$op"
         complete_command "$op" "$rc"
         ;;
       setapp)
@@ -478,6 +538,7 @@ process_cmds() {
             rc=$config_rc
           fi
         fi
+        mark_apply_done "$rc" "$op"
         complete_command "$op" "$rc"
         ;;
       delapp)
@@ -502,6 +563,7 @@ process_cmds() {
             rc=$config_rc
           fi
         fi
+        mark_apply_done "$rc" "$op"
         complete_command "$op" "$rc"
         ;;
     esac

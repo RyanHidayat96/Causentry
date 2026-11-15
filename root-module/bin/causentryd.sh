@@ -124,29 +124,75 @@ evaluate() {
   fi
 }
 
+EVAL_LOCK_TTL=120  # hard ceiling (s) for one evaluate/activate; guards a killed holder
+
+_eval_owner_alive() {  # _eval_owner_alive <pid>
+  _o="$1"
+  [ -n "$_o" ] && [ -d "/proc/$_o" ] || return 1
+  # A recycled PID must not impersonate the holder: the owner has to be one of us.
+  _c=$(tr '\0' ' ' < "/proc/$_o/cmdline" 2>/dev/null)
+  case "$_c" in *causentryd*|*uirpc*|*causentry-loop*) return 0;; esac
+  return 1
+}
+
+_eval_lock_take() {
+  mkdir "$EVAL_LOCK" 2>/dev/null || return 1
+  echo "$$" > "$EVAL_LOCK/pid" 2>/dev/null
+  date +%s > "$EVAL_LOCK/ts" 2>/dev/null
+  return 0
+}
+
+# Take the lock, reaping a dead or overrun holder. A bare `mkdir` mutex used to
+# leak: one kill mid-evaluate left the directory behind and every later
+# evaluate/activate was skipped for good, so policies silently stopped applying.
+acquire_eval_lock() {
+  _eval_lock_take && return 0
+  owner=$(cat "$EVAL_LOCK/pid" 2>/dev/null)
+  lts=$(cat "$EVAL_LOCK/ts" 2>/dev/null)
+  now=$(date +%s 2>/dev/null)
+  stale=0
+  # No pid at all means the holder died between mkdir and the pid write.
+  [ -n "$owner" ] || stale=1
+  _eval_owner_alive "$owner" || stale=1
+  case "$lts" in
+    ''|*[!0-9]*) ;;   # no usable ts: trust the liveness check above
+    *) [ -n "$now" ] && [ $((now - lts)) -gt "$EVAL_LOCK_TTL" ] && stale=1 ;;
+  esac
+  [ "$stale" = 1 ] || return 1
+  log "eval lock: reaping stale holder '${owner:-none}'"
+  rm -rf "$EVAL_LOCK" 2>/dev/null
+  _eval_lock_take
+}
+
+release_eval_lock() {
+  owner=$(cat "$EVAL_LOCK/pid" 2>/dev/null)
+  [ "$owner" = "$$" ] || return 0
+  rm -rf "$EVAL_LOCK" 2>/dev/null
+}
+
 locked_evaluate() {
   i=0
-  while ! mkdir "$EVAL_LOCK" 2>/dev/null; do
+  while ! acquire_eval_lock; do
     i=$((i+1))
     [ "$i" -ge 30 ] && { log "evaluate skipped: lock busy"; return 0; }
     sleep 0.1
   done
   evaluate
   rc=$?
-  rmdir "$EVAL_LOCK" 2>/dev/null
+  release_eval_lock
   return "$rc"
 }
 
 locked_activate() {
   i=0
-  while ! mkdir "$EVAL_LOCK" 2>/dev/null; do
+  while ! acquire_eval_lock; do
     i=$((i+1))
     [ "$i" -ge 30 ] && { log "activate skipped: lock busy"; return 0; }
     sleep 0.1
   done
   activate "$@"
   rc=$?
-  rmdir "$EVAL_LOCK" 2>/dev/null
+  release_eval_lock
   return "$rc"
 }
 
@@ -274,7 +320,7 @@ logcat -b events -s "$EV" -s am_proc_died 2>/dev/null | while read -r line; do
             sleep 1
             # The target is gone, so a stored security verdict can be cleared
             # without its DataStore cache rewriting the file on exit.
-            reset_app_security_state "$t"
+            reset_app_verdict_cache "$t"
             locked_evaluate
             ;;
         esac

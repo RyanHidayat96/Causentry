@@ -82,6 +82,7 @@ class DaemonBridge @Inject constructor(
     private class PendingEdit(
         val config: PerAppConfig?,
         val remove: Boolean,
+        val createdAt: Long,
         var expiresAt: Long,
         val hardExpiresAt: Long
     )
@@ -99,18 +100,23 @@ class DaemonBridge @Inject constructor(
 
     private fun recordPending(pkg: String, config: PerAppConfig?, remove: Boolean) {
         val now = System.currentTimeMillis()
-        pendingEdits[pkg] = PendingEdit(config, remove, now + pendingTtlMs, now + pendingHardTtlMs)
+        pendingEdits[pkg] = PendingEdit(config, remove, now, now + pendingTtlMs, now + pendingHardTtlMs)
     }
 
     /**
      * Re-applies unconfirmed edits over a snapshot read from disk. An entry is
-     * dropped once the snapshot agrees with it (confirmed) or it goes stale.
+     * dropped once the snapshot agrees with it (confirmed) or its hard ceiling is
+     * hit. A snapshot older than the edit cannot possibly confirm or contradict
+     * it -- the daemon writes status.json from several concurrent writers, so a
+     * pre-change snapshot routinely lands after the save; trusting it would flip
+     * the badge back to the stale value mid-apply (the 3-phase flicker).
      */
     private fun overlayPending(
         targets: List<String>,
         hardened: List<String>,
         perApp: Map<String, PerAppConfig>,
-        applyBusy: Boolean = false
+        applyBusy: Boolean = false,
+        snapshotTsMs: Long = 0L
     ): Triple<List<String>, List<String>, Map<String, PerAppConfig>> {
         if (pendingEdits.isEmpty()) return Triple(targets, hardened, perApp)
 
@@ -126,10 +132,14 @@ class DaemonBridge @Inject constructor(
                 iter.remove()
                 continue
             }
+            // A snapshot stamped before this edit was recorded is stale by
+            // definition: hold the edit instead of letting its TTL decide.
+            val snapshotIsFresh = snapshotTsMs > 0L && snapshotTsMs >= edit.createdAt
             if (now > edit.expiresAt) {
-                if (applyBusy) {
-                    // Daemon is still working through the queue: keep the edit on
-                    // screen instead of flickering back to the stale state.
+                if (applyBusy || !snapshotIsFresh) {
+                    // Daemon is still working through the queue or the snapshot
+                    // predates the command: keep the edit on screen instead of
+                    // flickering back to the stale state.
                     edit.expiresAt = now + pendingTtlMs
                 } else {
                     iter.remove()
@@ -605,11 +615,21 @@ class DaemonBridge @Inject constructor(
         val storageRoots = jsonList(storageRulesObj?.optJSONArray("hiddenRootEntryNames"))
         val storageRelatives = jsonList(storageRulesObj?.optJSONArray("hiddenRelativePaths"))
 
+        // System cloak + hide mode live in the raw config only; the backup/restore
+        // path needs them so a restore never silently drops an active system cloak.
+        val systemCloakOn = json.optBoolean("systemCloak", cfg.optBoolean("systemCloak", false))
+        val hideModeStr = json.optString("hideMode").ifEmpty { cfg.optString("hideMode", "none") }
+            .ifEmpty { "none" }
+        val cloakPackagesList = jsonList(
+            json.optJSONArray("cloakPackages") ?: cfg.optJSONArray("cloakPackages")
+        )
+
         // Keep unconfirmed edits visible over a snapshot that raced the save. While
         // the daemon reports an apply in flight the edit is held past its soft TTL,
         // so a slow queue no longer produces the applied -> reverted -> applied dip.
         val uiApplyBusy = json.optBoolean("applyBusy", false)
-        val (uiTargets, uiHardened, uiPerApp) = overlayPending(targetsList, hardenedList, perAppMap, uiApplyBusy)
+        val snapshotTsMs = json.optLong("ts", 0L).let { if (it > 0L) it * 1000L else 0L }
+        val (uiTargets, uiHardened, uiPerApp) = overlayPending(targetsList, hardenedList, perAppMap, uiApplyBusy, snapshotTsMs)
 
         return DaemonStatus(
             state = json.optString("state", "unknown"),
@@ -628,6 +648,9 @@ class DaemonBridge @Inject constructor(
             susfsOn = json.optBoolean("susfsOn", false),
             hideRootApps = json.optBoolean("hideRootApps", false),
             uiApk = json.optBoolean("uiApk", true),
+            systemCloak = systemCloakOn,
+            hideMode = hideModeStr,
+            cloakPackages = cloakPackagesList,
             rootApps = rootAppsList,
             rootSuggest = rootSuggestList,
             applyBusy = json.optBoolean("applyBusy", false),

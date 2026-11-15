@@ -166,6 +166,29 @@ fun BackupRestoreCard(
                         fontSize = 12.sp
                     )
 
+                    if (info.sourceVersion >= 2) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        val bits = buildList {
+                            add("system cloak ${if (info.systemCloak) "ON" else "off"}")
+                            add("hide mode ${info.hideMode}")
+                            add("${info.hardenedCount} hardened")
+                            add("${info.appPolicyCount} per-app policies")
+                            if (info.storageRuleCount > 0) add("${info.storageRuleCount} storage rules")
+                        }
+                        Text(
+                            text = "Protection state: ${bits.joinToString(" · ")}",
+                            color = PrimaryBlue,
+                            fontSize = 11.sp
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Legacy backup (v${info.sourceVersion}) — protection state not stored, current cloak settings are kept.",
+                            color = TextSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
+
                     if (info.targetNames.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(

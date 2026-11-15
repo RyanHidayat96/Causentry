@@ -55,6 +55,25 @@ ere_escape() {
   printf '%s' "$1" | sed 's/[][\\.^$*+?{}()|]/\\&/g'
 }
 
+# flat-object text of one app entry, from an arbitrary config file:
+# apps_entry <file> <pkg> -> {"devOff":true,...}
+apps_entry() {
+  awk -v p="$2" '
+  BEGIN { RS="^$"; }
+  {
+    t = "\"" p "\"";
+    i = index($0, t);
+    if (i == 0) exit;
+    s = substr($0, i);
+    c = index(s, "{"); e = index(s, "}");
+    if (c == 0 || e == 0 || e < c) exit;
+    body = substr(s, c, e - c + 1);
+    gsub(/[[:space:]]/, "", body);
+    print body;
+  }
+  ' "$1" 2>/dev/null
+}
+
 # list items of a JSON string array: jlist targets
 jlist() {
   awk -v k="$1" '
@@ -392,57 +411,56 @@ refresh_cloak_policy() {
   return "$policy_rc"
 }
 
-# Clears persisted security-SDK verdict state for any protected package.
-# Apps like Bibit (Talsec/freeRASP), JMO, and others write boolean flags to
-# DataStore or SharedPreferences to persist root/tamper verdicts across
-# launches. The flag must be cleared while the process is dead; otherwise the
-# library reads the cached TRUE on next start regardless of what we hide.
+# Clears persisted RASP *verdict* caches for a protected package.
 #
-# Pattern matching covers every major Android security SDK:
-#   talsec, freerasp, threat  -> freeRASP / Talsec
-#   rootbeer, rootcheck       -> RootBeer
-#   dexprotect, appdome       -> Appdome / DexProtect
-#   guardsquare, dexguard     -> GuardSquare / DexGuard
-#   security, integrity       -> generic SDK keys
-reset_app_security_state() {
+# SECURITY MODEL -- do not regress this:
+#  * Only file names that are unambiguously an SDK verdict/telemetry cache may be
+#    touched (talsec, freeRASP, ThreatCast, RootBeer, integrity-baseline...).
+#  * There is deliberately NO generic `security` / `integrity` / `key` /
+#    `session` wildcard. Those substrings hit live credential stores, e.g.
+#    `com.bca.mybca.omni.android.devsecurity.keyhelper_preferences.xml` (myBCA
+#    session key) or `__androidx_security_crypto_encrypted_file_pref__.xml`
+#    (Jetpack Security encrypted prefs). Deleting them logs the user out on every
+#    cold start -- myBCA then answers `Invalid data. Please relogin`.
+#  * A verdict does NOT need deletion to be defeated: every SDK re-runs its
+#    checks on process start and the cloak already answers them. Removing caches
+#    is only a best-effort extra for a *stale* verdict, so it must never destroy
+#    user state to achieve it.
+#  * Every touched file is copied to /data/adb/causentry/verdict_backups first,
+#    so a wrong guess is recoverable instead of silently permanent.
+reset_app_verdict_cache() {
   pkg="$1"
   [ -n "$pkg" ] || return 0
   _cleared=0
   for _base in /data/data /data/user/0; do
     _appdir="$_base/$pkg"
     [ -d "$_appdir" ] || continue
-    # DataStore protobuf files
-    for _f in "$_appdir/files/datastore/"*.preferences_pb; do
-      [ -f "$_f" ] || continue
-      _n=$(basename "$_f" | tr '[:upper:]' '[:lower:]')
-      case "$_n" in
-        *talsec*|*freerasp*|*threat*|*rootbeer*|*rootcheck*|\
-        *dexprotect*|*appdome*|*guardsquare*|*dexguard*|\
-        *security*|*integrity*|*tamper*|*jailbreak*)
-          rm -f "$_f" 2>/dev/null && {
-            log "cleared security state: $_f"
-            _cleared=$((_cleared + 1))
-          }
-          ;;
-      esac
-    done
-    # SharedPreferences XML files
-    for _f in "$_appdir/shared_prefs/"*.xml; do
-      [ -f "$_f" ] || continue
-      _n=$(basename "$_f" | tr '[:upper:]' '[:lower:]')
-      case "$_n" in
-        *talsec*|*freerasp*|*threat*|*rootbeer*|*rootcheck*|\
-        *dexprotect*|*appdome*|*guardsquare*|*dexguard*|\
-        *security*|*integrity*|*tamper*|*jailbreak*)
-          rm -f "$_f" 2>/dev/null && {
-            log "cleared security prefs: $_f"
-            _cleared=$((_cleared + 1))
-          }
-          ;;
-      esac
+    for _sub in files/datastore shared_prefs; do
+      for _f in "$_appdir/$_sub/"*.preferences_pb "$_appdir/$_sub/"*.xml; do
+        [ -f "$_f" ] || continue
+        _n=$(basename "$_f" | tr '[:upper:]' '[:lower:]')
+        case "$_n" in
+          *talsec*|*freerasp*|*threatcast*|*rootbeer*|*rootcheck*|\
+          *integrity_baseline*|*tapjacking*|*debugger_detect*) ;;
+          *) continue;;
+        esac
+        # Belt and braces: a verdict cache holds booleans, never secrets. If the
+        # file carries credential material it is not a verdict cache -- skip it.
+        if grep -aqiE 'token|password|passwd|secret|credential|keystore|session|cookie|pin|otp|auth|vkey' "$_f" 2>/dev/null; then
+          log "verdict cache kept (holds credentials): $_f"
+          continue
+        fi
+        _bk="$DIR/verdict_backups/$pkg"
+        mkdir -p "$_bk" 2>/dev/null
+        [ -f "$_bk/$_n.bak" ] || cp -f "$_f" "$_bk/$_n.bak" 2>/dev/null
+        rm -f "$_f" 2>/dev/null && {
+          log "cleared verdict cache (backup kept): $_f"
+          _cleared=$((_cleared + 1))
+        }
+      done
     done
   done
-  [ "$_cleared" -gt 0 ] && log "security state cleared: pkg=$pkg files=$_cleared"
+  [ "$_cleared" -gt 0 ] && log "verdict cache cleared: pkg=$pkg files=$_cleared"
   return 0
 }
 
@@ -456,7 +474,7 @@ per_app_refresh() {
   policy_rc=$?
   if valid_package_name "$pkg"; then
     am force-stop "$pkg" >/dev/null 2>&1 && log "force-stopped target after config change: $pkg"
-    reset_app_security_state "$pkg"
+    reset_app_verdict_cache "$pkg"
   fi
   return "$policy_rc"
 }
