@@ -53,11 +53,15 @@ android {
 }
 
 zygisk {
-    // PackageManager visibility hooks belong in system_server. SettingsProvider is
-    // included separately so developer-mode reads can be answered per caller UID
-    // before a protected app has a chance to cache the real value.
+    // PACKAGE_SYSTEM_SERVER + providers: binder-level hooks (PackageManager, Settings,
+    // Accessibility, USB state) that must intercept queries from any app.
+    // ALL_PACKAGES: in-process root-detection bypass (File, Runtime.exec,
+    // SystemProperties) injected into every app process; ZygoteEntry.main()
+    // gates actual hook installation on CloakPolicy.hasHiddenPackages(uid)
+    // so overhead for unprotected apps is a single UID check and an early return.
     packages(
         ZygoteLoader.PACKAGE_SYSTEM_SERVER,
+        ZygoteLoader.ALL_PACKAGES,
         "com.android.providers.settings",
         "com.google.android.providers.media.module",
         "com.android.providers.media.module",

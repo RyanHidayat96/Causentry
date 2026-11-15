@@ -423,9 +423,13 @@ class DaemonBridge @Inject constructor(
                     val p = ProcessBuilder("su", "-c", "timeout 6 sh /data/adb/modules/causentry/bin/uirpc.sh serve >/dev/null 2>&1")
                         .redirectErrorStream(true)
                         .start()
-                    p.waitFor(5000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    p.waitFor(8000, java.util.concurrent.TimeUnit.MILLISECONDS)
                 } catch (_: Throwable) {}
-                checkAndUpdateStatus(force = true)
+                // Use force=false: only read status.json if daemon actually updated it.
+                // force=true overwrites the optimistic state with stale disk data when
+                // the shell finishes before the daemon has flushed status.json.
+                // FileObserver fires the real update once the daemon writes the file.
+                checkAndUpdateStatus(force = false)
                 _isSyncing.value = false
             }
         } else {

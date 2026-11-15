@@ -392,25 +392,58 @@ refresh_cloak_policy() {
   return "$policy_rc"
 }
 
-# Some targets persist their own security verdicts (Bibit stores every Talsec/
-# freeRASP watcher result as a DataStore boolean, e.g. talsecRoot). That stored
-# flag outlives the cloak and gates the next launch, so hiding the signal alone
-# never re-opens the app. Clear it only while the process is dead, and only the
-# bytes that hold a false-by-default bool, so the repair stays non-destructive.
+# Clears persisted security-SDK verdict state for any protected package.
+# Apps like Bibit (Talsec/freeRASP), JMO, and others write boolean flags to
+# DataStore or SharedPreferences to persist root/tamper verdicts across
+# launches. The flag must be cleared while the process is dead; otherwise the
+# library reads the cached TRUE on next start regardless of what we hide.
+#
+# Pattern matching covers every major Android security SDK:
+#   talsec, freerasp, threat  -> freeRASP / Talsec
+#   rootbeer, rootcheck       -> RootBeer
+#   dexprotect, appdome       -> Appdome / DexProtect
+#   guardsquare, dexguard     -> GuardSquare / DexGuard
+#   security, integrity       -> generic SDK keys
 reset_app_security_state() {
   pkg="$1"
-  case "$pkg" in
-    com.bibit.bibitid)
-      [ -f "$DIR/bin/bibit-state.sh" ] || return 0
-      # Run it through sh: the helper's shebang is /system/bin/sh, which does not
-      # always resolve when the caller was started from a different shell.
-      if sh "$DIR/bin/bibit-state.sh" clear >/dev/null 2>&1; then
-        log "cleared persisted talsec flags: $pkg"
-      else
-        log "talsec flag clear failed: $pkg"
-      fi
-      ;;
-  esac
+  [ -n "$pkg" ] || return 0
+  _cleared=0
+  for _base in /data/data /data/user/0; do
+    _appdir="$_base/$pkg"
+    [ -d "$_appdir" ] || continue
+    # DataStore protobuf files
+    for _f in "$_appdir/files/datastore/"*.preferences_pb; do
+      [ -f "$_f" ] || continue
+      _n=$(basename "$_f" | tr '[:upper:]' '[:lower:]')
+      case "$_n" in
+        *talsec*|*freerasp*|*threat*|*rootbeer*|*rootcheck*|\
+        *dexprotect*|*appdome*|*guardsquare*|*dexguard*|\
+        *security*|*integrity*|*tamper*|*jailbreak*)
+          rm -f "$_f" 2>/dev/null && {
+            log "cleared security state: $_f"
+            _cleared=$((_cleared + 1))
+          }
+          ;;
+      esac
+    done
+    # SharedPreferences XML files
+    for _f in "$_appdir/shared_prefs/"*.xml; do
+      [ -f "$_f" ] || continue
+      _n=$(basename "$_f" | tr '[:upper:]' '[:lower:]')
+      case "$_n" in
+        *talsec*|*freerasp*|*threat*|*rootbeer*|*rootcheck*|\
+        *dexprotect*|*appdome*|*guardsquare*|*dexguard*|\
+        *security*|*integrity*|*tamper*|*jailbreak*)
+          rm -f "$_f" 2>/dev/null && {
+            log "cleared security prefs: $_f"
+            _cleared=$((_cleared + 1))
+          }
+          ;;
+      esac
+    done
+  done
+  [ "$_cleared" -gt 0 ] && log "security state cleared: pkg=$pkg files=$_cleared"
+  return 0
 }
 
 # A per-app toggle also restarts only that target, so its first process observes

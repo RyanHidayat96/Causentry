@@ -58,7 +58,14 @@ public class ZygoteEntry {
             } else if (SettingsProviderBackend.PACKAGE_NAME.equals(packageName)) {
                 SettingsProviderBackend.start();
             } else {
-                Log.w(TAG, "Ignoring unconfigured package " + packageName);
+                // App process: install in-process root-detection bypasses when
+                // this UID is a Causentry-protected target (checked via CloakPolicy).
+                int uid = Process.myUid();
+                if (uid >= 10000 && CloakPolicy.hasHiddenPackages(uid)) {
+                    AppProcessHooks.install(packageName);
+                } else {
+                    Log.d(TAG, "skipping app hooks for unprotected package " + packageName);
+                }
             }
         } catch (Throwable error) {
             Log.e(TAG, "backend failed for " + packageName, error);

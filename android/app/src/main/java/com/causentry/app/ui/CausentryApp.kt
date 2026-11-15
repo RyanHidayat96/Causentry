@@ -244,7 +244,6 @@ fun CausentryApp(
             iconLoader = viewModel.iconLoader,
             onSave = { devOff, mock, isolate, accOff, template ->
                 viewModel.setAppConfig(app.packageName, devOff, mock, isolate, accOff, template)
-                viewModel.onSelectApp(null)
             },
             onDelete = {
                 viewModel.deleteAppConfig(app.packageName)
