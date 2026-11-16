@@ -415,7 +415,7 @@ private fun AppsScreen(
         HeroStatusCard(
             status = status,
             protectedCount = allApps.count { it.isProtected },
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 3.dp)
         )
 
         // High-performance search bar
