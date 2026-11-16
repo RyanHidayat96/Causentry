@@ -50,8 +50,8 @@ class ForensicManager @Inject constructor(
     private val prefs = context.getSharedPreferences("causentry_forensics", Context.MODE_PRIVATE)
     private val KEY_LIVE_STREAMING = "live_streaming_enabled"
 
-    // Maximum log entries kept in memory to maintain 120Hz smooth UI
-    private val maxBufferEntries = 1500
+    // Maximum log entries kept in memory to maintain 120Hz smooth UI with rich historical buffer
+    private val maxBufferEntries = 10000
 
     private val _logsFlow = MutableStateFlow<List<LogEntry>>(emptyList())
     val logsFlow: StateFlow<List<LogEntry>> = _logsFlow.asStateFlow()

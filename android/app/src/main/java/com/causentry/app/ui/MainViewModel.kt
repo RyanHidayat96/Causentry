@@ -136,8 +136,13 @@ class MainViewModel @Inject constructor(
                 entry.tag.contains(filters.pkg, ignoreCase = true) ||
                 forensicManager.isPidForPackage(entry.pid, filters.pkg)
 
-            val matchesLevel = filters.level == null || entry.level == filters.level ||
-                (filters.level == LogLevel.ERROR && (entry.level == LogLevel.FATAL || entry.level == LogLevel.ERROR))
+            val matchesLevel = when (filters.level) {
+                null, LogLevel.VERBOSE -> true
+                LogLevel.DEBUG -> entry.level.ordinal >= LogLevel.DEBUG.ordinal
+                LogLevel.INFO -> entry.level.ordinal >= LogLevel.INFO.ordinal
+                LogLevel.WARN -> entry.level.ordinal >= LogLevel.WARN.ordinal
+                LogLevel.ERROR, LogLevel.FATAL -> entry.level == LogLevel.ERROR || entry.level == LogLevel.FATAL
+            }
 
             val matchesTag = tagQ.isEmpty() || entry.tag.lowercase().contains(tagQ)
 
@@ -145,7 +150,8 @@ class MainViewModel @Inject constructor(
 
             val matchesQuery = when {
                 q.isEmpty() -> true
-                regex != null -> regex.containsMatchIn(entry.message) || regex.containsMatchIn(entry.tag)
+                filters.regexMode && regex != null -> regex.containsMatchIn(entry.message) || regex.containsMatchIn(entry.tag)
+                filters.regexMode && regex == null -> false
                 else -> entry.message.lowercase().contains(q) ||
                     entry.tag.lowercase().contains(q) ||
                     entry.pid.toString().contains(q)

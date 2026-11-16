@@ -138,13 +138,13 @@ fun ForensicAppPickerDialog(
 
                 IconButton(
                     onClick = onDismiss,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.ic_close),
                         contentDescription = "Close",
                         tint = TextSecondary,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -418,6 +418,6 @@ private fun CategoryChip(
             selected = selected,
             borderColor = if (selected) PrimaryBlue else BorderDark
         ),
-        modifier = Modifier.height(30.dp)
+        modifier = Modifier.height(34.dp)
     )
 }
