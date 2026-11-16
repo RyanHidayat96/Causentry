@@ -1,6 +1,7 @@
 package com.causentry.app.data
 
 import android.content.Context
+import android.os.Build
 import com.causentry.app.model.CrashThreatReport
 import com.causentry.app.model.CrashType
 import com.causentry.app.model.LogEntry
@@ -15,18 +16,28 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.BufferedOutputStream
 import java.io.BufferedReader
+import java.io.BufferedWriter
 import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import java.util.regex.Pattern
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class ForensicManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val notifier: ForensicNotifier
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
     private var streamJob: Job? = null
@@ -68,6 +79,22 @@ class ForensicManager @Inject constructor(
     private var activeCrashTimestamp = ""
     private var activeCrashType = CrashType.JAVA_CRASH
     private var activeCrashLastTime = 0L
+
+    // --- LogFox-style session recording (full capture to disk, not the 1500-entry UI ring) ---
+    private val _isRecording = MutableStateFlow(
+        prefs.getBoolean("session_recording_enabled", false)
+    )
+    val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
+    private val _recordedCount = MutableStateFlow(0)
+    val recordedCount: StateFlow<Int> = _recordedCount.asStateFlow()
+
+    private val recordLock = Any()
+    private var recordWriter: BufferedWriter? = null
+    private var sessionFile: File? = null
+    private var sessionCrashes = mutableListOf<CrashThreatReport>()
+    private var sessionStartedAt = 0L
+    private var sessionTagFilter: String? = null
+    private var sessionPidFilter: Int = 0
 
     init {
         preloadRunningProcesses()
@@ -178,6 +205,9 @@ class ForensicManager @Inject constructor(
                         detectThreatsAndCrashes(entry)
                         if (_isLiveStreaming.value) {
                             batchList.add(entry)
+                        }
+                        if (_isRecording.value) {
+                            appendToRecord(entry)
                         }
                     }
 
@@ -479,6 +509,215 @@ class ForensicManager @Inject constructor(
     private fun addCrashReport(report: CrashThreatReport) {
         val current = _crashReportsFlow.value
         _crashReportsFlow.value = listOf(report) + current.take(49)
+        // LogFox-style proactive alert: notify user even when the app is backgrounded
+        try { notifier.notifyCrash(report) } catch (_: Throwable) {}
+        // Capture crash into the active recording session so the ZIP export includes it
+        synchronized(recordLock) {
+            if (_isRecording.value) {
+                sessionCrashes.add(report)
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // LogFox-style session recording (full capture to disk)
+    // ------------------------------------------------------------------
+    fun startRecording(tagFilter: String? = null, pidFilter: Int = 0): Boolean {
+        synchronized(recordLock) {
+            if (_isRecording.value) return true
+            return try {
+                val dir = File(context.cacheDir, "logs")
+                if (!dir.exists()) dir.mkdirs()
+                val ts = timestampForFile()
+                val file = File(dir, "causentry-session-$ts.log")
+                val writer = BufferedWriter(OutputStreamWriter(FileOutputStream(file), Charsets.UTF_8), 32 * 1024)
+                writer.appendLine("# Causentry Forensic Session Recording")
+                writer.appendLine("# Started: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())}")
+                writer.appendLine("# Filter: tag=${tagFilter ?: "*"} pid=${if (pidFilter > 0) pidFilter else "*"}")
+                writer.appendLine("# Format: MM-DD HH:mm:ss.SSS PID TID LVL TAG: message")
+                writer.appendLine()
+                sessionFile = file
+                recordWriter = writer
+                sessionCrashes = mutableListOf()
+                sessionStartedAt = System.currentTimeMillis()
+                sessionTagFilter = tagFilter?.trim()?.takeIf { it.isNotEmpty() }
+                sessionPidFilter = pidFilter
+                _recordedCount.value = 0
+                _isRecording.value = true
+                prefs.edit().putBoolean("session_recording_enabled", true).apply()
+                // Persistent ongoing-recording indicator (LogFox-style)
+                try { notifier.showRecordingOngoing(0) } catch (_: Throwable) {}
+                true
+            } catch (_: Throwable) {
+                recordWriter = null
+                sessionFile = null
+                false
+            }
+        }
+    }
+
+    /** Stop recording, flush & close the capture file. Returns the raw log file (not zipped). */
+    fun stopRecording(): File? {
+        synchronized(recordLock) {
+            val file = sessionFile
+            try {
+                recordWriter?.flush()
+                recordWriter?.close()
+            } catch (_: Throwable) {}
+            recordWriter = null
+            _isRecording.value = false
+            prefs.edit().putBoolean("session_recording_enabled", false).apply()
+            try { notifier.cancelRecordingOngoing() } catch (_: Throwable) {}
+            return file
+        }
+    }
+
+    fun toggleRecording(): Boolean {
+        return if (_isRecording.value) { stopRecording(); false } else { startRecording(); _isRecording.value }
+    }
+
+    private fun appendToRecord(entry: LogEntry) {
+        synchronized(recordLock) {
+            val writer = recordWriter ?: return
+            // Session-scoped tag/PID filters (independent of the UI view filters)
+            val tf = sessionTagFilter
+            if (tf != null && !entry.tag.contains(tf, ignoreCase = true)) return
+            if (sessionPidFilter > 0 && entry.pid != sessionPidFilter) return
+            try {
+                writer.append(entry.timestamp)
+                writer.append(' ')
+                writer.append(entry.pid.toString())
+                writer.append(' ')
+                writer.append(entry.tid.toString())
+                writer.append(' ')
+                writer.append(entry.level.letter)
+                writer.append(' ')
+                writer.append(entry.tag)
+                writer.append(": ")
+                writer.append(entry.message)
+                writer.append('\n')
+                val c = _recordedCount.value + 1
+                _recordedCount.value = c
+                // Periodic flush so a crash never loses the tail of the capture
+                if (c % 200 == 0) writer.flush()
+                // Keep the ongoing-recording indicator count fresh
+                if (c % 500 == 0) {
+                    try { notifier.showRecordingOngoing(c) } catch (_: Throwable) {}
+                }
+            } catch (_: Throwable) {}
+        }
+    }
+
+    private fun timestampForFile(): String =
+        SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+
+    /** Collect device/build info, mirroring LogFox's exported "device info". */
+    private fun collectDeviceInfo(): String {
+        val sb = StringBuilder()
+        fun line(k: String, v: String) { sb.append(k).append(": ").append(v).append('\n') }
+        line("App Version", appVersionName())
+        line("Manufacturer", Build.MANUFACTURER ?: "unknown")
+        line("Brand", Build.BRAND ?: "unknown")
+        line("Model", Build.MODEL ?: "unknown")
+        line("Device", Build.DEVICE ?: "unknown")
+        line("Product", Build.PRODUCT ?: "unknown")
+        line("Android Release", Build.VERSION.RELEASE ?: "unknown")
+        line("SDK Int", Build.VERSION.SDK_INT.toString())
+        line("Build ID", Build.ID ?: "unknown")
+        line("Build Fingerprint", Build.FINGERPRINT ?: "unknown")
+        line("ABIs", Build.SUPPORTED_ABIS?.joinToString(", ") ?: "unknown")
+        line("Hardware", Build.HARDWARE ?: "unknown")
+        line("Bootloader", Build.BOOTLOADER ?: "unknown")
+        line("Kernel", System.getProperty("os.version") ?: "unknown")
+        line("Locale", Locale.getDefault().toString())
+        line("Export Time", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
+        return sb.toString()
+    }
+
+    private fun appVersionName(): String = try {
+        val pi = context.packageManager.getPackageInfo(context.packageName, 0)
+        pi.versionName ?: "unknown"
+    } catch (_: Throwable) { "unknown" }
+
+    /** Human-readable crash digest (only crashes captured during/held in current session). */
+    private fun buildCrashDigest(crashes: List<CrashThreatReport>): String {
+        val sb = StringBuilder()
+        sb.appendLine("=== CAUSENTRY CRASH & THREAT REPORT ===")
+        sb.appendLine("Total Crashes: ${crashes.size}")
+        sb.appendLine()
+        if (crashes.isEmpty()) {
+            sb.appendLine("No crashes or threat triggers recorded in this session.")
+            return sb.toString()
+        }
+        for (c in crashes) {
+            sb.appendLine("[CRASH #${c.id}] ${c.timestamp} - ${c.packageName} (PID ${c.pid})")
+            sb.appendLine("Type: ${c.type}")
+            sb.appendLine("Title: ${c.title}")
+            c.threatDiagnosis?.let {
+                sb.appendLine("Diagnosis: $it")
+                sb.appendLine("Recommendation: ${c.recommendedFix}")
+            }
+            sb.appendLine("Trace:")
+            sb.appendLine(c.fullTrace)
+            sb.appendLine("--------------------------------------------------")
+        }
+        return sb.toString()
+    }
+
+    /**
+     * LogFox-style export: bundles the captured session log, a crash-threat digest and a
+     * device-info sheet into a single shareable .zip. If no session is active, exports the
+     * current in-memory ring buffer instead so the button always produces something useful.
+     */
+    fun exportSessionZip(): File? {
+        return try {
+            // If actively recording, flush current writer but keep the session going
+            val rawFile: File?
+            var crashes: List<CrashThreatReport>
+            synchronized(recordLock) {
+                if (_isRecording.value) {
+                    try { recordWriter?.flush() } catch (_: Throwable) {}
+                    rawFile = sessionFile
+                    crashes = sessionCrashes.toList()
+                } else {
+                    rawFile = sessionFile
+                    crashes = sessionCrashes.toList()
+                }
+            }
+
+            // Fallback: no recorded file → synthesize from live ring buffer + live crash reports
+            val logText: String = if (rawFile != null && rawFile.exists()) {
+                rawFile.readText()
+            } else {
+                buildString {
+                    appendLine("# Causentry live log snapshot (no active recording)")
+                    appendLine()
+                    for (l in _logsFlow.value) {
+                        appendLine("${l.timestamp} ${l.pid} ${l.tid} ${l.level.letter} ${l.tag}: ${l.message}")
+                    }
+                }
+            }
+            if (crashes.isEmpty()) crashes = _crashReportsFlow.value
+
+            val dir = File(context.cacheDir, "logs")
+            if (!dir.exists()) dir.mkdirs()
+            val zipFile = File(dir, "causentry-forensic-${timestampForFile()}.zip")
+
+            ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { zip ->
+                fun put(name: String, content: String) {
+                    val bytes = content.toByteArray(Charsets.UTF_8)
+                    zip.putNextEntry(ZipEntry(name))
+                    zip.write(bytes)
+                    zip.closeEntry()
+                }
+                put("logs.txt", logText)
+                put("crashes.txt", buildCrashDigest(crashes))
+                put("device-info.txt", collectDeviceInfo())
+            }
+            zipFile
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     fun exportLogsToFile(): File? {

@@ -58,6 +58,8 @@ class MainViewModel @Inject constructor(
     // --- Forensic & LogFox Engine ---
     val isLiveStreaming: StateFlow<Boolean> = forensicManager.isLiveStreaming
     val crashReports: StateFlow<List<CrashThreatReport>> = forensicManager.crashReportsFlow
+    val isRecording: StateFlow<Boolean> = forensicManager.isRecording
+    val recordedCount: StateFlow<Int> = forensicManager.recordedCount
 
     private val _forensicSearchQuery = MutableStateFlow("")
     val forensicSearchQuery: StateFlow<String> = _forensicSearchQuery.asStateFlow()
@@ -68,28 +70,41 @@ class MainViewModel @Inject constructor(
     private val _forensicSelectedLevel = MutableStateFlow<LogLevel?>(null)
     val forensicSelectedLevel: StateFlow<LogLevel?> = _forensicSelectedLevel.asStateFlow()
 
-    private val _forensicFilterNoise = MutableStateFlow(true)
-    val forensicFilterNoise: StateFlow<Boolean> = _forensicFilterNoise.asStateFlow()
+    // LogFox-style advanced filters: tag substring, PID exact, and regex mode
+    private val _forensicTagFilter = MutableStateFlow("")
+    val forensicTagFilter: StateFlow<String> = _forensicTagFilter.asStateFlow()
 
-    private val _forensicOnlyHooks = MutableStateFlow(false)
-    val forensicOnlyHooks: StateFlow<Boolean> = _forensicOnlyHooks.asStateFlow()
+    private val _forensicPidFilter = MutableStateFlow("")
+    val forensicPidFilter: StateFlow<String> = _forensicPidFilter.asStateFlow()
+
+    private val _forensicRegexMode = MutableStateFlow(false)
+    val forensicRegexMode: StateFlow<Boolean> = _forensicRegexMode.asStateFlow()
+
+    private val _forensicRegexError = MutableStateFlow<String?>(null)
+    val forensicRegexError: StateFlow<String?> = _forensicRegexError.asStateFlow()
 
     private data class ForensicFilterState(
         val query: String,
         val pkg: String?,
         val level: LogLevel?,
-        val filterNoise: Boolean,
-        val onlyHooks: Boolean
+        val tag: String,
+        val pid: String,
+        val regexMode: Boolean
     )
 
     private val forensicFilterFlow = combine(
-        _forensicSearchQuery.debounce(100),
-        _forensicSelectedPackage,
-        _forensicSelectedLevel,
-        _forensicFilterNoise,
-        _forensicOnlyHooks
-    ) { query, pkg, level, filterNoise, onlyHooks ->
-        ForensicFilterState(query, pkg, level, filterNoise, onlyHooks)
+        combine(
+            _forensicSearchQuery.debounce(100),
+            _forensicSelectedPackage,
+            _forensicSelectedLevel,
+            _forensicTagFilter.debounce(100),
+            _forensicPidFilter.debounce(100)
+        ) { query, pkg, level, tag, pid ->
+            ForensicFilterState(query, pkg, level, tag, pid, false)
+        },
+        _forensicRegexMode
+    ) { base, regexMode ->
+        base.copy(regexMode = regexMode)
     }
 
     val filteredLogs: StateFlow<List<LogEntry>> = combine(
@@ -97,28 +112,24 @@ class MainViewModel @Inject constructor(
         forensicFilterFlow
     ) { logs, filters ->
         val q = filters.query.trim().lowercase()
-        val NOISE_TAGS = setOf(
-            "HWComposer", "SurfaceFlinger", "chatty", "InputTransport",
-            "OpenGLRenderer", "Gralloc4", "TrafficStats", "BufferQueueProducer",
-            "ViewRootImpl", "Choreographer", "BufferItemConsumer"
-        )
-        val HOOK_KEYWORDS = listOf(
-            "causentry", "zygisk", "cloak", "activeservices", "settingsprovider",
-            "appzygote", "packagecloak", "stripped isolation", "demoted app zygote"
-        )
+        val tagQ = filters.tag.trim().lowercase()
+        val pidQ = filters.pid.trim()
+
+        // Pre-compile the regex once; invalid patterns surface an error and fall back to substring
+        var regex: Regex? = null
+        if (filters.regexMode && filters.query.isNotBlank()) {
+            regex = try {
+                Regex(filters.query, RegexOption.IGNORE_CASE)
+            } catch (e: Exception) {
+                _forensicRegexError.value = e.message ?: "Invalid regex"
+                null
+            }
+        }
+        if (!filters.regexMode || filters.query.isBlank() || regex != null) {
+            _forensicRegexError.value = null
+        }
 
         logs.filter { entry ->
-            if (filters.filterNoise && NOISE_TAGS.contains(entry.tag)) {
-                return@filter false
-            }
-
-            if (filters.onlyHooks) {
-                val tagLower = entry.tag.lowercase()
-                val msgLower = entry.message.lowercase()
-                val matchesHook = HOOK_KEYWORDS.any { tagLower.contains(it) || msgLower.contains(it) }
-                if (!matchesHook) return@filter false
-            }
-
             val matchesPkg = filters.pkg.isNullOrEmpty() ||
                 entry.packageName.equals(filters.pkg, ignoreCase = true) ||
                 entry.message.contains(filters.pkg, ignoreCase = true) ||
@@ -128,12 +139,19 @@ class MainViewModel @Inject constructor(
             val matchesLevel = filters.level == null || entry.level == filters.level ||
                 (filters.level == LogLevel.ERROR && (entry.level == LogLevel.FATAL || entry.level == LogLevel.ERROR))
 
-            val matchesQuery = q.isEmpty() ||
-                entry.message.lowercase().contains(q) ||
-                entry.tag.lowercase().contains(q) ||
-                entry.pid.toString().contains(q)
+            val matchesTag = tagQ.isEmpty() || entry.tag.lowercase().contains(tagQ)
 
-            matchesPkg && matchesLevel && matchesQuery
+            val matchesPid = pidQ.isEmpty() || entry.pid.toString() == pidQ
+
+            val matchesQuery = when {
+                q.isEmpty() -> true
+                regex != null -> regex.containsMatchIn(entry.message) || regex.containsMatchIn(entry.tag)
+                else -> entry.message.lowercase().contains(q) ||
+                    entry.tag.lowercase().contains(q) ||
+                    entry.pid.toString().contains(q)
+            }
+
+            matchesPkg && matchesLevel && matchesTag && matchesPid && matchesQuery
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -250,6 +268,31 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    /**
+     * "Implement" an existing hidden-app template onto one, several or every app:
+     * attaches each chosen package to the cloak target list AND assigns it this
+     * template, then detaches the template from any app the user unchecked -- all
+     * in a single atomic config write (importcfg -> cloak.sh) so there is exactly
+     * one reconcile (no flicker). The optimistic in-memory update keeps the UI
+     * instant.
+     *
+     * @param packages apps that should now USE this template (attach / enable)
+     * @param detach   apps that previously used it and must be released (detach)
+     */
+    fun applyTemplateToApps(
+        template: String,
+        packages: List<String>,
+        detach: List<String> = emptyList()
+    ) {
+        val tpl = template.trim()
+        val add = packages.filter { it.isNotBlank() }.distinct()
+        val rem = detach.filter { it.isNotBlank() }.distinct().filter { it !in add }
+        if (tpl.isEmpty() || (add.isEmpty() && rem.isEmpty())) return
+        viewModelScope.launch(Dispatchers.IO) {
+            daemonBridge.applyTemplateDiff(tpl, add, rem)
+        }
+    }
+
     fun applyChanges() {
         viewModelScope.launch(Dispatchers.IO) {
             daemonBridge.apply()
@@ -276,9 +319,25 @@ class MainViewModel @Inject constructor(
     fun setForensicPackage(pkg: String?) { _forensicSelectedPackage.value = pkg }
     fun setForensicLevel(level: LogLevel?) { _forensicSelectedLevel.value = level }
     fun setForensicSearchQuery(q: String) { _forensicSearchQuery.value = q }
-    fun toggleForensicNoiseFilter() { _forensicFilterNoise.value = !_forensicFilterNoise.value }
-    fun toggleForensicOnlyHooks() { _forensicOnlyHooks.value = !_forensicOnlyHooks.value }
+    fun setForensicTagFilter(tag: String) { _forensicTagFilter.value = tag }
+    fun setForensicPidFilter(pid: String) { _forensicPidFilter.value = pid.filter { it.isDigit() }.take(7) }
+    fun setForensicRegexMode(enabled: Boolean) {
+        _forensicRegexMode.value = enabled
+        if (!enabled) _forensicRegexError.value = null
+    }
+    fun clearForensicFilters() {
+        _forensicSearchQuery.value = ""
+        _forensicSelectedPackage.value = null
+        _forensicSelectedLevel.value = null
+        _forensicTagFilter.value = ""
+        _forensicPidFilter.value = ""
+        _forensicRegexMode.value = false
+        _forensicRegexError.value = null
+    }
     fun exportLogsToFile(): File? = forensicManager.exportLogsToFile()
+    fun exportSessionZip(): File? = forensicManager.exportSessionZip()
+    fun toggleRecording(): Boolean = forensicManager.toggleRecording()
+    fun stopRecording() { forensicManager.stopRecording() }
 
     fun inspectAppLogs(packageName: String) {
         _forensicSelectedPackage.value = packageName

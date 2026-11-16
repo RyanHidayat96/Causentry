@@ -25,7 +25,14 @@ control_apk_installed() {
 }
 
 apk_fingerprint() {
-  stat -c '%s:%Y' "$1" 2>/dev/null
+  # Content hash, not size:mtime. The module zip stamps a single fixed mtime on
+  # every entry, so size:mtime collapses to size-only and skips real updates
+  # whenever a rebuild happens to produce the same byte size.
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" 2>/dev/null | cut -d' ' -f1
+  else
+    stat -c '%s:%Y' "$1" 2>/dev/null
+  fi
 }
 
 control_apk_needs_install() {
@@ -54,7 +61,7 @@ schedule_control_apk_install() {
     echo '  TMPLOG=/data/local/tmp/causentry/pm-install.log'
     echo '  : > "$TMPLOG" 2>/dev/null'
     echo '  if cmd package install -r "$APK" >> "$TMPLOG" 2>&1 || pm install -r "$APK" >> "$TMPLOG" 2>&1; then'
-    echo '    stat -c "%s:%Y" "$DIR/Causentry.apk" > "$DIR/.uiapk.fingerprint" 2>/dev/null'
+    echo '    (command -v sha256sum >/dev/null 2>&1 && sha256sum "$DIR/Causentry.apk" | cut -d" " -f1 || stat -c "%s:%Y" "$DIR/Causentry.apk") > "$DIR/.uiapk.fingerprint" 2>/dev/null'
     echo '    echo "$(date "+%m-%d %H:%M:%S") [customize] delayed control UI APK installed/updated" >> "$LOG"'
     echo '    exit 0'
     echo '  fi'

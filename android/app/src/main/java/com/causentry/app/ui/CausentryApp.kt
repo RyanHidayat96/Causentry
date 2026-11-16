@@ -82,6 +82,7 @@ import com.causentry.app.ui.components.StatusPill
 import com.causentry.app.ui.components.StorageCloakCard
 import com.causentry.app.ui.components.TemplateCard
 import com.causentry.app.ui.components.TemplateEditorDialog
+import com.causentry.app.ui.components.TemplateApplyDialog
 import com.causentry.app.ui.theme.BgDark
 import com.causentry.app.ui.theme.BorderDark
 import com.causentry.app.ui.theme.DangerRed
@@ -111,11 +112,15 @@ fun CausentryApp(
     val logs by viewModel.filteredLogs.collectAsState()
     val crashReports by viewModel.crashReports.collectAsState()
     val isStreaming by viewModel.isLiveStreaming.collectAsState()
+    val isRecording by viewModel.isRecording.collectAsState()
+    val recordedCount by viewModel.recordedCount.collectAsState()
     val forensicQuery by viewModel.forensicSearchQuery.collectAsState()
     val forensicPkg by viewModel.forensicSelectedPackage.collectAsState()
     val forensicLevel by viewModel.forensicSelectedLevel.collectAsState()
-    val forensicFilterNoise by viewModel.forensicFilterNoise.collectAsState()
-    val forensicOnlyHooks by viewModel.forensicOnlyHooks.collectAsState()
+    val forensicTagFilter by viewModel.forensicTagFilter.collectAsState()
+    val forensicPidFilter by viewModel.forensicPidFilter.collectAsState()
+    val forensicRegexMode by viewModel.forensicRegexMode.collectAsState()
+    val forensicRegexError by viewModel.forensicRegexError.collectAsState()
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -186,7 +191,8 @@ fun CausentryApp(
                             allApps = allApps,
                             iconLoader = viewModel.iconLoader,
                             onSaveTemplate = { name, pkgs, deleteName -> viewModel.saveTemplate(name, pkgs, deleteName) },
-                            onDeleteTemplate = { name -> viewModel.deleteTemplate(name) }
+                            onDeleteTemplate = { name -> viewModel.deleteTemplate(name) },
+                            onApplyTemplateToApps = { template, pkgs, detach -> viewModel.applyTemplateToApps(template, pkgs, detach) }
                         )
                     }
                     3 -> {
@@ -197,18 +203,28 @@ fun CausentryApp(
                             allApps = allApps,
                             iconLoader = viewModel.iconLoader,
                             isStreaming = isStreaming,
+                            isRecording = isRecording,
+                            recordedCount = recordedCount,
                             searchQuery = forensicQuery,
+                            tagFilter = forensicTagFilter,
+                            pidFilter = forensicPidFilter,
+                            regexMode = forensicRegexMode,
+                            regexError = forensicRegexError,
                             selectedPackage = forensicPkg,
                             selectedLevel = forensicLevel,
-                            filterNoise = forensicFilterNoise,
-                            onlyHooks = forensicOnlyHooks,
                             onToggleStream = { viewModel.toggleLiveStreaming() },
+                            onToggleRecording = { viewModel.toggleRecording() },
                             onClearLogs = { viewModel.clearLogs() },
                             onClearCrashes = { viewModel.clearCrashes() },
                             onDismissCrash = { viewModel.dismissCrash(it) },
                             onSelectPackage = { viewModel.setForensicPackage(it) },
                             onSelectLevel = { viewModel.setForensicLevel(it) },
                             onSearchQueryChange = { viewModel.setForensicSearchQuery(it) },
+                            onTagFilterChange = { viewModel.setForensicTagFilter(it) },
+                            onPidFilterChange = { viewModel.setForensicPidFilter(it) },
+                            onToggleRegexMode = { viewModel.setForensicRegexMode(!forensicRegexMode) },
+                            onResetFilters = { viewModel.clearForensicFilters() },
+                            onExportZip = { viewModel.exportSessionZip() },
                             onExportLogs = { viewModel.exportLogsToFile() },
                             onInspectApp = { pkg ->
                                 val target = allApps.find { it.packageName == pkg }
@@ -606,12 +622,14 @@ private fun TemplatesScreen(
     allApps: List<AppInfo>,
     iconLoader: com.causentry.app.data.IconLoader,
     onSaveTemplate: (name: String, packages: List<String>, deleteName: String?) -> Unit,
-    onDeleteTemplate: (String) -> Unit
+    onDeleteTemplate: (String) -> Unit,
+    onApplyTemplateToApps: (template: String, packages: List<String>, detach: List<String>) -> Unit
 ) {
     var showEditor by remember { mutableStateOf(false) }
     var editingInitialName by remember { mutableStateOf("") }
     var editingName by remember { mutableStateOf("") }
     var editingPackages by remember { mutableStateOf<List<String>>(emptyList()) }
+    var applyTemplate by remember { mutableStateOf<String?>(null) }
 
     if (showEditor) {
         TemplateEditorDialog(
@@ -625,6 +643,20 @@ private fun TemplatesScreen(
                 showEditor = false
             },
             onDismiss = { showEditor = false }
+        )
+    }
+
+    applyTemplate?.let { tplName ->
+        TemplateApplyDialog(
+            templateName = tplName,
+            templatePackages = status.templates[tplName] ?: emptyList(),
+            allApps = allApps,
+            iconLoader = iconLoader,
+            onApply = { toAdd, toRemove ->
+                onApplyTemplateToApps(tplName, toAdd, toRemove)
+                applyTemplate = null
+            },
+            onDismiss = { applyTemplate = null }
         )
     }
 
@@ -702,6 +734,7 @@ private fun TemplatesScreen(
                             showEditor = true
                         },
                         onDelete = { onDeleteTemplate(name) },
+                        onApplyToApps = { applyTemplate = name },
                         modifier = Modifier.padding(vertical = 6.dp)
                     )
                 }

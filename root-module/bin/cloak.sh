@@ -75,7 +75,7 @@ template_json_array() {
 
 T="$(mktemp 2>/dev/null || echo "$DIR/.cloak.tmp")"
 TARGET_FILE="$DIR/.cloak-targets.$$"
-trap 'rm -f "$T" "$OUT_DIR/.cloak.$$" "$TARGET_FILE" "$DIR"/.cloak-template."$$".* "$DIR"/.cloak-tpl."$$".*' EXIT
+trap 'rm -f "$T" "$OUT_DIR/.cloak.$$" "$TARGET_FILE" "$TPL_MAP" "$DIR"/.cloak-template."$$".* "$DIR"/.cloak-tpl."$$".*' EXIT
 [ -f /data/system/packages.list ] || PKG_UIDS=$(cmd package list packages -U --user 0 2>/dev/null)
 TARGETS=$(jlist targets)
 DENYLIST=$(jlist denylist)
@@ -144,16 +144,18 @@ if [ ! -s "$TARGET_FILE" ]; then
   done
 fi
 
-# Pre-render standard template JSON arrays once
-STEALTH_JSON="["
-pfirst=1
-for p in $(target_hidden_list stealth 2>/dev/null | sort -u); do
-  valid_package_name "$p" || continue
-  [ $pfirst -eq 1 ] || STEALTH_JSON="$STEALTH_JSON,"
-  pfirst=0
-  STEALTH_JSON="$STEALTH_JSON\"$p\""
+# Pre-render a JSON array for every template actually referenced by a target.
+# Historically only the built-in "stealth" template was expanded; every custom
+# template fell through to [] below, so applying a custom template in the UI had
+# no effect on the system_server hook. Render each distinct template once and
+# hand the name -> array mapping to awk.
+TPL_MAP="$DIR/.cloak-tpl.$$.map"
+: > "$TPL_MAP"
+for _tpl in $(cut -d' ' -f3 "$TARGET_FILE" 2>/dev/null | sort -u); do
+  [ "$_tpl" = "@" ] && continue
+  valid_template_name "$_tpl" || continue
+  printf '%s\t%s\n' "$_tpl" "$(template_json_array "$_tpl" 2>/dev/null)" >> "$TPL_MAP"
 done
-STEALTH_JSON="$STEALTH_JSON]"
 
 ALL_HIDDEN_JSON="["
 pfirst=1
@@ -165,8 +167,16 @@ for p in $(hidden_list 2>/dev/null | sort -u); do
 done
 ALL_HIDDEN_JSON="$ALL_HIDDEN_JSON]"
 
-awk -v stealth_json="$STEALTH_JSON" -v all_hidden_json="$ALL_HIDDEN_JSON" '
+awk -v all_hidden_json="$ALL_HIDDEN_JSON" -v tpl_map="$TPL_MAP" '
 BEGIN {
+  while ((getline line < tpl_map) > 0) {
+    tab = index(line, "\t");
+    if (tab == 0) continue;
+    tname = substr(line, 1, tab - 1);
+    tarr = substr(line, tab + 1);
+    tpljson[tname] = tarr;
+  }
+  close(tpl_map);
   targetUids = ""; targets = ""; appZygote = ""; devUids = ""; accUids = ""; hiddenByTarget = "";
   n = 0; n_iso = 0; n_dev = 0; n_acc = 0;
 }
@@ -179,8 +189,8 @@ BEGIN {
   }
   targetUids = targetUids uid;
   targets = targets "\"" pkg "\"";
-  if (tpl == "stealth") {
-    hiddenByTarget = hiddenByTarget "\"" pkg "\":" stealth_json;
+  if (tpl != "@" && tpl != "none" && (tpl in tpljson)) {
+    hiddenByTarget = hiddenByTarget "\"" pkg "\":" tpljson[tpl];
   } else {
     hiddenByTarget = hiddenByTarget "\"" pkg "\":[]";
   }

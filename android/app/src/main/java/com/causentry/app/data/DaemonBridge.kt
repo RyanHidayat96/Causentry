@@ -183,7 +183,8 @@ class DaemonBridge @Inject constructor(
         isolate: Boolean? = null,
         accOff: Boolean? = null,
         template: String? = null,
-        remove: Boolean = false
+        remove: Boolean = false,
+        clearTemplate: Boolean = false
     ) {
         val current = _statusFlow.value
         val targetsList = current.targets.toMutableList()
@@ -205,7 +206,25 @@ class DaemonBridge @Inject constructor(
                 val nextMock = mock ?: existing.mock
                 val nextIsolate = isolate ?: existing.isolate
                 val nextAcc = accOff ?: existing.accOff
-                val nextTpl = if (template != null) template.takeIf { it.isNotEmpty() } else existing.hideTemplate
+                val nextTpl = when {
+                    clearTemplate -> null
+                    template != null -> template.takeIf { it.isNotEmpty() }
+                    else -> existing.hideTemplate
+                }
+
+                // Safety net: if this edit leaves the package with no active
+                // feature/template at all, drop it from the target list so the
+                // in-memory state always mirrors a true "not cloaked" app.
+                // This is the honest "deactivate" state and prevents the UI from
+                // showing an empty feature-less entry as still targeted.
+                val stillActive = nextDev || nextMock || nextIsolate || nextAcc || nextTpl != null
+                if (!stillActive) {
+                    targetsList.remove(pkg)
+                    hardenedList.remove(pkg)
+                    perAppMap.remove(pkg)
+                    recordPending(pkg, null, true)
+                    continue
+                }
 
                 if (nextIsolate) {
                     if (!hardenedList.contains(pkg)) hardenedList.add(pkg)
@@ -300,6 +319,75 @@ class DaemonBridge @Inject constructor(
                 if (accOff != null) existing.put("accOff", accOff)
                 if (template != null) existing.put("hideTemplate", template)
                 appsObj.put(pkg, existing)
+            }
+        }
+
+        configJson.put("targets", JSONArray(targetsList))
+        configJson.put("apps", appsObj)
+
+        importConfig(configJson.toString())
+    }
+
+    /**
+     * Applies a template to some apps and detaches it from others in ONE config
+     * write (single importcfg -> cloak.sh reconcile). The previous apply path only
+     * ever added; detaching a template per-app needs to clear `hideTemplate`
+     * without wiping the app's other features, so we merge the diff here atomically
+     * to avoid two sequential reconciles (and the flicker they cause).
+     *
+     * If clearing the template leaves an app with no feature at all (nothing to
+     * cloak), it is dropped from the target list entirely -- identical to a manual
+     * "remove app" -- so an empty row never lingers as still-targeted.
+     */
+    suspend fun applyTemplateDiff(
+        template: String,
+        pkgAdd: List<String>,
+        pkgRemove: List<String>
+    ): String = withContext(Dispatchers.IO) {
+        val add = pkgAdd.filter { it.isNotBlank() }.distinct()
+        val rem = pkgRemove.filter { it.isNotBlank() }.distinct().filter { it !in add }
+
+        // 1. Instant optimistic update (0ms UI latency, no flicker).
+        applyOptimisticUpdate(add, template = template)
+        if (rem.isNotEmpty()) {
+            applyOptimisticUpdate(rem, clearTemplate = true)
+        }
+
+        // 2. Persist add + remove in a single merged config.
+        val file = File(context.filesDir, "status.json")
+        val content = if (file.exists()) file.readText(Charsets.UTF_8).replace("﻿", "").trim() else ""
+        val statusJson = try { JSONObject(content) } catch (_: Throwable) { JSONObject() }
+        val configJson = statusJson.optJSONObject("config") ?: JSONObject()
+
+        val targetsArray = configJson.optJSONArray("targets") ?: JSONArray()
+        val targetsList = (0 until targetsArray.length()).map { targetsArray.getString(it) }.toMutableList()
+        val appsObj = configJson.optJSONObject("apps") ?: JSONObject()
+
+        // Attach template.
+        for (pkg in add) {
+            if (!targetsList.contains(pkg)) targetsList.add(pkg)
+            val existing = appsObj.optJSONObject(pkg) ?: JSONObject()
+            existing.put("hideTemplate", template)
+            appsObj.put(pkg, existing)
+        }
+
+        // Detach template (keep other features; drop target only if now empty).
+        for (pkg in rem) {
+            val existing = appsObj.optJSONObject(pkg)
+            if (existing != null) {
+                existing.remove("hideTemplate")
+                val hasFeature = existing.optBoolean("devOff", false) ||
+                    existing.optBoolean("mock", false) ||
+                    existing.optBoolean("isolate", false) ||
+                    existing.optBoolean("accOff", false)
+                if (hasFeature) {
+                    appsObj.put(pkg, existing)
+                } else {
+                    appsObj.remove(pkg)
+                    targetsList.remove(pkg)
+                }
+            } else {
+                targetsList.remove(pkg)
             }
         }
 

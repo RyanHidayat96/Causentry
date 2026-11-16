@@ -26,17 +26,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,17 +47,18 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.causentry.app.R
 import com.causentry.app.model.AppInfo
 import com.causentry.app.model.CrashThreatReport
+import com.causentry.app.model.CrashType
 import com.causentry.app.model.LogEntry
 import com.causentry.app.model.LogLevel
 import com.causentry.app.ui.components.ForensicAppPickerDialog
 import com.causentry.app.ui.components.LogItemRow
-import com.causentry.app.ui.components.StatusPill
 import com.causentry.app.ui.theme.BorderDark
 import com.causentry.app.ui.theme.DangerRed
 import com.causentry.app.ui.theme.PrimaryBlue
@@ -83,20 +77,28 @@ fun ForensicsScreen(
     allApps: List<AppInfo>,
     iconLoader: com.causentry.app.data.IconLoader,
     isStreaming: Boolean,
+    isRecording: Boolean,
+    recordedCount: Int,
     searchQuery: String,
+    tagFilter: String,
+    pidFilter: String,
+    regexMode: Boolean,
+    regexError: String?,
     selectedPackage: String?,
     selectedLevel: LogLevel?,
-    filterNoise: Boolean = true,
-    onlyHooks: Boolean = false,
     onToggleStream: () -> Unit,
+    onToggleRecording: () -> Unit,
     onClearLogs: () -> Unit,
     onClearCrashes: () -> Unit,
     onDismissCrash: (Long) -> Unit,
     onSelectPackage: (String?) -> Unit,
     onSelectLevel: (LogLevel?) -> Unit,
     onSearchQueryChange: (String) -> Unit,
-    onToggleFilterNoise: () -> Unit = {},
-    onToggleOnlyHooks: () -> Unit = {},
+    onTagFilterChange: (String) -> Unit,
+    onPidFilterChange: (String) -> Unit,
+    onToggleRegexMode: () -> Unit,
+    onResetFilters: () -> Unit,
+    onExportZip: (() -> File?)?,
     onExportLogs: () -> File?,
     onInspectApp: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -104,11 +106,14 @@ fun ForensicsScreen(
     val context = LocalContext.current
     val listState = rememberLazyListState()
     var showAppPickerDialog by remember { mutableStateOf(false) }
+    var showAdvanced by remember { mutableStateOf(false) }
 
     val selectedApp = remember(selectedPackage, allApps) {
         allApps.find { it.packageName == selectedPackage }
     }
-    val hasActiveFilter = selectedPackage != null || selectedLevel != null || searchQuery.isNotBlank() || onlyHooks
+    val hasAdvancedFilter = tagFilter.isNotBlank() || pidFilter.isNotBlank() || regexMode
+    val hasActiveFilter = selectedPackage != null || selectedLevel != null ||
+        searchQuery.isNotBlank() || hasAdvancedFilter
 
     if (showAppPickerDialog) {
         ForensicAppPickerDialog(
@@ -152,10 +157,8 @@ fun ForensicsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left: Stream status + line counter
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                // Left: Stream status + line counter + recording badge
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     // Status Pill (clickable to toggle stream)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -199,6 +202,34 @@ fun ForensicsScreen(
                             fontWeight = FontWeight.Medium
                         )
                     }
+
+                    // Recording indicator (LogFox-style persistent capture badge)
+                    if (isRecording) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(DangerRed.copy(alpha = 0.14f))
+                                .border(1.dp, DangerRed.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 7.dp, vertical = 4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(DangerRed)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "REC $recordedCount",
+                                color = DangerRed,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
 
                 // Right: Action buttons (Compact Box, zero collision, strictly sized)
@@ -206,6 +237,24 @@ fun ForensicsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    // Record toggle (starts / stops session capture to disk)
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(RoundedCornerShape(7.dp))
+                            .background(if (isRecording) DangerRed.copy(alpha = 0.16f) else SurfaceHighDark)
+                            .border(1.dp, if (isRecording) DangerRed.copy(alpha = 0.6f) else BorderDark, RoundedCornerShape(7.dp))
+                            .clickable { onToggleRecording() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(if (isRecording) 11.dp else 12.dp)
+                                .clip(if (isRecording) RoundedCornerShape(2.dp) else CircleShape)
+                                .background(if (isRecording) DangerRed else TextSecondary)
+                        )
+                    }
+
                     // Play/Pause button
                     Box(
                         modifier = Modifier
@@ -242,7 +291,7 @@ fun ForensicsScreen(
                         )
                     }
 
-                    // Export / Share button
+                    // Export ZIP (session log + crash digest + device info)
                     Box(
                         modifier = Modifier
                             .size(30.dp)
@@ -250,7 +299,8 @@ fun ForensicsScreen(
                             .background(SurfaceHighDark)
                             .border(1.dp, BorderDark, RoundedCornerShape(7.dp))
                             .clickable {
-                                val file = onExportLogs()
+                                val exporter = onExportZip ?: onExportLogs
+                                val file = exporter()
                                 if (file != null) {
                                     try {
                                         val uri = FileProvider.getUriForFile(
@@ -258,26 +308,27 @@ fun ForensicsScreen(
                                             "${context.packageName}.fileprovider",
                                             file
                                         )
+                                        val mime = if (file.extension.equals("zip", true)) "application/zip" else "text/plain"
                                         val intent = Intent(Intent.ACTION_SEND).apply {
-                                            type = "text/plain"
+                                            type = mime
                                             putExtra(Intent.EXTRA_STREAM, uri)
                                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                         }
-                                        context.startActivity(Intent.createChooser(intent, "Share Log Dump"))
+                                        context.startActivity(Intent.createChooser(intent, "Share Forensic Log"))
                                     } catch (_: Exception) {
                                         Toast.makeText(context, "Exported to: ${file.absolutePath}", Toast.LENGTH_LONG).show()
                                     }
                                 } else {
-                                    Toast.makeText(context, "Failed to export logs", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Failed to export", Toast.LENGTH_SHORT).show()
                                 }
                             },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            painter = painterResource(id = R.drawable.ic_copy),
-                            contentDescription = "Export Logs",
+                            painter = painterResource(id = R.drawable.ic_download),
+                            contentDescription = "Export ZIP",
                             tint = PrimaryBlue,
-                            modifier = Modifier.size(14.dp)
+                            modifier = Modifier.size(15.dp)
                         )
                     }
                 }
@@ -285,14 +336,14 @@ fun ForensicsScreen(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Row 2: Search Input Field (BasicTextField with CenterStart alignment: 100% immune to clipping)
+            // Row 2: Search Input Field (regex-aware hint)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(42.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(SurfaceDark)
-                    .border(1.dp, BorderDark, RoundedCornerShape(10.dp))
+                    .border(1.dp, if (regexError != null) DangerRed.copy(alpha = 0.6f) else BorderDark, RoundedCornerShape(10.dp))
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -311,7 +362,7 @@ fun ForensicsScreen(
                 ) {
                     if (searchQuery.isEmpty()) {
                         Text(
-                            text = "Search logs, tags, or PIDs...",
+                            text = if (regexMode) "Regex pattern (e.g. time.*out|denied)…" else "Search logs, tags, or PIDs…",
                             color = TextSecondary.copy(alpha = 0.6f),
                             fontSize = 12.sp
                         )
@@ -323,10 +374,27 @@ fun ForensicsScreen(
                         textStyle = TextStyle(
                             color = TextPrimary,
                             fontSize = 12.sp,
-                            fontFamily = FontFamily.Default
+                            fontFamily = if (regexMode) FontFamily.Monospace else FontFamily.Default
                         ),
                         cursorBrush = SolidColor(PrimaryBlue),
                         modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                // Regex mode toggle (.*)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(if (regexMode) PrimaryBlue.copy(alpha = 0.18f) else Color.Transparent)
+                        .clickable { onToggleRegexMode() }
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = ".*",
+                        color = if (regexMode) PrimaryBlue else TextSecondary,
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
                     )
                 }
 
@@ -348,9 +416,44 @@ fun ForensicsScreen(
                 }
             }
 
+            // Regex error hint
+            if (regexError != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "⚠ Invalid regex: $regexError",
+                    color = DangerRed,
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+            }
+
+            // Row 2b: Advanced filters (Tag / PID) — collapsible
+            AnimatedVisibility(visible = showAdvanced) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CompactFilterField(
+                        value = tagFilter,
+                        placeholder = "Tag filter",
+                        onChange = onTagFilterChange,
+                        modifier = Modifier.weight(1f)
+                    )
+                    CompactFilterField(
+                        value = pidFilter,
+                        placeholder = "PID",
+                        onChange = onPidFilterChange,
+                        modifier = Modifier.width(96.dp)
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Row 3: Horizontal Filter Chips (App selector + Log Levels + Reset)
+            // Row 3: Horizontal Filter Chips (App selector + Log Levels + Advanced + Reset)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -368,7 +471,7 @@ fun ForensicsScreen(
                             fontSize = 11.sp,
                             fontWeight = if (selectedPackage != null) FontWeight.Bold else FontWeight.Medium,
                             maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis
                         )
                     },
                     trailingIcon = if (selectedPackage != null) {
@@ -398,58 +501,6 @@ fun ForensicsScreen(
                     modifier = Modifier.height(32.dp)
                 )
 
-                // Noise Filter Toggle Chip (Hides HWComposer / SurfaceFlinger spam)
-                FilterChip(
-                    selected = filterNoise,
-                    onClick = onToggleFilterNoise,
-                    label = {
-                        Text(
-                            text = if (filterNoise) "🔇 Clean Noise" else "🔊 Raw Logs",
-                            fontSize = 11.sp,
-                            fontWeight = if (filterNoise) FontWeight.Bold else FontWeight.Medium
-                        )
-                    },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = PrimaryBlue.copy(alpha = 0.15f),
-                        selectedLabelColor = PrimaryBlue,
-                        containerColor = SurfaceDark,
-                        labelColor = TextSecondary
-                    ),
-                    border = FilterChipDefaults.filterChipBorder(
-                        enabled = true,
-                        selected = filterNoise,
-                        borderColor = if (filterNoise) PrimaryBlue.copy(alpha = 0.6f) else BorderDark
-                    ),
-                    modifier = Modifier.height(32.dp)
-                )
-
-                // Hook Filter Toggle Chip (Isolates Causentry hooks)
-                FilterChip(
-                    selected = onlyHooks,
-                    onClick = onToggleOnlyHooks,
-                    label = {
-                        Text(
-                            text = "⚡ Hooks",
-                            fontSize = 11.sp,
-                            fontWeight = if (onlyHooks) FontWeight.Bold else FontWeight.Medium
-                        )
-                    },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = SuccessGreen.copy(alpha = 0.18f),
-                        selectedLabelColor = SuccessGreen,
-                        containerColor = SurfaceDark,
-                        labelColor = TextSecondary
-                    ),
-                    border = FilterChipDefaults.filterChipBorder(
-                        enabled = true,
-                        selected = onlyHooks,
-                        borderColor = if (onlyHooks) SuccessGreen.copy(alpha = 0.6f) else BorderDark
-                    ),
-                    modifier = Modifier.height(32.dp)
-                )
-
                 // Level Filter Chips
                 LevelChip(
                     label = "All Levels",
@@ -474,15 +525,46 @@ fun ForensicsScreen(
                     onClick = { onSelectLevel(if (selectedLevel == LogLevel.ERROR) null else LogLevel.ERROR) }
                 )
 
+                // Advanced filters toggle (Tag / PID)
+                FilterChip(
+                    selected = showAdvanced || hasAdvancedFilter,
+                    onClick = { showAdvanced = !showAdvanced },
+                    label = {
+                        Text(
+                            text = if (hasAdvancedFilter) "Filters •" else "Filters",
+                            fontSize = 11.sp,
+                            fontWeight = if (hasAdvancedFilter) FontWeight.Bold else FontWeight.Medium
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_search),
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = PrimaryBlue.copy(alpha = 0.2f),
+                        selectedLabelColor = PrimaryBlue,
+                        containerColor = SurfaceDark,
+                        labelColor = TextSecondary
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = showAdvanced || hasAdvancedFilter,
+                        borderColor = if (showAdvanced || hasAdvancedFilter) PrimaryBlue else BorderDark
+                    ),
+                    modifier = Modifier.height(32.dp)
+                )
+
                 // Reset Filters Chip
                 if (hasActiveFilter) {
                     FilterChip(
                         selected = false,
                         onClick = {
-                            onSelectPackage(null)
-                            onSelectLevel(null)
-                            onSearchQueryChange("")
-                            if (onlyHooks) onToggleOnlyHooks()
+                            onResetFilters()
+                            showAdvanced = false
                         },
                         label = {
                             Text(
@@ -511,6 +593,17 @@ fun ForensicsScreen(
         }
 
         HorizontalDivider(color = BorderDark.copy(alpha = 0.6f), thickness = 1.dp)
+
+        // Crash / Threat alert section (LogFox-style surfacing of detected events)
+        if (crashReports.isNotEmpty()) {
+            CrashAlertSection(
+                reports = crashReports,
+                onDismiss = onDismissCrash,
+                onClearAll = onClearCrashes,
+                onInspectApp = onInspectApp
+            )
+            HorizontalDivider(color = BorderDark.copy(alpha = 0.6f), thickness = 1.dp)
+        }
 
         // Live Logcat View (Virtualized LazyColumn)
         if (logs.isEmpty()) {
@@ -549,6 +642,211 @@ fun ForensicsScreen(
                     LogItemRow(entry = entry)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CompactFilterField(
+    value: String,
+    placeholder: String,
+    onChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(36.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(SurfaceDark)
+            .border(1.dp, if (value.isNotEmpty()) PrimaryBlue.copy(alpha = 0.5f) else BorderDark, RoundedCornerShape(9.dp))
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        if (value.isEmpty()) {
+            Text(placeholder, color = TextSecondary.copy(alpha = 0.6f), fontSize = 12.sp)
+        }
+        BasicTextField(
+            value = value,
+            onValueChange = onChange,
+            singleLine = true,
+            textStyle = TextStyle(color = TextPrimary, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+            cursorBrush = SolidColor(PrimaryBlue),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun CrashAlertSection(
+    reports: List<CrashThreatReport>,
+    onDismiss: (Long) -> Unit,
+    onClearAll: () -> Unit,
+    onInspectApp: (String) -> Unit
+) {
+    var expandedId by remember { mutableStateOf<Long?>(null) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(DangerRed.copy(alpha = 0.05f))
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "⚠ ${reports.size} crash / threat ${if (reports.size == 1) "event" else "events"} detected",
+                color = DangerRed,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Clear all",
+                color = DangerRed.copy(alpha = 0.8f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onClearAll() }
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        // Show newest 3; older events collapse into a count
+        val shown = reports.take(3)
+        for (report in shown) {
+            CrashAlertCard(
+                report = report,
+                expanded = expandedId == report.id,
+                onToggle = { expandedId = if (expandedId == report.id) null else report.id },
+                onDismiss = { onDismiss(report.id) },
+                onInspect = { onInspectApp(report.packageName) }
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+        }
+        if (reports.size > shown.size) {
+            Text(
+                text = "+${reports.size - shown.size} more older events",
+                color = TextSecondary,
+                fontSize = 10.sp,
+                modifier = Modifier.padding(start = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun CrashAlertCard(
+    report: CrashThreatReport,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onDismiss: () -> Unit,
+    onInspect: () -> Unit
+) {
+    val accent = when (report.type) {
+        CrashType.ANR -> WarningAmber
+        CrashType.RASP_DETECTION -> PrimaryBlue
+        CrashType.PROCESS_KILL -> WarningAmber
+        CrashType.NATIVE_CRASH, CrashType.JAVA_CRASH -> DangerRed
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(9.dp))
+            .background(SurfaceDark)
+            .border(1.dp, accent.copy(alpha = 0.4f), RoundedCornerShape(9.dp))
+            .clickable { onToggle() }
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(7.dp)
+                    .clip(CircleShape)
+                    .background(accent)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = report.title,
+                    color = TextPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = if (expanded) 4 else 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${report.packageName} • PID ${report.pid} • ${report.timestamp}",
+                    color = TextSecondary,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Text(
+                text = "✕",
+                color = TextSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable { onDismiss() }
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            )
+        }
+
+        if (expanded) {
+            Spacer(modifier = Modifier.height(6.dp))
+            if (!report.threatDiagnosis.isNullOrBlank()) {
+                Text(
+                    text = "Diagnosis",
+                    color = accent,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = report.threatDiagnosis,
+                    color = TextPrimary,
+                    fontSize = 11.sp
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+            if (!report.recommendedFix.isNullOrBlank()) {
+                Text(
+                    text = "Recommended fix",
+                    color = SuccessGreen,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = report.recommendedFix,
+                    color = TextPrimary,
+                    fontSize = 11.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Inspect app logs →",
+                    color = PrimaryBlue,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onInspect() }
+                        .padding(vertical = 2.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = report.fullTrace,
+                color = TextSecondary,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 14,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
