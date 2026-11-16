@@ -171,7 +171,7 @@ fun ForensicsScreen(
         } else 0
     }
 
-    // Live auto-scroll: when autoScrollEnabled is true, stay pinned to index 0 (newest log at bottom)
+    // Live auto-scroll: when autoScrollEnabled is true and isStreaming is true, stay pinned to index 0 (newest log at bottom)
     LaunchedEffect(autoScrollEnabled, logs.lastOrNull()?.id, isStreaming) {
         if (isStreaming && autoScrollEnabled && logs.isNotEmpty()) {
             listState.scrollToItem(0)
@@ -207,312 +207,202 @@ fun ForensicsScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 6.dp)
             ) {
-                // Row 1: Stream Status & Professional Action Buttons
+                // Search Input Field & Quick Action Buttons (Pause/Resume, Compact Mode, Clear, Export)
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(SurfaceDark)
-                        .border(1.dp, BorderDark, RoundedCornerShape(12.dp))
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Left: Stream status + line counter + recording badge
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Status Pill (clickable to toggle stream)
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isStreaming) SuccessGreen.copy(alpha = 0.12f) else WarningAmber.copy(alpha = 0.12f))
-                                .border(1.dp, if (isStreaming) SuccessGreen.copy(alpha = 0.35f) else WarningAmber.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
-                                .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    onToggleStream()
-                                }
-                                .padding(horizontal = 8.dp, vertical = 5.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isStreaming) SuccessGreen else WarningAmber)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (isStreaming) "LIVE" else "PAUSED",
-                                color = if (isStreaming) SuccessGreen else WarningAmber,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.5.sp
-                            )
-                        }
+                    // Search bar
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(SurfaceDark)
+                            .border(1.dp, if (regexError != null) DangerRed.copy(alpha = 0.6f) else BorderDark, RoundedCornerShape(9.dp))
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_search),
+                            contentDescription = null,
+                            tint = TextSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
 
                         Spacer(modifier = Modifier.width(8.dp))
 
                         Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(SurfaceHighDark)
-                                .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
-                                .padding(horizontal = 8.dp, vertical = 5.dp)
+                            modifier = Modifier.weight(1f),
+                            contentAlignment = Alignment.CenterStart
                         ) {
-                            Text(
-                                text = "${logs.size} lines",
-                                color = TextSecondary,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Medium
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = if (regexMode) "Regex pattern…" else "Search logs, tags…",
+                                    color = TextSecondary.copy(alpha = 0.6f),
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            BasicTextField(
+                                value = searchQuery,
+                                onValueChange = onSearchQueryChange,
+                                singleLine = true,
+                                textStyle = TextStyle(
+                                    color = TextPrimary,
+                                    fontSize = 12.sp,
+                                    fontFamily = if (regexMode) FontFamily.Monospace else FontFamily.Default
+                                ),
+                                cursorBrush = SolidColor(PrimaryBlue),
+                                modifier = Modifier.fillMaxWidth()
                             )
                         }
 
-                        // Recording badge
-                        if (isRecording) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(DangerRed.copy(alpha = 0.14f))
-                                    .border(1.dp, DangerRed.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 8.dp, vertical = 5.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(7.dp)
-                                        .clip(CircleShape)
-                                        .background(DangerRed)
-                                )
-                                Spacer(modifier = Modifier.width(5.dp))
-                                Text(
-                                    text = "REC $recordedCount",
-                                    color = DangerRed,
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-
-                    // Right: Action buttons (Touch target >= 36-38dp with comfortable spacing)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        // Record toggle button
+                        // Regex toggle (.*)
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isRecording) DangerRed.copy(alpha = 0.18f) else SurfaceHighDark)
-                                .border(1.dp, if (isRecording) DangerRed.copy(alpha = 0.6f) else BorderDark, RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (regexMode) PrimaryBlue.copy(alpha = 0.22f) else Color.Transparent)
+                                .border(1.dp, if (regexMode) PrimaryBlue.copy(alpha = 0.5f) else Color.Transparent, RoundedCornerShape(6.dp))
                                 .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onToggleRecording()
-                                },
-                            contentAlignment = Alignment.Center
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onToggleRegexMode()
+                                }
+                                .padding(horizontal = 6.dp, vertical = 3.dp)
                         ) {
+                            Text(
+                                text = ".*",
+                                color = if (regexMode) PrimaryBlue else TextSecondary,
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        if (searchQuery.isNotEmpty()) {
+                            Spacer(modifier = Modifier.width(6.dp))
                             Box(
                                 modifier = Modifier
-                                    .size(if (isRecording) 12.dp else 12.dp)
-                                    .clip(if (isRecording) RoundedCornerShape(2.dp) else CircleShape)
-                                    .background(if (isRecording) DangerRed else TextSecondary)
-                            )
-                        }
-
-                        // Play/Pause button
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(SurfaceHighDark)
-                                .border(1.dp, if (isStreaming) WarningAmber.copy(alpha = 0.5f) else SuccessGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                                .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    onToggleStream()
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(id = if (isStreaming) R.drawable.ic_pause else R.drawable.ic_play),
-                                contentDescription = if (isStreaming) "Pause Stream" else "Resume Stream",
-                                tint = if (isStreaming) WarningAmber else SuccessGreen,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-
-                        // Density Toggle (Compact Terminal vs Detailed Cards)
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isCompactMode) PrimaryBlue.copy(alpha = 0.2f) else SurfaceHighDark)
-                                .border(1.dp, if (isCompactMode) PrimaryBlue else BorderDark, RoundedCornerShape(8.dp))
-                                .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    isCompactMode = !isCompactMode
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_code),
-                                contentDescription = if (isCompactMode) "Detailed Card Mode" else "Compact Terminal Mode",
-                                tint = if (isCompactMode) PrimaryBlue else TextSecondary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-
-                        // Clear logs button
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(SurfaceHighDark)
-                                .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
-                                .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onClearLogs()
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_delete),
-                                contentDescription = "Clear Logs",
-                                tint = TextSecondary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-
-                        // Export ZIP button
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(SurfaceHighDark)
-                                .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
-                                .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    val exporter = onExportZip ?: onExportLogs
-                                    val file = exporter()
-                                    if (file != null) {
-                                        try {
-                                            val uri = FileProvider.getUriForFile(
-                                                context,
-                                                "${context.packageName}.fileprovider",
-                                                file
-                                            )
-                                            val mime = if (file.extension.equals("zip", true)) "application/zip" else "text/plain"
-                                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                                type = mime
-                                                putExtra(Intent.EXTRA_STREAM, uri)
-                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                            }
-                                            context.startActivity(Intent.createChooser(intent, "Share Forensic Log"))
-                                        } catch (_: Exception) {
-                                            Toast.makeText(context, "Exported to: ${file.absolutePath}", Toast.LENGTH_LONG).show()
-                                        }
-                                    } else {
-                                        Toast.makeText(context, "Failed to export", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_download),
-                                contentDescription = "Export ZIP",
-                                tint = PrimaryBlue,
-                                modifier = Modifier.size(16.dp)
-                            )
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .clickable { onSearchQueryChange("") },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_close),
+                                    contentDescription = "Clear search",
+                                    tint = TextSecondary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Row 2: Search Input Field
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(42.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(SurfaceDark)
-                        .border(1.dp, if (regexError != null) DangerRed.copy(alpha = 0.6f) else BorderDark, RoundedCornerShape(10.dp))
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_search),
-                        contentDescription = null,
-                        tint = TextSecondary,
-                        modifier = Modifier.size(16.dp)
-                    )
-
-                    Spacer(modifier = Modifier.width(10.dp))
-
-                    Box(
-                        modifier = Modifier.weight(1f),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        if (searchQuery.isEmpty()) {
-                            Text(
-                                text = if (regexMode) "Regex pattern (e.g. time.*out|denied)…" else "Search logs, tags, or PIDs…",
-                                color = TextSecondary.copy(alpha = 0.6f),
-                                fontSize = 12.sp
-                            )
-                        }
-                        BasicTextField(
-                            value = searchQuery,
-                            onValueChange = onSearchQueryChange,
-                            singleLine = true,
-                            textStyle = TextStyle(
-                                color = TextPrimary,
-                                fontSize = 12.sp,
-                                fontFamily = if (regexMode) FontFamily.Monospace else FontFamily.Default
-                            ),
-                            cursorBrush = SolidColor(PrimaryBlue),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
-                    // Regex toggle (.*)
+                    // Play/Pause button
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (regexMode) PrimaryBlue.copy(alpha = 0.22f) else Color.Transparent)
-                            .border(1.dp, if (regexMode) PrimaryBlue.copy(alpha = 0.5f) else Color.Transparent, RoundedCornerShape(6.dp))
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(SurfaceDark)
+                            .border(1.dp, if (isStreaming) WarningAmber.copy(alpha = 0.5f) else SuccessGreen.copy(alpha = 0.5f), RoundedCornerShape(9.dp))
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onToggleRegexMode()
-                            }
-                            .padding(horizontal = 7.dp, vertical = 4.dp)
+                                onToggleStream()
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = ".*",
-                            color = if (regexMode) PrimaryBlue else TextSecondary,
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold
+                        Icon(
+                            painter = painterResource(id = if (isStreaming) R.drawable.ic_pause else R.drawable.ic_play),
+                            contentDescription = if (isStreaming) "Pause Stream" else "Resume Stream",
+                            tint = if (isStreaming) WarningAmber else SuccessGreen,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
 
-                    if (searchQuery.isNotEmpty()) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(CircleShape)
-                                .clickable { onSearchQueryChange("") },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_close),
-                                contentDescription = "Clear search",
-                                tint = TextSecondary,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
+                    // Compact mode toggle (<>)
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(if (isCompactMode) PrimaryBlue.copy(alpha = 0.2f) else SurfaceDark)
+                            .border(1.dp, if (isCompactMode) PrimaryBlue else BorderDark, RoundedCornerShape(9.dp))
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                isCompactMode = !isCompactMode
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_code),
+                            contentDescription = if (isCompactMode) "Detailed Card Mode" else "Compact Terminal Mode",
+                            tint = if (isCompactMode) PrimaryBlue else TextSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    // Clear logs button (Trash)
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(SurfaceDark)
+                            .border(1.dp, BorderDark, RoundedCornerShape(9.dp))
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onClearLogs()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_delete),
+                            contentDescription = "Clear Logs",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    // Export logs button (Download)
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(SurfaceDark)
+                            .border(1.dp, BorderDark, RoundedCornerShape(9.dp))
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                val exporter = onExportZip ?: onExportLogs
+                                val file = exporter()
+                                if (file != null) {
+                                    try {
+                                        val uri = FileProvider.getUriForFile(
+                                            context,
+                                            "${context.packageName}.fileprovider",
+                                            file
+                                        )
+                                        val mime = if (file.extension.equals("zip", true)) "application/zip" else "text/plain"
+                                        val intent = Intent(Intent.ACTION_SEND).apply {
+                                            type = mime
+                                            putExtra(Intent.EXTRA_STREAM, uri)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        context.startActivity(Intent.createChooser(intent, "Share Forensic Log"))
+                                    } catch (_: Exception) {
+                                        Toast.makeText(context, "Exported to: ${file.absolutePath}", Toast.LENGTH_LONG).show()
+                                    }
+                                } else {
+                                    Toast.makeText(context, "Failed to export", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_download),
+                            contentDescription = "Export ZIP",
+                            tint = PrimaryBlue,
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
 
