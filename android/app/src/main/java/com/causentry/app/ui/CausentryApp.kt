@@ -414,20 +414,21 @@ private fun AppsScreen(
         // Pinned Top Section: Compact Hero Card, Search Bar, and Filter Chips
         HeroStatusCard(
             status = status,
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp)
+            protectedCount = allApps.count { it.isProtected },
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
         )
 
         // High-performance search bar
         OutlinedTextField(
             value = searchQuery,
             onValueChange = onSearchChange,
-            placeholder = { Text("Search app name or package...", color = TextSecondary, fontSize = 13.5.sp) },
+            placeholder = { Text(if (allApps.isNotEmpty()) "Search ${allApps.size} apps or package..." else "Search app name or package...", color = TextSecondary, fontSize = 13.5.sp) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 2.dp),
+                .padding(horizontal = 16.dp, vertical = 2.dp),
             shape = RoundedCornerShape(12.dp),
             leadingIcon = {
                 Icon(
@@ -466,7 +467,7 @@ private fun AppsScreen(
             protectedCount = allApps.count { it.isProtected },
             userCount = allApps.count { !it.isSystem },
             systemCount = allApps.count { it.isSystem },
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp)
+            modifier = Modifier.padding(vertical = 6.dp)
         )
 
         // Scrollable Apps List (Only the applications list scrolls beneath pinned top controls)
@@ -543,7 +544,7 @@ private fun AppsScreen(
 
                 if (protectedApps.isNotEmpty()) {
                     item {
-                        SectionHeader(title = "PROTECTED APPLICATIONS", count = protectedApps.size)
+                        SectionHeader(title = "PROTECTED APPLICATIONS", count = protectedApps.size, isProtected = true)
                     }
                     items(
                         items = protectedApps,
@@ -559,7 +560,7 @@ private fun AppsScreen(
 
                 if (otherApps.isNotEmpty()) {
                     item {
-                        SectionHeader(title = "ALL OTHER APPLICATIONS", count = otherApps.size)
+                        SectionHeader(title = "ALL OTHER APPLICATIONS", count = otherApps.size, isProtected = false)
                     }
                     items(
                         items = otherApps,
@@ -593,28 +594,52 @@ private fun AppsScreen(
 }
 
 @Composable
-private fun SectionHeader(title: String, count: Int) {
+private fun SectionHeader(
+    title: String,
+    count: Int,
+    isProtected: Boolean = false
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 6.dp),
+            .padding(horizontal = 18.dp, vertical = 7.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = title,
-            color = TextSecondary,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.5.sp
-        )
-        Text(
-            text = "$count",
-            color = TextSecondary,
-            fontSize = 11.sp,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (isProtected) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_shield),
+                    contentDescription = null,
+                    tint = SuccessGreen,
+                    modifier = Modifier.size(13.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+            Text(
+                text = title,
+                color = if (isProtected) TextPrimary else TextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.6.sp
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(SurfaceDark)
+                .border(0.7.dp, BorderDark, RoundedCornerShape(4.dp))
+                .padding(horizontal = 6.dp, vertical = 1.5.dp)
+        ) {
+            Text(
+                text = "$count",
+                color = if (isProtected) SuccessGreen else TextSecondary,
+                fontSize = 10.5.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 
