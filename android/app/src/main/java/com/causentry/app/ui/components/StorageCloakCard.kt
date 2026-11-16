@@ -5,7 +5,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,14 +17,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -57,7 +54,6 @@ import com.causentry.app.ui.theme.SurfaceDark
 import com.causentry.app.ui.theme.SurfaceHighDark
 import com.causentry.app.ui.theme.TextPrimary
 import com.causentry.app.ui.theme.TextSecondary
-import com.causentry.app.ui.theme.WarningAmber
 
 private val DEFAULT_ROOT_NAMES = setOf(
     "MT2", "TWRP", "Fox", "su", "daemonsu", ".magisk", "busybox",
@@ -78,16 +74,21 @@ fun StorageCloakCard(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
-    val currentRoots = remember(status.storageHiddenRoots) {
-        (DEFAULT_ROOT_NAMES + status.storageHiddenRoots).sorted()
+    val customRoots = remember(status.storageHiddenRoots) {
+        status.storageHiddenRoots.filter { !DEFAULT_ROOT_NAMES.contains(it) }.sorted()
     }
-    val currentRelatives = remember(status.storageHiddenRelatives) {
-        (DEFAULT_RELATIVE_PATHS + status.storageHiddenRelatives).sorted()
+    val customRelatives = remember(status.storageHiddenRelatives) {
+        status.storageHiddenRelatives.filter { !DEFAULT_RELATIVE_PATHS.contains(it) }.sorted()
     }
+    val totalCustomCount = customRoots.size + customRelatives.size
 
+    val allDefaultRoots = remember { DEFAULT_ROOT_NAMES.sorted() }
+    val allDefaultRelatives = remember { DEFAULT_RELATIVE_PATHS.sorted() }
+    val totalDefaultCount = allDefaultRoots.size + allDefaultRelatives.size
+
+    var showDefaultRules by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var inputPath by remember { mutableStateOf("") }
-    var isSaving by remember { mutableStateOf(false) }
 
     if (showAddDialog) {
         AlertDialog(
@@ -218,91 +219,159 @@ fun StorageCloakCard(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
                 .background(SurfaceHighDark)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 9.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Protection Scope: ${status.targets.size} App(s)",
+                    text = "Protection Scope: ${status.targets.size} Protected App(s)",
                     color = TextPrimary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "Protected apps receive ENOENT (file absent) on cloaked paths",
+                    text = "Target apps observe virtual file absence (ENOENT) on cloaked paths",
                     color = TextSecondary,
-                    fontSize = 10.sp
+                    fontSize = 11.sp
                 )
             }
         }
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Cloaked Root Entries
-        Text(
-            text = "Root Entries (${currentRoots.size})",
-            color = TextPrimary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        // Custom Rules Section
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Custom Rules ($totalCustomCount)",
+                color = TextPrimary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
         Spacer(modifier = Modifier.height(6.dp))
 
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            currentRoots.forEach { name ->
-                val isDefault = DEFAULT_ROOT_NAMES.contains(name)
-                PathChipItem(
-                    name = name,
-                    isDefault = isDefault,
-                    onDelete = {
-                        val updated = status.storageHiddenRoots - name
-                        onSaveStorageRules(updated, status.storageHiddenRelatives)
-                        Toast.makeText(context, "Removed $name", Toast.LENGTH_SHORT).show()
-                    }
-                )
+        if (totalCustomCount > 0) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                customRoots.forEach { name ->
+                    PathChipItem(
+                        name = name,
+                        isDefault = false,
+                        onDelete = {
+                            val updated = status.storageHiddenRoots - name
+                            onSaveStorageRules(updated, status.storageHiddenRelatives)
+                            Toast.makeText(context, "Removed $name", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                }
+                customRelatives.forEach { path ->
+                    PathChipItem(
+                        name = path,
+                        isDefault = false,
+                        onDelete = {
+                            val updated = status.storageHiddenRelatives - path
+                            onSaveStorageRules(status.storageHiddenRoots, updated)
+                            Toast.makeText(context, "Removed $path", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                }
             }
+        } else {
+            Text(
+                text = "No custom paths added yet. Tap '+ Add Path' below to hide custom directories from target apps.",
+                color = TextSecondary.copy(alpha = 0.8f),
+                fontSize = 11.5.sp,
+                lineHeight = 16.sp
+            )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // Cloaked Relative Paths
-        Text(
-            text = "Relative Paths (${currentRelatives.size})",
-            color = TextPrimary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        // Built-in System Rules (Collapsible accordion)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    showDefaultRules = !showDefaultRules
+                }
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Built-in System Rules ($totalDefaultCount)",
+                color = TextPrimary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = if (showDefaultRules) "Hide Rules ▴" else "Show All ▾",
+                color = PrimaryBlue,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
         Spacer(modifier = Modifier.height(6.dp))
 
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            currentRelatives.forEach { path ->
-                val isDefault = DEFAULT_RELATIVE_PATHS.contains(path)
-                PathChipItem(
-                    name = path,
-                    isDefault = isDefault,
-                    onDelete = {
-                        val updated = status.storageHiddenRelatives - path
-                        onSaveStorageRules(status.storageHiddenRoots, updated)
-                        Toast.makeText(context, "Removed $path", Toast.LENGTH_SHORT).show()
-                    }
-                )
+        if (!showDefaultRules) {
+            // Collapsed preview: show first 4 chips + more pill
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                allDefaultRoots.take(4).forEach { name ->
+                    PathChipItem(name = name, isDefault = true, onDelete = {})
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(SurfaceHighDark)
+                        .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
+                        .clickable { showDefaultRules = true }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "+${totalDefaultCount - 4} more…",
+                        color = PrimaryBlue,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        } else {
+            // Expanded view
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                allDefaultRoots.forEach { name ->
+                    PathChipItem(name = name, isDefault = true, onDelete = {})
+                }
+                allDefaultRelatives.forEach { path ->
+                    PathChipItem(name = path, isDefault = true, onDelete = {})
+                }
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Buttons
+        // Action Buttons
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Button(
@@ -312,11 +381,11 @@ fun StorageCloakCard(
                 },
                 modifier = Modifier
                     .weight(1f)
-                    .height(44.dp),
+                    .height(42.dp),
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
             ) {
-                Text("+ Add Custom Path", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("+ Add Path", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             }
 
             OutlinedButton(
@@ -325,12 +394,12 @@ fun StorageCloakCard(
                     onSaveStorageRules(emptyList(), emptyList())
                     Toast.makeText(context, "Restored default storage paths", Toast.LENGTH_SHORT).show()
                 },
-                modifier = Modifier.height(44.dp),
+                modifier = Modifier.height(42.dp),
                 shape = RoundedCornerShape(10.dp),
                 border = BorderStroke(1.dp, BorderDark),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary)
             ) {
-                Text("Reset Defaults", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Text("Reset Defaults", fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
             }
         }
     }
@@ -358,10 +427,10 @@ private fun PathChipItem(
     ) {
         Text(
             text = name,
-            color = if (isDefault) TextPrimary else PrimaryBlue,
+            color = if (isDefault) TextSecondary else PrimaryBlue,
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Medium
+            fontWeight = if (isDefault) FontWeight.Normal else FontWeight.Medium
         )
 
         if (!isDefault) {
