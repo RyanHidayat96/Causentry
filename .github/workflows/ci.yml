@@ -1,0 +1,47 @@
+name: Causentry CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  rust-workspace-tests:
+    name: Rust Workspace & JNI Core Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Run workspace cargo test
+        run: cargo test --workspace --verbose
+      - name: Run workspace clippy
+        run: cargo clippy --workspace -- -D warnings
+      - name: Test & lint forensic-core-rs
+        working-directory: android/app/rust/forensic-core-rs
+        run: |
+          cargo test --verbose
+          cargo clippy -- -D warnings
+      - name: Test & lint backup-core-rs
+        working-directory: android/app/rust/backup-core-rs
+        run: |
+          cargo test --verbose
+          cargo clippy -- -D warnings
+
+  android-unit-tests:
+    name: Android Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.0.0'
+      - name: Run Android :app unit tests
+        working-directory: android
+        run: gradle --no-daemon :app:testDebugUnitTest

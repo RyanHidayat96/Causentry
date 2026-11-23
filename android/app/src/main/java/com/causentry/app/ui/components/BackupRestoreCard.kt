@@ -8,12 +8,13 @@ import android.provider.DocumentsContract
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,6 +28,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
@@ -47,21 +49,14 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.FileProvider
 import com.causentry.app.R
 import com.causentry.app.data.ConfigBackupManager
 import com.causentry.app.data.ParsedBackupInfo
 import com.causentry.app.model.DaemonStatus
-import com.causentry.app.ui.theme.BorderDark
-import com.causentry.app.ui.theme.DangerRed
-import com.causentry.app.ui.theme.PrimaryBlue
-import com.causentry.app.ui.theme.SuccessGreen
-import com.causentry.app.ui.theme.SurfaceDark
-import com.causentry.app.ui.theme.SurfaceHighDark
-import com.causentry.app.ui.theme.TextPrimary
-import com.causentry.app.ui.theme.TextSecondary
-import com.causentry.app.ui.theme.WarningAmber
+import com.causentry.app.ui.theme.LocalCausentryColors
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -73,6 +68,8 @@ fun BackupRestoreCard(
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val cs = MaterialTheme.colorScheme
+    val ext = LocalCausentryColors.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isExporting by remember { mutableStateOf(false) }
@@ -98,9 +95,12 @@ fun BackupRestoreCard(
         scope.launch {
             isExporting = true
             try {
-                val json = backupManager.createBackupJson(status)
-                context.contentResolver.openOutputStream(uri)?.use { stream ->
-                    stream.write(json.toByteArray(Charsets.UTF_8))
+                // Offload JSON serialization & SAF stream write to Dispatchers.IO
+                withContext(Dispatchers.IO) {
+                    val json = backupManager.createBackupJson(status)
+                    context.contentResolver.openOutputStream(uri)?.use { stream ->
+                        stream.write(json.toByteArray(Charsets.UTF_8))
+                    } ?: error("Unable to open output stream")
                 }
                 val fileName = uri.lastPathSegment?.substringAfterLast('/') ?: "Download"
                 Toast.makeText(context, "Backup saved to: $fileName", Toast.LENGTH_LONG).show()
@@ -139,14 +139,13 @@ fun BackupRestoreCard(
         }
     }
 
-    // Restore confirmation dialog
     parsedBackup?.let { info ->
         AlertDialog(
             onDismissRequest = { parsedBackup = null },
             title = {
                 Text(
                     text = "Restore Configuration",
-                    color = TextPrimary,
+                    color = cs.onSurface,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -155,14 +154,14 @@ fun BackupRestoreCard(
                 Column {
                     Text(
                         text = "Format: ${info.format}",
-                        color = PrimaryBlue,
+                        color = cs.primary,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "Contains ${info.targetCount} protected app(s) and ${info.templateCount} cloaking template(s).",
-                        color = TextSecondary,
+                        color = cs.onSurfaceVariant,
                         fontSize = 12.sp
                     )
 
@@ -177,14 +176,14 @@ fun BackupRestoreCard(
                         }
                         Text(
                             text = "Protection state: ${bits.joinToString(" · ")}",
-                            color = PrimaryBlue,
+                            color = cs.primary,
                             fontSize = 11.sp
                         )
                     } else {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Legacy backup (v${info.sourceVersion}) — protection state not stored, current cloak settings are kept.",
-                            color = TextSecondary,
+                            text = "Legacy backup (v${info.sourceVersion}) — current cloak settings are kept.",
+                            color = cs.onSurfaceVariant,
                             fontSize = 11.sp
                         )
                     }
@@ -192,8 +191,8 @@ fun BackupRestoreCard(
                     if (info.targetNames.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Apps: ${info.targetNames.take(4).joinToString(", ")}${if (info.targetNames.size > 4) "..." else ""}",
-                            color = TextSecondary,
+                            text = "Apps: ${info.targetNames.take(4).joinToString(", ")}${if (info.targetNames.size > 4) "…" else ""}",
+                            color = cs.onSurfaceVariant,
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace
                         )
@@ -203,7 +202,7 @@ fun BackupRestoreCard(
 
                     Text(
                         text = "RESTORE MODE",
-                        color = TextSecondary,
+                        color = cs.onSurfaceVariant,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.5.sp
@@ -211,12 +210,11 @@ fun BackupRestoreCard(
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    // Mode 1: Merge
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .background(SurfaceHighDark)
+                            .background(ext.surfaceHigh)
                             .clickable { replaceAllMode = false }
                             .padding(8.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -224,23 +222,22 @@ fun BackupRestoreCard(
                         RadioButton(
                             selected = !replaceAllMode,
                             onClick = { replaceAllMode = false },
-                            colors = RadioButtonDefaults.colors(selectedColor = PrimaryBlue)
+                            colors = RadioButtonDefaults.colors(selectedColor = cs.primary)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Column {
-                            Text("Merge (Recommended)", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Add to current rules without deleting other apps", color = TextSecondary, fontSize = 11.sp)
+                            Text("Merge (Recommended)", color = cs.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Add to current rules without deleting other apps", color = cs.onSurfaceVariant, fontSize = 11.sp)
                         }
                     }
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    // Mode 2: Replace
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .background(SurfaceHighDark)
+                            .background(ext.surfaceHigh)
                             .clickable { replaceAllMode = true }
                             .padding(8.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -248,17 +245,17 @@ fun BackupRestoreCard(
                         RadioButton(
                             selected = replaceAllMode,
                             onClick = { replaceAllMode = true },
-                            colors = RadioButtonDefaults.colors(selectedColor = DangerRed)
+                            colors = RadioButtonDefaults.colors(selectedColor = ext.danger)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Column {
-                            Text("Replace All", color = DangerRed, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Overwrite entire config with backup file", color = TextSecondary, fontSize = 11.sp)
+                            Text("Replace All", color = ext.danger, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Overwrite entire config with backup file", color = cs.onSurfaceVariant, fontSize = 11.sp)
                         }
                     }
                 }
             },
-            containerColor = SurfaceDark,
+            containerColor = cs.surface,
             confirmButton = {
                 Button(
                     onClick = {
@@ -274,14 +271,14 @@ fun BackupRestoreCard(
                             }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
+                    colors = ButtonDefaults.buttonColors(containerColor = cs.primary, contentColor = cs.onPrimary)
                 ) {
                     Text("Apply Restore", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { parsedBackup = null }) {
-                    Text("Cancel", color = TextSecondary)
+                    Text("Cancel", color = cs.onSurfaceVariant)
                 }
             }
         )
@@ -291,29 +288,21 @@ fun BackupRestoreCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(SurfaceDark)
-            .border(1.dp, BorderDark, RoundedCornerShape(16.dp))
+            .background(cs.surface)
+            .border(1.dp, ext.border, RoundedCornerShape(16.dp))
             .padding(16.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Config Backup & Restore",
-                    color = TextPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Export or restore your protected apps, per-app bypass switches, and cloaking templates as JSON (compatible with HMA-OSS).",
-                    color = TextSecondary,
-                    fontSize = 12.sp
-                )
-            }
-        }
+        Text(
+            text = "Config Backup & Restore",
+            color = cs.onSurface,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = "Export or restore protected apps, per-app bypass switches, and cloaking templates as JSON (HMA-OSS compatible).",
+            color = cs.onSurfaceVariant,
+            fontSize = 11.5.sp
+        )
 
         Spacer(modifier = Modifier.height(14.dp))
 
@@ -321,23 +310,21 @@ fun BackupRestoreCard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Export Button
             Button(
                 onClick = {
                     val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-                    val defaultName = "causentry_backup_$timestamp.json"
-                    createDocumentLauncher.launch(defaultName)
+                    createDocumentLauncher.launch("causentry_backup_$timestamp.json")
                 },
                 enabled = !isExporting,
                 modifier = Modifier
                     .weight(1f)
                     .height(48.dp),
                 shape = RoundedCornerShape(10.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
+                contentPadding = PaddingValues(horizontal = 8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = cs.primary, contentColor = cs.onPrimary)
             ) {
                 if (isExporting) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = TextPrimary, strokeWidth = 2.dp)
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = cs.onPrimary, strokeWidth = 2.dp)
                 } else {
                     Icon(
                         painter = painterResource(id = R.drawable.ic_download),
@@ -349,27 +336,24 @@ fun BackupRestoreCard(
                 }
             }
 
-            // Import Button
             OutlinedButton(
-                onClick = {
-                    filePickerLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
-                },
+                onClick = { filePickerLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
                 enabled = !isImporting,
                 modifier = Modifier
                     .weight(1f)
                     .height(48.dp),
                 shape = RoundedCornerShape(10.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
-                border = androidx.compose.foundation.BorderStroke(1.dp, BorderDark)
+                contentPadding = PaddingValues(horizontal = 8.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = cs.onSurface),
+                border = BorderStroke(1.dp, ext.border)
             ) {
                 if (isImporting) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = PrimaryBlue, strokeWidth = 2.dp)
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = cs.primary, strokeWidth = 2.dp)
                 } else {
                     Icon(
                         painter = painterResource(id = R.drawable.ic_upload),
                         contentDescription = null,
-                        tint = PrimaryBlue,
+                        tint = cs.primary,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))

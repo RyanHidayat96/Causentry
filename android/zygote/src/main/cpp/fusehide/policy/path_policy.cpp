@@ -13,47 +13,28 @@
 // limitations under the License.
 
 #include "fusehide/policy/path_policy.hpp"
+#include "causentry_fuse_core.h"
 
 namespace fusehide {
 
 std::optional<std::string_view> VisibleStorageRootForPath(std::string_view path) {
-    constexpr std::string_view primary = "/storage/emulated/0";
-    if (path == primary ||
-        (path.size() > primary.size() && path.starts_with(primary) && path[primary.size()] == '/'))
-        return primary;
-
-    constexpr std::string_view prefix = "/storage/";
-    if (!path.starts_with(prefix) || path.size() < prefix.size() + 9)
+    const size_t rootLen = causentry_fuse_visible_storage_root_len(
+        reinterpret_cast<const uint8_t*>(path.data()), path.size());
+    if (rootLen == 0 || rootLen > path.size()) {
         return std::nullopt;
-    const std::string_view volume = path.substr(prefix.size(), 9);
-    for (size_t i = 0; i < volume.size(); ++i) {
-        const char ch = volume[i];
-        if (i == 4) {
-            if (ch != '-')
-                return std::nullopt;
-        } else if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') ||
-                     (ch >= 'A' && ch <= 'F'))) {
-            return std::nullopt;
-        }
     }
-    const size_t end = prefix.size() + volume.size();
-    if (path.size() != end && path[end] != '/')
-        return std::nullopt;
-    return path.substr(0, end);
+    return path.substr(0, rootLen);
 }
 
 namespace {
 
-void FoldAsciiForMatch(std::string* value) {
-    if (value == nullptr) {
-        return;
+std::string TakeRustString(CausentryBuf buf) {
+    std::string out;
+    if (buf.ptr != nullptr && buf.len > 0) {
+        out.assign(reinterpret_cast<const char*>(buf.ptr), buf.len);
     }
-    for (char& ch : *value) {
-        const auto byte = static_cast<unsigned char>(ch);
-        if (byte < 0x80u) {
-            ch = static_cast<char>(std::tolower(byte));
-        }
-    }
+    causentry_fuse_buf_free(buf);
+    return out;
 }
 
 std::optional<std::string_view> RelativePathViewForVisibleRoot(std::string_view path) {
@@ -66,62 +47,30 @@ std::optional<std::string_view> RelativePathViewForVisibleRoot(std::string_view 
 }  // namespace
 
 std::string NormalizeRelativeHiddenPath(std::string_view path) {
-    size_t begin = 0;
-    size_t end = path.size();
-    while (begin < end && path[begin] == '/') {
-        begin++;
+    CausentryBuf buf{};
+    if (!causentry_fuse_normalize_relative_path(
+            reinterpret_cast<const uint8_t*>(path.data()), path.size(), &buf)) {
+        return {};
     }
-    while (end > begin && path[end - 1] == '/') {
-        end--;
-    }
-
-    bool needsCollapse = false;
-    for (size_t i = begin + 1; i < end; ++i) {
-        if (path[i] == '/' && path[i - 1] == '/') {
-            needsCollapse = true;
-            break;
-        }
-    }
-    if (!needsCollapse) {
-        return std::string(path.substr(begin, end - begin));
-    }
-
-    std::string normalized(path.substr(begin, end - begin));
-    char* data = normalized.data();
-    size_t writePos = 0;
-    bool previousSlash = false;
-    for (size_t readPos = 0; readPos < normalized.size(); ++readPos) {
-        const char ch = data[readPos];
-        if (ch == '/') {
-            if (previousSlash) {
-                continue;
-            }
-            previousSlash = true;
-        } else {
-            previousSlash = false;
-        }
-        data[writePos++] = ch;
-    }
-    normalized.resize(writePos);
-    return normalized;
+    return TakeRustString(buf);
 }
 
 std::string CanonicalizeHiddenEntryNameForMatch(std::string_view name) {
-    std::string canonical(name);
-    UnicodePolicy::RewriteString(canonical);
-    FoldAsciiForMatch(&canonical);
-    return canonical;
+    CausentryBuf buf{};
+    if (!causentry_fuse_canonicalize_entry_name(
+            reinterpret_cast<const uint8_t*>(name.data()), name.size(), &buf)) {
+        return {};
+    }
+    return TakeRustString(buf);
 }
 
 std::string CanonicalizeRelativeHiddenPathForMatch(std::string_view path) {
-    std::string canonical(path);
-    UnicodePolicy::RewriteString(canonical);
-    canonical = NormalizeRelativeHiddenPath(canonical);
-    if (canonical.empty()) {
-        return canonical;
+    CausentryBuf buf{};
+    if (!causentry_fuse_canonicalize_relative_path(
+            reinterpret_cast<const uint8_t*>(path.data()), path.size(), &buf)) {
+        return {};
     }
-    FoldAsciiForMatch(&canonical);
-    return canonical;
+    return TakeRustString(buf);
 }
 
 std::optional<std::string> RelativePathForVisibleRoot(std::string_view path) {

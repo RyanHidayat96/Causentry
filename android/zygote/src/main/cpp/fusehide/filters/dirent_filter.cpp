@@ -14,48 +14,26 @@
 
 #include "fusehide/filters/dirent_filter.hpp"
 #include "fusehide/filters/sensitive_direntplus_cache.hpp"
+#include "causentry_fuse_core.h"
 
 namespace fusehide {
 
 bool AlignDirentName(size_t nameLen, size_t* alignedSize) {
-    // Mirror the FUSE UAPI's 64-bit record alignment, but check the addition before applying it:
-    // https://android.googlesource.com/kernel/common/+/2837d873ec71152d7599676357d34f94764f061b/include/uapi/linux/fuse.h#1062
-    constexpr size_t kAlignment = sizeof(uint64_t);
-    if (alignedSize == nullptr || nameLen > SIZE_MAX - (kAlignment - 1)) {
-        return false;
-    }
-    *alignedSize = (nameLen + kAlignment - 1) & ~(kAlignment - 1);
-    return true;
+    return causentry_fuse_align_dirent_name(nameLen, alignedSize);
 }
 
 bool FuseDirentRecordSize(const fuse_dirent* dirent, size_t available, size_t* recordSize) {
-    constexpr size_t kHeaderSize = offsetof(fuse_dirent, name);
-    if (dirent == nullptr || recordSize == nullptr || available < kHeaderSize ||
-        dirent->namelen > available - kHeaderSize) {
+    if (dirent == nullptr) {
         return false;
     }
-    size_t alignedNameSize = 0;
-    if (!AlignDirentName(dirent->namelen, &alignedNameSize) ||
-        alignedNameSize > available - kHeaderSize) {
-        return false;
-    }
-    *recordSize = kHeaderSize + alignedNameSize;
-    return true;
+    return causentry_fuse_dirent_record_size(dirent->namelen, available, recordSize);
 }
 
 bool FuseDirentplusRecordSize(const fuse_dirent* dirent, size_t available, size_t* recordSize) {
-    constexpr size_t kHeaderSize = kFuseEntryOutWireSize + offsetof(fuse_dirent, name);
-    if (dirent == nullptr || recordSize == nullptr || available < kHeaderSize ||
-        dirent->namelen > available - kHeaderSize) {
+    if (dirent == nullptr) {
         return false;
     }
-    size_t alignedNameSize = 0;
-    if (!AlignDirentName(dirent->namelen, &alignedNameSize) ||
-        alignedNameSize > available - kHeaderSize) {
-        return false;
-    }
-    *recordSize = kHeaderSize + alignedNameSize;
-    return true;
+    return causentry_fuse_direntplus_record_size(dirent->namelen, available, recordSize);
 }
 
 bool BuildUncachedSensitiveDirentplusPayload(const char* data, size_t size,

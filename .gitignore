@@ -4,6 +4,7 @@
 .idea/
 .kotlin/
 .vscode/
+.tmp/
 *.iml
 
 # Android
@@ -14,37 +15,43 @@ android/build/
 android/zygote/build/
 android/app/schemas/
 android/zygote/third_party/
+android/zygote/src/main/cpp/build-*/
 
 # Rust
+/target/
 daemon/target/
+android/app/rust/*/target/
+android/app/src/main/jniLibs/
 Cargo.lock
 
-# Release/build outputs
+# Release & staged module build outputs
 release/
 root-module/payload/Causentry.apk
-root-module/bin/causentryd
 root-module/payload/*.idsig
+root-module/bin/arm64-v8a/
+root-module/bin/armeabi-v7a/
+root-module/lib/arm64-v8a/
+root-module/lib/armeabi-v7a/
 root-module/zygisk/*.so
 root-module/classes*.dex
 root-module/packages/
-zygisk-src/build*/
 
-# OS/editor
+# Local secrets & toolchains (NEVER commit keystores)
+causentry.keystore
+*.jks
+*.keystore
+/tools/
+/build/
+
+# Logs, screenshots, and debug dumps
+*.log
+*.png
+ui*.xml
+test_*.xml
+causentry-*.xml
+config_*.json
+cloak_before.json
 Thumbs.db
 Desktop.ini
 *.swp
 *.tmp
-
-# Causentry build outputs / local toolchain (regenerate: scripts/build-causentry.ps1)
-causentry.keystore
-/tools/
-/build/
-
-# Test case folder (bpjstku-fix): app APKs, decompiled sources, evidence, local tools
-/bpjstku-fix/*.apk
-/bpjstku-fix/jadx-out/
-/bpjstku-fix/jadx-res/
-/bpjstku-fix/diag/
-/bpjstku-fix/tools/
-
-**/build-arm64/

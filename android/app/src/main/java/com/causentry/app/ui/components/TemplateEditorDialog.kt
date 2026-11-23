@@ -25,10 +25,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -54,13 +53,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.causentry.app.R
 import com.causentry.app.data.IconLoader
 import com.causentry.app.model.AppInfo
-import com.causentry.app.ui.theme.BorderDark
-import com.causentry.app.ui.theme.PrimaryBlue
-import com.causentry.app.ui.theme.SurfaceDark
-import com.causentry.app.ui.theme.SurfaceHighDark
-import com.causentry.app.ui.theme.TextPrimary
-import com.causentry.app.ui.theme.TextSecondary
-import com.causentry.app.ui.theme.WarningAmber
+import com.causentry.app.ui.theme.LocalCausentryColors
 
 enum class TemplateAppFilter {
     ALL,
@@ -78,6 +71,9 @@ fun TemplateEditorDialog(
     onSave: (name: String, packages: List<String>) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val cs = MaterialTheme.colorScheme
+    val ext = LocalCausentryColors.current
+
     var templateName by remember { mutableStateOf(initialName) }
     var selectedPackages by remember { mutableStateOf(initialPackages.toSet()) }
     var searchQuery by remember { mutableStateOf("") }
@@ -96,12 +92,9 @@ fun TemplateEditorDialog(
                 TemplateAppFilter.SYSTEM -> app.isSystem
             }
             if (!matchesCategory) return@filter false
-
             if (q.isNotEmpty()) {
                 app.label.lowercase().contains(q) || app.packageName.lowercase().contains(q)
-            } else {
-                true
-            }
+            } else true
         }.sortedWith(
             compareByDescending<AppInfo> { selectedPackages.contains(it.packageName) }
                 .thenBy { it.label.lowercase() }
@@ -118,61 +111,58 @@ fun TemplateEditorDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
-                .fillMaxHeight(0.85f)
+                .fillMaxHeight(0.86f)
                 .clip(RoundedCornerShape(20.dp))
-                .background(SurfaceDark)
-                .border(1.dp, BorderDark, RoundedCornerShape(20.dp))
+                .background(cs.surface)
+                .border(1.dp, ext.border, RoundedCornerShape(20.dp))
                 .padding(20.dp)
         ) {
-            // Header
             Text(
                 text = if (initialName.isEmpty()) "Create Template" else "Edit Template: $initialName",
-                color = TextPrimary,
+                color = cs.onSurface,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
                 text = "Select apps to cloak from target package queries (${selectedPackages.size} selected)",
-                color = TextSecondary,
+                color = cs.onSurfaceVariant,
                 fontSize = 12.sp
             )
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Template Name field
             OutlinedTextField(
                 value = templateName,
                 onValueChange = { templateName = it.replace(Regex("[^a-zA-Z0-9_.-]"), "") },
-                placeholder = { Text("Template Name (e.g. banking, games)", color = TextSecondary, fontSize = 13.sp) },
+                placeholder = { Text("Template Name (e.g. banking, games)", color = cs.onSurfaceVariant, fontSize = 13.sp) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = PrimaryBlue,
-                    unfocusedBorderColor = BorderDark,
-                    focusedContainerColor = SurfaceHighDark,
-                    unfocusedContainerColor = SurfaceHighDark,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary
+                    focusedBorderColor = cs.primary,
+                    unfocusedBorderColor = ext.border,
+                    focusedContainerColor = ext.surfaceHigh,
+                    unfocusedContainerColor = ext.surfaceHigh,
+                    focusedTextColor = cs.onSurface,
+                    unfocusedTextColor = cs.onSurface
                 ),
                 supportingText = if (!isNameValid) {
-                    { Text("Name is required to save template", color = WarningAmber, fontSize = 10.sp) }
+                    { Text("Name is required to save template", color = ext.warning, fontSize = 10.sp) }
                 } else null
             )
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Search in apps
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("Filter apps to cloak...", color = TextSecondary, fontSize = 13.sp) },
+                placeholder = { Text("Filter apps to cloak…", color = cs.onSurfaceVariant, fontSize = 13.sp) },
                 singleLine = true,
                 leadingIcon = {
                     Icon(
                         painter = painterResource(id = R.drawable.ic_search),
                         contentDescription = null,
-                        tint = TextSecondary,
+                        tint = cs.onSurfaceVariant,
                         modifier = Modifier.size(16.dp)
                     )
                 },
@@ -182,7 +172,7 @@ fun TemplateEditorDialog(
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_close),
                                 contentDescription = "Clear",
-                                tint = TextSecondary,
+                                tint = cs.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -191,18 +181,17 @@ fun TemplateEditorDialog(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = PrimaryBlue,
-                    unfocusedBorderColor = BorderDark,
-                    focusedContainerColor = SurfaceHighDark,
-                    unfocusedContainerColor = SurfaceHighDark,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary
+                    focusedBorderColor = cs.primary,
+                    unfocusedBorderColor = ext.border,
+                    focusedContainerColor = ext.surfaceHigh,
+                    unfocusedContainerColor = ext.surfaceHigh,
+                    focusedTextColor = cs.onSurface,
+                    unfocusedTextColor = cs.onSurface
                 )
             )
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Category Filter Chips
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -210,53 +199,25 @@ fun TemplateEditorDialog(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TemplateFilterChipItem(
-                    label = "All",
-                    count = allApps.size,
-                    selected = appFilter == TemplateAppFilter.ALL,
-                    onClick = { appFilter = TemplateAppFilter.ALL }
-                )
-                TemplateFilterChipItem(
-                    label = "Selected",
-                    count = selectedPackages.size,
-                    selected = appFilter == TemplateAppFilter.SELECTED,
-                    onClick = { appFilter = TemplateAppFilter.SELECTED }
-                )
-                TemplateFilterChipItem(
-                    label = "User",
-                    count = userCount,
-                    selected = appFilter == TemplateAppFilter.USER,
-                    onClick = { appFilter = TemplateAppFilter.USER }
-                )
-                TemplateFilterChipItem(
-                    label = "System",
-                    count = systemCount,
-                    selected = appFilter == TemplateAppFilter.SYSTEM,
-                    onClick = { appFilter = TemplateAppFilter.SYSTEM }
-                )
+                TemplateFilterChipItem("All", allApps.size, appFilter == TemplateAppFilter.ALL) { appFilter = TemplateAppFilter.ALL }
+                TemplateFilterChipItem("Selected", selectedPackages.size, appFilter == TemplateAppFilter.SELECTED) { appFilter = TemplateAppFilter.SELECTED }
+                TemplateFilterChipItem("User", userCount, appFilter == TemplateAppFilter.USER) { appFilter = TemplateAppFilter.USER }
+                TemplateFilterChipItem("System", systemCount, appFilter == TemplateAppFilter.SYSTEM) { appFilter = TemplateAppFilter.SYSTEM }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Virtualized App selection list
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(SurfaceHighDark)
-                    .border(1.dp, BorderDark, RoundedCornerShape(10.dp))
+                    .background(ext.surfaceHigh)
+                    .border(1.dp, ext.border, RoundedCornerShape(10.dp))
             ) {
                 if (filteredApps.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "No applications found",
-                            color = TextSecondary,
-                            fontSize = 13.sp
-                        )
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("No applications found", color = cs.onSurfaceVariant, fontSize = 13.sp)
                     }
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -266,11 +227,7 @@ fun TemplateEditorDialog(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        selectedPackages = if (isChecked) {
-                                            selectedPackages - app.packageName
-                                        } else {
-                                            selectedPackages + app.packageName
-                                        }
+                                        selectedPackages = if (isChecked) selectedPackages - app.packageName else selectedPackages + app.packageName
                                     }
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -278,47 +235,20 @@ fun TemplateEditorDialog(
                                 Checkbox(
                                     checked = isChecked,
                                     onCheckedChange = { checked ->
-                                        selectedPackages = if (checked) {
-                                            selectedPackages + app.packageName
-                                        } else {
-                                            selectedPackages - app.packageName
-                                        }
+                                        selectedPackages = if (checked) selectedPackages + app.packageName else selectedPackages - app.packageName
                                     },
                                     colors = CheckboxDefaults.colors(
-                                        checkedColor = PrimaryBlue,
-                                        uncheckedColor = TextSecondary,
-                                        checkmarkColor = TextPrimary
+                                        checkedColor = cs.primary,
+                                        uncheckedColor = cs.onSurfaceVariant,
+                                        checkmarkColor = cs.onPrimary
                                     )
                                 )
-
                                 Spacer(modifier = Modifier.width(6.dp))
-
-                                AppIconItem(
-                                    packageName = app.packageName,
-                                    label = app.label,
-                                    iconLoader = iconLoader,
-                                    size = 36.dp
-                                )
-
+                                AppIconItem(packageName = app.packageName, label = app.label, iconLoader = iconLoader, size = 36.dp)
                                 Spacer(modifier = Modifier.width(10.dp))
-
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = app.label,
-                                        color = TextPrimary,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = app.packageName,
-                                        color = TextSecondary,
-                                        fontSize = 11.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                    Text(app.label, color = cs.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(app.packageName, color = cs.onSurfaceVariant, fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                             }
                         }
@@ -328,11 +258,8 @@ fun TemplateEditorDialog(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Action buttons
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -340,8 +267,8 @@ fun TemplateEditorDialog(
                     onClick = onDismiss,
                     modifier = Modifier.weight(1f).height(48.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
-                    border = BorderStroke(1.dp, BorderDark)
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = cs.onSurfaceVariant),
+                    border = BorderStroke(1.dp, ext.border)
                 ) {
                     Text("Cancel", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 }
@@ -359,13 +286,13 @@ fun TemplateEditorDialog(
                     modifier = Modifier.weight(1f).height(48.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = PrimaryBlue,
-                        disabledContainerColor = PrimaryBlue.copy(alpha = 0.35f)
+                        containerColor = cs.primary,
+                        contentColor = cs.onPrimary,
+                        disabledContainerColor = cs.primary.copy(alpha = 0.35f)
                     )
                 ) {
                     Text(
                         text = if (selectedPackages.isNotEmpty()) "Save (${selectedPackages.size})" else "Save",
-                        color = if (isNameValid) TextPrimary else TextSecondary,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1
@@ -383,13 +310,15 @@ private fun TemplateFilterChipItem(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val cs = MaterialTheme.colorScheme
+    val ext = LocalCausentryColors.current
     val haptic = LocalHapticFeedback.current
 
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) PrimaryBlue.copy(alpha = 0.2f) else SurfaceDark)
-            .border(1.dp, if (selected) PrimaryBlue else BorderDark, RoundedCornerShape(8.dp))
+            .background(if (selected) cs.primary.copy(alpha = 0.18f) else cs.surface)
+            .border(1.dp, if (selected) cs.primary else ext.border, RoundedCornerShape(8.dp))
             .clickable {
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
@@ -401,7 +330,7 @@ private fun TemplateFilterChipItem(
             text = "$label ($count)",
             fontSize = 11.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            color = if (selected) PrimaryBlue else TextSecondary,
+            color = if (selected) cs.primary else cs.onSurfaceVariant,
             maxLines = 1
         )
     }

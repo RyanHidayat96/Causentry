@@ -1,0 +1,18 @@
+Causentry
+Copyright 2026 Causentry Contributors
+
+This product includes or derives from the following third-party open-source components:
+
+- FuseHide (FUSE / MediaProvider storage cloaking library)
+  Copyright (c) XiaoTong6666
+  Licensed under the Apache License, Version 2.0.
+
+- Dobby (Lightweight multi-platform inline hooking framework)
+  Copyright (c) jmpews
+  Licensed under the Apache License, Version 2.0.
+
+- ZygoteLoader & Pine / AndroidVMTools / PanamaPort
+  Licensed under their respective open-source licenses (Apache-2.0 / MIT).
+
+- Serde & libc (Rust crates)
+  Licensed under Apache-2.0 / MIT.

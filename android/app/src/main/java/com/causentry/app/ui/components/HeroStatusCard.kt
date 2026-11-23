@@ -12,23 +12,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.causentry.app.R
 import com.causentry.app.model.DaemonStatus
-import com.causentry.app.ui.theme.BorderDark
-import com.causentry.app.ui.theme.DangerRed
-import com.causentry.app.ui.theme.SuccessGreen
-import com.causentry.app.ui.theme.SurfaceDark
-import com.causentry.app.ui.theme.TextPrimary
-import com.causentry.app.ui.theme.TextSecondary
-import com.causentry.app.ui.theme.WarningAmber
+import com.causentry.app.ui.theme.LocalCausentryColors
 
 @Composable
 fun HeroStatusCard(
@@ -36,32 +33,39 @@ fun HeroStatusCard(
     protectedCount: Int = status.targets.size,
     modifier: Modifier = Modifier
 ) {
+    val cs = MaterialTheme.colorScheme
+    val ext = LocalCausentryColors.current
+
     val isEnforcing = status.daemonAlive && status.cloakReady
     val statusColor = when {
-        !status.daemonAlive -> DangerRed
-        isEnforcing -> SuccessGreen
-        else -> WarningAmber
+        !status.daemonAlive -> ext.danger
+        isEnforcing -> ext.success
+        else -> ext.warning
     }
 
-    val statusText = when {
-        !status.daemonAlive -> "OFFLINE"
-        isEnforcing -> "ACTIVE"
-        else -> "STANDBY"
-    }
+    val statusText = stringResource(
+        when {
+            !status.daemonAlive -> R.string.status_offline
+            isEnforcing -> R.string.status_active
+            else -> R.string.status_standby
+        }
+    )
 
-    val zygiskText = when {
-        status.cloakReady -> "Zygisk active"
-        status.zygisk.contains("ready") -> "Zygisk ready"
-        else -> "Zygisk standby"
-    }
+    val zygiskText = stringResource(
+        when {
+            status.cloakReady -> R.string.zygisk_active
+            status.zygisk.contains("ready") -> R.string.zygisk_ready
+            else -> R.string.zygisk_standby
+        }
+    )
 
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .background(SurfaceDark)
-            .border(1.dp, BorderDark, RoundedCornerShape(10.dp))
-            .padding(horizontal = 14.dp, vertical = 7.dp),
+            .background(cs.surface)
+            .border(1.dp, ext.border, RoundedCornerShape(10.dp))
+            .padding(horizontal = 14.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -75,30 +79,23 @@ fun HeroStatusCard(
                     .clip(CircleShape)
                     .background(statusColor)
             )
-
             Spacer(modifier = Modifier.width(8.dp))
-
             Text(
-                text = "System Protection",
-                color = TextPrimary,
+                text = stringResource(R.string.hero_system_protection),
+                color = cs.onSurface,
                 fontSize = 12.5.sp,
                 fontWeight = FontWeight.Bold
             )
-
             Spacer(modifier = Modifier.width(6.dp))
-
             Text(
-                text = "• $zygiskText",
-                color = TextSecondary,
+                text = "· $zygiskText ($protectedCount)",
+                color = cs.onSurfaceVariant,
                 fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
 
-        StatusPill(
-            text = statusText,
-            color = statusColor
-        )
+        StatusPill(text = statusText, color = statusColor)
     }
 }

@@ -1,33 +1,22 @@
 #!/system/bin/sh
-# Causentry — module "Action" button: re-apply protections and open the UI.
+# Causentry v2.0 - Module Action button
 DIR=/data/adb/causentry
-mkdir -p "$DIR/webroot/cgi-bin" 2>/dev/null
-[ -f "$DIR/lib.sh" ] && . "$DIR/lib.sh"
+BIN="$DIR/causentryd"
 
-echo "Causentry: re-applying protections..."
-sh "$DIR/apply.sh" action 2>&1 | tail -20
-
-if package_installed com.causentry.app; then
-  echo "Opening Causentry app..."
-  am start -n com.causentry.app/.UiActivity >/dev/null 2>&1
+echo "Causentry v2.0: syncing policies..."
+if [ -x "$BIN" ]; then
+  "$BIN" apply 2>&1
   echo ""
-  echo "Status:"
-  sh "$DIR/status.sh" 2>/dev/null
-  exit 0
-fi
-
-if [ ! -s "$DIR/ui.token" ]; then
-  head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$DIR/ui.token"
-  chmod 600 "$DIR/ui.token"
-fi
-TOKEN=$(cat "$DIR/ui.token")
-
-if ensure_ui; then
-  echo "Opening Causentry UI..."
-  am start -a android.intent.action.VIEW -d "http://127.0.0.1:8899/index.html?t=$TOKEN" >/dev/null 2>&1
+  "$BIN" status 2>&1
 else
-  echo "No busybox on this device: use the CLI instead, e.g. sh $DIR/status.sh"
+  echo "Warning: causentryd not staged yet. Reboot to initialize."
 fi
-echo ""
-echo "Status:"
-sh "$DIR/webroot/cgi-bin/api.sh" status "$TOKEN" 2>/dev/null | tail -1
+
+if pm path com.causentry.app >/dev/null 2>&1; then
+  echo ""
+  echo "Opening Causentry Control UI..."
+  am start -n com.causentry.app/.MainActivity >/dev/null 2>&1
+else
+  echo ""
+  echo "Causentry Control UI APK is not installed."
+fi

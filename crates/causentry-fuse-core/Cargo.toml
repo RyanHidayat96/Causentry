@@ -1,0 +1,12 @@
+[package]
+name = "causentry-fuse-core"
+version = "3.0.0"
+edition = "2024"
+description = "Memory-safe Rust Unicode 12.1, path canonicalization, and FUSE dirent/direntplus wire parser for FuseHide"
+license = "Apache-2.0"
+
+[lib]
+name = "causentry_fuse_core"
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]

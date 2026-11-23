@@ -1,32 +1,42 @@
 package com.causentry.app.data
 
 import android.content.Context
-import android.os.FileObserver
+import android.net.LocalSocket
+import android.net.LocalSocketAddress
 import com.causentry.app.model.DaemonStatus
 import com.causentry.app.model.PerAppConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.DataInputStream
+import java.io.DataOutputStream
 import java.io.File
-import java.io.FileOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Event-driven LocalSocket RPC bridge to the native Rust `causentryd` daemon.
+ *
+ * - Zero `su` prompts (authenticated by causentryd via SO_PEERCRED UID check).
+ * - Zero background polling (every RPC returns the authoritative updated DaemonStatus in < 20ms).
+ * - Zero file drops or world-readable state files.
+ */
 @Singleton
 class DaemonBridge @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val rpcMutex = Mutex()
 
     private val _statusFlow = MutableStateFlow(DaemonStatus())
     val statusFlow: StateFlow<DaemonStatus> = _statusFlow.asStateFlow()
@@ -34,643 +44,246 @@ class DaemonBridge @Inject constructor(
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
-    private var lastStatusModified: Long = 0L
-    private var lastStatusLength: Long = 0L
-    private var fileObserver: FileObserver? = null
+    private var lastRawConfigJson: JSONObject = JSONObject()
+
+    private val socketPath: String
+        get() = File(context.noBackupFilesDir, ".rpc.sock").absolutePath
 
     init {
-        // Fast instant FileObserver on files directory to catch status.json MOVED_TO immediately
+        // Ensure no_backup dir exists so causentryd can bind .rpc.sock inside it
         try {
-            fileObserver = object : FileObserver(context.filesDir, CLOSE_WRITE or MOVED_TO) {
-                override fun onEvent(event: Int, path: String?) {
-                    if (path == "status.json") {
-                        scope.launch {
-                            checkAndUpdateStatus()
-                            _isSyncing.value = false
-                        }
-                    }
-                }
-            }
-            fileObserver?.startWatching()
-        } catch (t: Throwable) {
-            android.util.Log.w("DaemonBridge", "FileObserver initialization skipped", t)
-        }
+            context.noBackupFilesDir.mkdirs()
+        } catch (_: Throwable) {}
 
-        // Heartbeat fallback polling loop (every 2.5s)
         scope.launch {
-            while (isActive) {
-                checkAndUpdateStatus()
-                delay(2500L)
-            }
+            fetchStatus()
         }
     }
 
-    suspend fun refresh() = withContext(Dispatchers.IO) {
-        sendCommand(JSONObject().apply {
-            put("action", "refresh")
-        })
-        checkAndUpdateStatus()
-    }
+    suspend fun fetchStatus(): DaemonStatus = executeRpc(JSONObject().apply {
+        put("action", "get_status")
+    })
 
-    /**
-     * In-flight optimistic expectations. status.json is published by several
-     * concurrent daemon writers, so a snapshot built from the pre-change config
-     * can still land after a save. Until the daemon confirms the change with its
-     * own snapshot, the expected value wins and the badge never dips back to
-     * UNPROTECTED in the middle of an apply.
-     */
-    private class PendingEdit(
-        val config: PerAppConfig?,
-        val remove: Boolean,
-        val createdAt: Long,
-        var expiresAt: Long,
-        val hardExpiresAt: Long
-    )
-
-    private val pendingEdits = java.util.concurrent.ConcurrentHashMap<String, PendingEdit>()
-    private val pendingTtlMs = 20_000L
-
-    /**
-     * Hard ceiling for an unconfirmed edit. While the daemon reports applyBusy the
-     * soft TTL is extended, because a queued apply legitimately takes several
-     * seconds; this cap stops an edit whose command never landed (superseded or
-     * dropped) from masking the real state forever.
-     */
-    private val pendingHardTtlMs = 90_000L
-
-    private fun recordPending(pkg: String, config: PerAppConfig?, remove: Boolean) {
-        val now = System.currentTimeMillis()
-        pendingEdits[pkg] = PendingEdit(config, remove, now, now + pendingTtlMs, now + pendingHardTtlMs)
-    }
-
-    /**
-     * Re-applies unconfirmed edits over a snapshot read from disk. An entry is
-     * dropped once the snapshot agrees with it (confirmed) or its hard ceiling is
-     * hit. A snapshot older than the edit cannot possibly confirm or contradict
-     * it -- the daemon writes status.json from several concurrent writers, so a
-     * pre-change snapshot routinely lands after the save; trusting it would flip
-     * the badge back to the stale value mid-apply (the 3-phase flicker).
-     */
-    private fun overlayPending(
-        targets: List<String>,
-        hardened: List<String>,
-        perApp: Map<String, PerAppConfig>,
-        applyBusy: Boolean = false,
-        snapshotTsMs: Long = 0L
-    ): Triple<List<String>, List<String>, Map<String, PerAppConfig>> {
-        if (pendingEdits.isEmpty()) return Triple(targets, hardened, perApp)
-
-        val t = targets.toMutableList()
-        val h = hardened.toMutableList()
-        val a = perApp.toMutableMap()
-        val now = System.currentTimeMillis()
-
-        val iter = pendingEdits.entries.iterator()
-        while (iter.hasNext()) {
-            val (pkg, edit) = iter.next()
-            if (now > edit.hardExpiresAt) {
-                iter.remove()
-                continue
-            }
-            // A snapshot stamped before this edit was recorded is stale by
-            // definition: hold the edit instead of letting its TTL decide.
-            val snapshotIsFresh = snapshotTsMs > 0L && snapshotTsMs >= edit.createdAt
-            if (now > edit.expiresAt) {
-                if (applyBusy || !snapshotIsFresh) {
-                    // Daemon is still working through the queue or the snapshot
-                    // predates the command: keep the edit on screen instead of
-                    // flickering back to the stale state.
-                    edit.expiresAt = now + pendingTtlMs
-                } else {
-                    iter.remove()
-                    continue
-                }
-            }
-            if (edit.remove) {
-                if (!t.contains(pkg) && !a.containsKey(pkg)) {
-                    iter.remove()
-                    continue
-                }
-                t.remove(pkg)
-                h.remove(pkg)
-                a.remove(pkg)
-            } else {
-                val want = edit.config ?: continue
-                if (t.contains(pkg) && a[pkg] == want) {
-                    iter.remove()
-                    continue
-                }
-                if (!t.contains(pkg)) t.add(pkg)
-                if (want.isolate) {
-                    if (!h.contains(pkg)) h.add(pkg)
-                } else {
-                    h.remove(pkg)
-                }
-                a[pkg] = want
-            }
-        }
-        return Triple(t, h, a)
-    }
-
-    /**
-     * Instant Optimistic UI Update: Mutates in-memory StateFlow immediately (0ms latency),
-     * so Jetpack Compose UI updates at 120Hz without waiting for root shell I/O.
-     */
-    private fun applyOptimisticUpdate(
-        targetPackages: Collection<String>,
-        devOff: Boolean? = null,
-        mock: Boolean? = null,
-        isolate: Boolean? = null,
-        accOff: Boolean? = null,
-        template: String? = null,
-        remove: Boolean = false,
-        clearTemplate: Boolean = false
-    ) {
-        val current = _statusFlow.value
-        val targetsList = current.targets.toMutableList()
-        val hardenedList = current.hardened.toMutableList()
-        val perAppMap = current.perAppConfigs.toMutableMap()
-
-        for (pkg in targetPackages) {
-            if (remove) {
-                targetsList.remove(pkg)
-                hardenedList.remove(pkg)
-                perAppMap.remove(pkg)
-                recordPending(pkg, null, true)
-            } else {
-                if (!targetsList.contains(pkg)) {
-                    targetsList.add(pkg)
-                }
-                val existing = perAppMap[pkg] ?: PerAppConfig()
-                val nextDev = devOff ?: existing.devOff
-                val nextMock = mock ?: existing.mock
-                val nextIsolate = isolate ?: existing.isolate
-                val nextAcc = accOff ?: existing.accOff
-                val nextTpl = when {
-                    clearTemplate -> null
-                    template != null -> template.takeIf { it.isNotEmpty() }
-                    else -> existing.hideTemplate
-                }
-
-                // Safety net: if this edit leaves the package with no active
-                // feature/template at all, drop it from the target list so the
-                // in-memory state always mirrors a true "not cloaked" app.
-                // This is the honest "deactivate" state and prevents the UI from
-                // showing an empty feature-less entry as still targeted.
-                val stillActive = nextDev || nextMock || nextIsolate || nextAcc || nextTpl != null
-                if (!stillActive) {
-                    targetsList.remove(pkg)
-                    hardenedList.remove(pkg)
-                    perAppMap.remove(pkg)
-                    recordPending(pkg, null, true)
-                    continue
-                }
-
-                if (nextIsolate) {
-                    if (!hardenedList.contains(pkg)) hardenedList.add(pkg)
-                } else {
-                    hardenedList.remove(pkg)
-                }
-
-                val nextCfg = PerAppConfig(
-                    devOff = nextDev,
-                    mock = nextMock,
-                    isolate = nextIsolate,
-                    accOff = nextAcc,
-                    hideTemplate = nextTpl
-                )
-                perAppMap[pkg] = nextCfg
-                recordPending(pkg, nextCfg, false)
-            }
-        }
-
-        _statusFlow.value = current.copy(
-            targets = targetsList,
-            hardened = hardenedList,
-            perAppConfigs = perAppMap
-        )
-    }
+    suspend fun refresh(): DaemonStatus = executeRpc(JSONObject().apply {
+        put("action", "refresh")
+    })
 
     suspend fun setApp(
         pkg: String,
         devOff: Boolean,
         mock: Boolean,
         isolate: Boolean,
-        accOff: Boolean = true,
+        accOff: Boolean,
         template: String?
-    ): String = withContext(Dispatchers.IO) {
-        // 1. Instant optimistic in-memory update (0ms UI latency)
-        applyOptimisticUpdate(listOf(pkg), devOff, mock, isolate, accOff, template, remove = false)
-
-        val op = "set-" + System.currentTimeMillis()
-        val feats = mutableListOf<String>()
-        if (devOff) feats.add("devOff")
-        if (mock) feats.add("mock")
-        if (isolate) feats.add("isolate")
-        if (accOff) feats.add("accOff")
-
-        // 2. Persist to daemon via RPC
-        sendCommand(JSONObject().apply {
-            put("action", "setapp")
-            put("pkg", pkg)
-            put("features", feats.joinToString(","))
-            if (!template.isNullOrEmpty()) {
-                put("template", template)
-            }
-            put("op", op)
-        })
-        op
-    }
-
-    suspend fun batchConfigureApps(
-        targetPackages: List<String>,
-        devOff: Boolean? = null,
-        mock: Boolean? = null,
-        isolate: Boolean? = null,
-        accOff: Boolean? = null,
-        template: String? = null,
-        remove: Boolean = false
-    ): String = withContext(Dispatchers.IO) {
-        // 1. Instant optimistic in-memory update (0ms UI latency)
-        applyOptimisticUpdate(targetPackages, devOff, mock, isolate, accOff, template, remove)
-
-        val file = File(context.filesDir, "status.json")
-        val content = if (file.exists()) file.readText(Charsets.UTF_8).replace("﻿", "").trim() else ""
-        val statusJson = try { JSONObject(content) } catch (_: Throwable) { JSONObject() }
-        val configJson = statusJson.optJSONObject("config") ?: JSONObject()
-
-        val targetsArray = configJson.optJSONArray("targets") ?: JSONArray()
-        val targetsList = (0 until targetsArray.length()).map { targetsArray.getString(it) }.toMutableList()
-
-        val appsObj = configJson.optJSONObject("apps") ?: JSONObject()
-
-        for (pkg in targetPackages) {
-            if (remove) {
-                targetsList.remove(pkg)
-                appsObj.remove(pkg)
-            } else {
-                if (!targetsList.contains(pkg)) {
-                    targetsList.add(pkg)
-                }
-                val existing = appsObj.optJSONObject(pkg) ?: JSONObject()
-                if (devOff != null) existing.put("devOff", devOff)
-                if (mock != null) existing.put("mock", mock)
-                if (isolate != null) existing.put("isolate", isolate)
-                if (accOff != null) existing.put("accOff", accOff)
-                if (template != null) existing.put("hideTemplate", template)
-                appsObj.put(pkg, existing)
-            }
+    ): DaemonStatus = executeRpc(JSONObject().apply {
+        put("action", "set_app")
+        put("pkg", pkg)
+        put("devOff", devOff)
+        put("mock", mock)
+        put("isolate", isolate)
+        put("accOff", accOff)
+        if (!template.isNullOrBlank()) {
+            put("template", template.trim())
         }
+    })
 
-        configJson.put("targets", JSONArray(targetsList))
-        configJson.put("apps", appsObj)
+    suspend fun delApp(pkg: String): DaemonStatus = executeRpc(JSONObject().apply {
+        put("action", "del_app")
+        put("pkg", pkg)
+    })
 
-        importConfig(configJson.toString())
-    }
+    suspend fun saveTemplate(
+        name: String,
+        packages: List<String>,
+        deleteName: String? = null
+    ): DaemonStatus = executeRpc(JSONObject().apply {
+        put("action", "save_template")
+        put("name", name.trim())
+        put("packages", JSONArray(packages))
+        if (!deleteName.isNullOrBlank()) {
+            put("deleteName", deleteName.trim())
+        }
+    })
 
-    /**
-     * Applies a template to some apps and detaches it from others in ONE config
-     * write (single importcfg -> cloak.sh reconcile). The previous apply path only
-     * ever added; detaching a template per-app needs to clear `hideTemplate`
-     * without wiping the app's other features, so we merge the diff here atomically
-     * to avoid two sequential reconciles (and the flicker they cause).
-     *
-     * If clearing the template leaves an app with no feature at all (nothing to
-     * cloak), it is dropped from the target list entirely -- identical to a manual
-     * "remove app" -- so an empty row never lingers as still-targeted.
-     */
+    suspend fun deleteTemplate(name: String): DaemonStatus =
+        saveTemplate("", emptyList(), deleteName = name)
+
+    suspend fun saveStorageRules(roots: List<String>, relatives: List<String>): DaemonStatus =
+        executeRpc(JSONObject().apply {
+            put("action", "save_storage_rules")
+            put("hiddenRootEntryNames", JSONArray(roots))
+            put("hiddenRelativePaths", JSONArray(relatives))
+        })
+
     suspend fun applyTemplateDiff(
         template: String,
         pkgAdd: List<String>,
         pkgRemove: List<String>
-    ): String = withContext(Dispatchers.IO) {
-        val add = pkgAdd.filter { it.isNotBlank() }.distinct()
-        val rem = pkgRemove.filter { it.isNotBlank() }.distinct().filter { it !in add }
+    ): DaemonStatus = withContext(Dispatchers.IO) {
+        val cfg = cloneCurrentConfig()
+        val appsObj = cfg.optJSONObject("apps") ?: JSONObject()
+        val targets = jsonList(cfg.optJSONArray("targets")).toMutableList()
 
-        // 1. Instant optimistic update (0ms UI latency, no flicker).
-        applyOptimisticUpdate(add, template = template)
-        if (rem.isNotEmpty()) {
-            applyOptimisticUpdate(rem, clearTemplate = true)
+        for (pkg in pkgAdd.distinct()) {
+            if (!targets.contains(pkg)) targets.add(pkg)
+            val entry = appsObj.optJSONObject(pkg) ?: JSONObject()
+            entry.put("hideTemplate", template)
+            appsObj.put(pkg, entry)
         }
 
-        // 2. Persist add + remove in a single merged config.
-        val file = File(context.filesDir, "status.json")
-        val content = if (file.exists()) file.readText(Charsets.UTF_8).replace("﻿", "").trim() else ""
-        val statusJson = try { JSONObject(content) } catch (_: Throwable) { JSONObject() }
-        val configJson = statusJson.optJSONObject("config") ?: JSONObject()
-
-        val targetsArray = configJson.optJSONArray("targets") ?: JSONArray()
-        val targetsList = (0 until targetsArray.length()).map { targetsArray.getString(it) }.toMutableList()
-        val appsObj = configJson.optJSONObject("apps") ?: JSONObject()
-
-        // Attach template.
-        for (pkg in add) {
-            if (!targetsList.contains(pkg)) targetsList.add(pkg)
-            val existing = appsObj.optJSONObject(pkg) ?: JSONObject()
-            existing.put("hideTemplate", template)
-            appsObj.put(pkg, existing)
-        }
-
-        // Detach template (keep other features; drop target only if now empty).
-        for (pkg in rem) {
-            val existing = appsObj.optJSONObject(pkg)
-            if (existing != null) {
-                existing.remove("hideTemplate")
-                val hasFeature = existing.optBoolean("devOff", false) ||
-                    existing.optBoolean("mock", false) ||
-                    existing.optBoolean("isolate", false) ||
-                    existing.optBoolean("accOff", false)
+        for (pkg in pkgRemove.distinct().filter { it !in pkgAdd }) {
+            val entry = appsObj.optJSONObject(pkg)
+            if (entry != null) {
+                entry.remove("hideTemplate")
+                val hasFeature = entry.optBoolean("devOff", false) ||
+                    entry.optBoolean("mock", false) ||
+                    entry.optBoolean("isolate", false) ||
+                    entry.optBoolean("accOff", false)
                 if (hasFeature) {
-                    appsObj.put(pkg, existing)
+                    appsObj.put(pkg, entry)
                 } else {
                     appsObj.remove(pkg)
-                    targetsList.remove(pkg)
+                    targets.remove(pkg)
                 }
             } else {
-                targetsList.remove(pkg)
+                targets.remove(pkg)
             }
         }
 
-        configJson.put("targets", JSONArray(targetsList))
-        configJson.put("apps", appsObj)
-
-        importConfig(configJson.toString())
+        cfg.put("targets", JSONArray(targets))
+        cfg.put("apps", appsObj)
+        importConfigObject(cfg)
     }
 
     suspend fun batchConfigureFeature(
         featureKey: String,
         enabledPackages: Set<String>,
         allPackages: Set<String>
-    ): String = withContext(Dispatchers.IO) {
-        // 1. Instant optimistic update for the selected feature
-        val current = _statusFlow.value
-        val targetsList = current.targets.toMutableList()
-        val hardenedList = current.hardened.toMutableList()
-        val perAppMap = current.perAppConfigs.toMutableMap()
+    ): DaemonStatus = withContext(Dispatchers.IO) {
+        val cfg = cloneCurrentConfig()
+        val appsObj = cfg.optJSONObject("apps") ?: JSONObject()
+        val targets = jsonList(cfg.optJSONArray("targets")).toMutableList()
 
         for (pkg in allPackages) {
-            val isEnabled = enabledPackages.contains(pkg)
-            val existing = perAppMap[pkg] ?: PerAppConfig()
-
-            val nextDev = if (featureKey == "devOff") isEnabled else existing.devOff
-            val nextMock = if (featureKey == "mock") isEnabled else existing.mock
-            val nextIsolate = if (featureKey == "isolate") isEnabled else existing.isolate
-            val nextAcc = if (featureKey == "accOff") isEnabled else existing.accOff
-
-            val hasAny = nextDev || nextMock || nextIsolate || nextAcc
-            if (hasAny) {
-                if (!targetsList.contains(pkg)) targetsList.add(pkg)
-                if (nextIsolate) {
-                    if (!hardenedList.contains(pkg)) hardenedList.add(pkg)
-                } else {
-                    hardenedList.remove(pkg)
-                }
-                perAppMap[pkg] = existing.copy(
-                    devOff = nextDev,
-                    mock = nextMock,
-                    isolate = nextIsolate,
-                    accOff = nextAcc
-                )
-                recordPending(pkg, perAppMap[pkg], false)
-            } else {
-                targetsList.remove(pkg)
-                hardenedList.remove(pkg)
-                perAppMap.remove(pkg)
-                recordPending(pkg, null, true)
-            }
-        }
-
-        _statusFlow.value = current.copy(
-            targets = targetsList,
-            hardened = hardenedList,
-            perAppConfigs = perAppMap
-        )
-
-        // 2. Persist to config.json
-        val file = File(context.filesDir, "status.json")
-        val content = if (file.exists()) file.readText(Charsets.UTF_8).replace("﻿", "").trim() else ""
-        val statusJson = try { JSONObject(content) } catch (_: Throwable) { JSONObject() }
-        val configJson = statusJson.optJSONObject("config") ?: JSONObject()
-
-        val cfgTargetsArray = configJson.optJSONArray("targets") ?: JSONArray()
-        val cfgTargetsList = (0 until cfgTargetsArray.length()).map { cfgTargetsArray.getString(it) }.toMutableList()
-        val appsObj = configJson.optJSONObject("apps") ?: JSONObject()
-
-        for (pkg in allPackages) {
-            val isEnabled = enabledPackages.contains(pkg)
+            val enabled = enabledPackages.contains(pkg)
             val existing = appsObj.optJSONObject(pkg)
-
-            if (isEnabled) {
-                if (!cfgTargetsList.contains(pkg)) {
-                    cfgTargetsList.add(pkg)
-                }
-                val o = existing ?: JSONObject().apply {
+            if (enabled) {
+                if (!targets.contains(pkg)) targets.add(pkg)
+                val entry = existing ?: JSONObject().apply {
                     put("devOff", false)
                     put("mock", false)
                     put("isolate", false)
                     put("accOff", false)
                 }
-                o.put(featureKey, true)
-                appsObj.put(pkg, o)
-            } else {
-                if (existing != null) {
-                    existing.put(featureKey, false)
-                    val hasAny = existing.optBoolean("devOff", false) ||
-                                 existing.optBoolean("mock", false) ||
-                                 existing.optBoolean("isolate", false) ||
-                                 existing.optBoolean("accOff", false)
-                    if (!hasAny) {
-                        cfgTargetsList.remove(pkg)
-                        appsObj.remove(pkg)
-                    } else {
-                        appsObj.put(pkg, existing)
-                    }
+                entry.put(featureKey, true)
+                appsObj.put(pkg, entry)
+            } else if (existing != null) {
+                existing.put(featureKey, false)
+                val tpl = existing.optString("hideTemplate", "").trim()
+                val hasTemplate = tpl.isNotEmpty() && !tpl.equals("none", ignoreCase = true)
+                val hasAny = existing.optBoolean("devOff", false) ||
+                    existing.optBoolean("mock", false) ||
+                    existing.optBoolean("isolate", false) ||
+                    existing.optBoolean("accOff", false) ||
+                    hasTemplate
+                if (!hasAny) {
+                    appsObj.remove(pkg)
+                    targets.remove(pkg)
+                } else {
+                    appsObj.put(pkg, existing)
                 }
             }
         }
 
-        configJson.put("targets", JSONArray(cfgTargetsList))
-        configJson.put("apps", appsObj)
-
-        importConfig(configJson.toString())
+        cfg.put("targets", JSONArray(targets))
+        cfg.put("apps", appsObj)
+        importConfigObject(cfg)
     }
 
-    suspend fun delApp(pkg: String): String = withContext(Dispatchers.IO) {
-        applyOptimisticUpdate(listOf(pkg), remove = true)
-        val op = "del-" + System.currentTimeMillis()
-        sendCommand(JSONObject().apply {
-            put("action", "delapp")
-            put("pkg", pkg)
-            put("op", op)
-        })
-        op
+    suspend fun importConfig(jsonString: String): DaemonStatus = withContext(Dispatchers.IO) {
+        val obj = JSONObject(jsonString)
+        importConfigObject(obj)
     }
 
-    suspend fun saveTemplate(
-        name: String,
-        packages: List<String>,
-        deleteName: String? = null
-    ): String = withContext(Dispatchers.IO) {
-        val op = "tpl-" + System.currentTimeMillis()
-        sendCommand(JSONObject().apply {
-            put("action", "save")
-            put("scope", "template")
-            put("templateName", name)
-            put("templatePackages", packages.joinToString(","))
-            if (!deleteName.isNullOrEmpty()) {
-                put("templateDelete", deleteName)
-            }
-            put("op", op)
-        })
-        checkAndUpdateStatus()
-        op
-    }
+    suspend fun importConfigObject(configObj: JSONObject): DaemonStatus = executeRpc(JSONObject().apply {
+        put("action", "import_config")
+        put("config", configObj)
+    })
 
-    suspend fun deleteTemplate(name: String): String = saveTemplate("", emptyList(), deleteName = name)
+    suspend fun apply(): DaemonStatus = executeRpc(JSONObject().apply {
+        put("action", "apply")
+    })
 
-    suspend fun apply(): String = withContext(Dispatchers.IO) {
-        val op = "apply-" + System.currentTimeMillis()
-        sendCommand(JSONObject().apply {
-            put("action", "apply")
-            put("op", op)
-        })
-        checkAndUpdateStatus()
-        op
-    }
+    suspend fun restore(): DaemonStatus = executeRpc(JSONObject().apply {
+        put("action", "restore")
+    })
 
-    suspend fun restore(): String = withContext(Dispatchers.IO) {
-        val op = "rst-" + System.currentTimeMillis()
-        sendCommand(JSONObject().apply {
-            put("action", "restore")
-            put("op", op)
-        })
-        checkAndUpdateStatus()
-        op
-    }
-
-    suspend fun importConfig(jsonString: String): String = withContext(Dispatchers.IO) {
-        val op = "imp-" + System.currentTimeMillis()
-        val b64 = android.util.Base64.encodeToString(
-            jsonString.toByteArray(Charsets.UTF_8),
-            android.util.Base64.NO_WRAP
-        )
-        sendCommand(JSONObject().apply {
-            put("action", "importcfg")
-            put("configBase64", b64)
-            put("op", op)
-        })
-        checkAndUpdateStatus()
-        op
-    }
-
-    suspend fun saveStorageRules(roots: List<String>, relatives: List<String>): String = withContext(Dispatchers.IO) {
-        val file = File(context.filesDir, "status.json")
-        val currentJson = if (file.exists()) {
-            val content = file.readText(Charsets.UTF_8).replace("﻿", "").trim()
-            try {
-                JSONObject(content).optJSONObject("config") ?: JSONObject()
-            } catch (_: Throwable) {
-                JSONObject()
-            }
-        } else {
+    private fun cloneCurrentConfig(): JSONObject =
+        try {
+            JSONObject(lastRawConfigJson.toString())
+        } catch (_: Throwable) {
             JSONObject()
         }
 
-        val storageObj = JSONObject().apply {
-            put("hiddenRootEntryNames", JSONArray(roots))
-            put("hiddenRelativePaths", JSONArray(relatives))
-        }
-        currentJson.put("storageRules", storageObj)
-
-        importConfig(currentJson.toString())
-    }
-
-    private fun sendCommand(obj: JSONObject): Boolean {
-        _isSyncing.value = true
-        val success = try {
-            val cmdDir = File(context.filesDir, "cmd")
-            if (!cmdDir.exists() && !cmdDir.mkdirs()) return false
-
-            val id = "cmd-" + System.nanoTime()
-            val tmp = File(cmdDir, "$id.tmp")
-            val target = File(cmdDir, "$id.json")
-
-            FileOutputStream(tmp).use { out ->
-                out.write(obj.toString().toByteArray(Charsets.UTF_8))
-                out.fd.sync()
-            }
-            if (!tmp.renameTo(target)) {
-                tmp.delete()
-                false
-            } else {
-                true
-            }
-        } catch (t: Throwable) {
-            false
-        }
-
-        if (success) {
-            // Immediate root execution wake-up so daemon does not wait for inotify interval
-            scope.launch {
-                try {
-                    val p = ProcessBuilder("su", "-c", "timeout 6 sh /data/adb/modules/causentry/bin/uirpc.sh serve >/dev/null 2>&1")
-                        .redirectErrorStream(true)
-                        .start()
-                    p.waitFor(8000, java.util.concurrent.TimeUnit.MILLISECONDS)
-                } catch (_: Throwable) {}
-                // Use force=false: only read status.json if daemon actually updated it.
-                // force=true overwrites the optimistic state with stale disk data when
-                // the shell finishes before the daemon has flushed status.json.
-                // FileObserver fires the real update once the daemon writes the file.
-                checkAndUpdateStatus(force = false)
+    private suspend fun executeRpc(request: JSONObject): DaemonStatus = withContext(Dispatchers.IO) {
+        rpcMutex.withLock {
+            _isSyncing.value = true
+            try {
+                val payload = request.toString().toByteArray(Charsets.UTF_8)
+                val responseBytes = sendOverLocalSocket(payload)
+                val json = JSONObject(String(responseBytes, Charsets.UTF_8))
+                val parsed = parseStatus(json)
+                _statusFlow.value = parsed
+                parsed
+            } catch (t: Throwable) {
+                android.util.Log.w("DaemonBridge", "RPC failed: ${t.message}")
+                val offline = _statusFlow.value.copy(
+                    daemonAlive = false,
+                    rpcError = t.message ?: "Unable to connect to causentryd"
+                )
+                _statusFlow.value = offline
+                offline
+            } finally {
                 _isSyncing.value = false
             }
-        } else {
-            _isSyncing.value = false
         }
-        return success
     }
 
-    suspend fun checkAndUpdateStatus(force: Boolean = false) = withContext(Dispatchers.IO) {
+    private fun sendOverLocalSocket(payload: ByteArray): ByteArray {
+        val socket = LocalSocket(LocalSocket.SOCKET_STREAM)
         try {
-            val file = File(context.filesDir, "status.json")
-            if (!file.exists()) {
-                if (_statusFlow.value.timestamp != 0L) {
-                    _statusFlow.value = DaemonStatus()
-                }
-                return@withContext
+            socket.connect(LocalSocketAddress(socketPath, LocalSocketAddress.Namespace.FILESYSTEM))
+            socket.soTimeout = 6000
+
+            val out = DataOutputStream(socket.outputStream)
+            out.writeInt(payload.size)
+            out.write(payload)
+            out.flush()
+
+            val inp = DataInputStream(socket.inputStream)
+            val respLen = inp.readInt()
+            if (respLen <= 0 || respLen > 4 * 1024 * 1024) {
+                throw IllegalStateException("Invalid RPC response length: $respLen")
             }
-
-            val modified = file.lastModified()
-            val length = file.length()
-            if (!force && modified == lastStatusModified && length == lastStatusLength) {
-                // File unchanged on disk, keep memory state
-                return@withContext
-            }
-
-            val content = file.readText(Charsets.UTF_8).replace("\uFEFF", "").trim()
-            val json = JSONObject(content)
-            val parsed = parseStatus(json)
-
-            lastStatusModified = modified
-            lastStatusLength = length
-            _statusFlow.value = parsed
-        } catch (t: Throwable) {
-            android.util.Log.e("DaemonBridge", "failed to read or parse status.json", t)
+            val respBuf = ByteArray(respLen)
+            inp.readFully(respBuf)
+            return respBuf
+        } finally {
+            try {
+                socket.close()
+            } catch (_: Throwable) {}
         }
     }
 
     private fun parseStatus(json: JSONObject): DaemonStatus {
+        val cfg = json.optJSONObject("config") ?: JSONObject()
+        lastRawConfigJson = cfg
+
         val targetsList = jsonList(json.optJSONArray("targets"))
         val hardenedList = jsonList(json.optJSONArray("hardened"))
         val denylistList = jsonList(json.optJSONArray("denylist"))
-        val rootAppsList = json.optString("rootApps", "")
-            .split(",").map { it.trim() }.filter { it.isNotEmpty() }
-        val rootSuggestList = json.optString("rootSuggest", "")
-            .split(",").map { it.trim() }.filter { it.isNotEmpty() }
 
-        val cfg = json.optJSONObject("config") ?: JSONObject()
-        val appsObj = cfg.optJSONObject("apps") ?: json.optJSONObject("apps") ?: JSONObject()
+        val appsObj = cfg.optJSONObject("apps") ?: JSONObject()
         val perAppMap = mutableMapOf<String, PerAppConfig>()
         val appKeys = appsObj.keys()
         while (appKeys.hasNext()) {
@@ -685,76 +298,68 @@ class DaemonBridge @Inject constructor(
             )
         }
 
-        val templatesObj = cfg.optJSONObject("hideTemplates") ?: json.optJSONObject("hideTemplates") ?: JSONObject()
+        val templatesObj = cfg.optJSONObject("hideTemplates") ?: JSONObject()
         val templatesMap = mutableMapOf<String, List<String>>()
         val tplKeys = templatesObj.keys()
         while (tplKeys.hasNext()) {
             val name = tplKeys.next()
-            val arr = templatesObj.optJSONArray(name)
-            templatesMap[name] = jsonList(arr)
+            templatesMap[name] = jsonList(templatesObj.optJSONArray(name))
         }
 
         val fuseObj = json.optJSONObject("fuse")
         val fuseActive = fuseObj?.optBoolean("active", false) ?: false
         val fuseCovered = fuseObj?.optBoolean("covered", false) ?: false
-        val fuseTargetCount = fuseObj?.optInt("targetCount", 0) ?: targetsList.size
+        val fuseTargetCount = fuseObj?.optInt("targetCount", 0) ?: 0
 
-        val storageRulesObj = cfg.optJSONObject("storageRules") ?: json.optJSONObject("storageRules")
+        val storageRulesObj = cfg.optJSONObject("storageRules")
         val storageRoots = jsonList(storageRulesObj?.optJSONArray("hiddenRootEntryNames"))
         val storageRelatives = jsonList(storageRulesObj?.optJSONArray("hiddenRelativePaths"))
 
-        // System cloak + hide mode live in the raw config only; the backup/restore
-        // path needs them so a restore never silently drops an active system cloak.
-        val systemCloakOn = json.optBoolean("systemCloak", cfg.optBoolean("systemCloak", false))
-        val hideModeStr = json.optString("hideMode").ifEmpty { cfg.optString("hideMode", "none") }
-            .ifEmpty { "none" }
-        val cloakPackagesList = jsonList(
-            json.optJSONArray("cloakPackages") ?: cfg.optJSONArray("cloakPackages")
-        )
+        val defaultRoots = jsonList(json.optJSONArray("defaultStorageRoots"))
+        val defaultRelatives = jsonList(json.optJSONArray("defaultStorageRelatives"))
 
-        // Keep unconfirmed edits visible over a snapshot that raced the save. While
-        // the daemon reports an apply in flight the edit is held past its soft TTL,
-        // so a slow queue no longer produces the applied -> reverted -> applied dip.
-        val uiApplyBusy = json.optBoolean("applyBusy", false)
-        val snapshotTsMs = json.optLong("ts", 0L).let { if (it > 0L) it * 1000L else 0L }
-        val (uiTargets, uiHardened, uiPerApp) = overlayPending(targetsList, hardenedList, perAppMap, uiApplyBusy, snapshotTsMs)
+        val errStr = if (json.isNull("error")) null else json.optString("error", "").takeIf { it.isNotEmpty() }
 
         return DaemonStatus(
             state = json.optString("state", "unknown"),
             daemonAlive = json.optBoolean("daemon", false),
-            heartbeatAge = json.optLong("age", 999999L),
+            daemonPid = json.optInt("daemonPid", 0),
+            daemonUptimeSec = json.optLong("daemonUptimeSec", 0L),
+            rootProvider = json.optString("rootProvider", "Unknown"),
             timestamp = json.optLong("ts", 0L),
             susfs = json.optString("susfs", "unsupported"),
-            zygisk = json.optString("zygisk", "unknown"),
+            zygisk = json.optString("zygisk", "standby"),
             cloakReady = json.optBoolean("cloakReady", false),
-            targets = uiTargets,
-            hardened = uiHardened,
+            pkgHookCount = json.optInt("pkgHookCount", 0),
+            settingsHookReady = json.optBoolean("settingsHookReady", false),
+            settingsHookCount = json.optInt("settingsHookCount", 0),
+            usbHookReady = json.optBoolean("usbHookReady", false),
+            usbHookCount = json.optInt("usbHookCount", 0),
+            a11yHookCount = json.optInt("a11yHookCount", 0),
+            appZygoteHookCount = json.optInt("appZygoteHookCount", 0),
+            targets = targetsList,
+            hardened = hardenedList,
             denylist = denylistList,
             autoDevOff = json.optBoolean("autoDevOff", true),
             hideMockLocation = json.optBoolean("hideMockLocation", true),
             alwaysHidden = json.optBoolean("alwaysHidden", false),
-            susfsOn = json.optBoolean("susfsOn", false),
+            susfsOn = json.optBoolean("susfsOn", true),
             hideRootApps = json.optBoolean("hideRootApps", false),
             uiApk = json.optBoolean("uiApk", true),
-            systemCloak = systemCloakOn,
-            hideMode = hideModeStr,
-            cloakPackages = cloakPackagesList,
-            rootApps = rootAppsList,
-            rootSuggest = rootSuggestList,
-            applyBusy = json.optBoolean("applyBusy", false),
-            applyDone = json.optInt("applyDone", 0),
-            applyRc = json.optInt("applyRc", 0),
-            applyToken = json.optString("applyToken", ""),
-            commandRc = json.optInt("commandRc", 0),
-            commandToken = json.optString("commandToken", ""),
+            systemCloak = json.optBoolean("systemCloak", true),
+            hideMode = json.optString("hideMode", "cloak"),
+            cloakPackages = jsonList(json.optJSONArray("cloakPackages")),
             templates = templatesMap,
-            perAppConfigs = uiPerApp,
+            perAppConfigs = perAppMap,
             log = json.optString("log", ""),
             fuseActive = fuseActive,
             fuseCovered = fuseCovered,
             fuseTargetCount = fuseTargetCount,
             storageHiddenRoots = storageRoots,
-            storageHiddenRelatives = storageRelatives
+            storageHiddenRelatives = storageRelatives,
+            defaultStorageRoots = defaultRoots,
+            defaultStorageRelatives = defaultRelatives,
+            rpcError = errStr
         )
     }
 

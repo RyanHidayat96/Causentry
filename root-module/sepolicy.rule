@@ -1,14 +1,19 @@
-# Causentry - deny the privileged SELinux vantage point that hardened apps abuse.
+# Causentry v3.0 SELinux Policy Rules
+# Space-separated Magisk/KernelSU sepolicy.rule syntax (no colons or semicolons).
 #
-# A service with android:useAppZygote="true" + isolatedProcess="true" is forked from a
-# per-app zygote; its ZygotePreload then runs in the app_zygote domain, which AOSP grants
-# selinux_check_context / selinux_check_access (the means to interrogate the kernel about
-# labels and access vectors). Hardened apps (PairIP/Zimperium) use that to detect tampering
-# and force-close. Blocking app_zygote's access to selinuxfs neutralises the probe entirely -
-# no in-process injection, no framework hook required (KernelSU loads these rules at boot).
-deny app_zygote security_t:dir { open read search getattr };
-deny app_zygote security_t:file { open read write append getattr ioctl map };
-deny app_zygote selinuxfs:dir { open read search getattr };
-deny app_zygote selinuxfs:file { open read write append getattr ioctl map };
-deny app_zygote self:process { setcurrent dyntransition };
-deny system_server self:process execmem;
+# 1. Neutralize SELinux probing by app_zygote (PairIP/Zimperium).
+#    IMPORTANT: Do NOT deny app_zygote setcurrent/dyntransition or system_server execmem.
+deny app_zygote security_t dir { open read search getattr }
+deny app_zygote security_t file { open read write append getattr ioctl map }
+deny app_zygote selinuxfs dir { open read search getattr }
+deny app_zygote selinuxfs file { open read write append getattr ioctl map }
+
+# 2. Permit Causentry Control UI (untrusted_app_all) to connect to causentryd's
+#    Unix domain socket (.rpc.sock) across Magisk, KernelSU Next, and SUSFS.
+#    causentryd enforces SO_PEERCRED UID verification so ONLY com.causentry.app or root is accepted.
+allow untrusted_app_all su unix_stream_socket connectto
+allow untrusted_app_all magisk unix_stream_socket connectto
+allow untrusted_app_all ksu unix_stream_socket connectto
+allow untrusted_app_all priv_app unix_stream_socket connectto
+typeattribute ksu mlstrustedsubject
+typeattribute priv_app mlstrustedsubject

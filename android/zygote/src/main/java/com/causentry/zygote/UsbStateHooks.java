@@ -1,6 +1,7 @@
 package com.causentry.zygote;
 
 import android.content.Intent;
+import android.os.Binder;
 import android.util.Log;
 
 import com.v7878.unsafe.Reflection;
@@ -17,91 +18,66 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Masks the ADB flag inside the sticky USB_STATE broadcast emitted by
- * system_server.
+ * Per-UID USB_STATE sticky broadcast masking.
  *
- * SettingsProvider hooks alone cannot stop this leak: UsbDeviceManager sends
- * {@code android.hardware.usb.action.USB_STATE} straight from system_server, so
- * a hardened app that reads the Intent extras observes
- * {@code bundle.getBoolean("adb") == true && getBoolean("connected") == true}
- * (Bibit: SecurityUseCase$DeviceSignals$checkIsUsbDebug) even when
- * Settings.Global.adb_enabled is reported as 0. Rewriting the extra before the
- * sticky broadcast leaves system_server is non-destructive: the real USB
- * function switch, adbd and the developer tile keep working, while protected
- * apps see a plain data link.
+ * Hooks ActivityManagerService#registerReceiverWithFeature / registerReceiver so only
+ * protected caller UIDs receive a cloned Intent with adb=false, while SystemUI, Settings,
+ * and ADB keep the genuine sticky broadcast untouched.
  */
 final class UsbStateHooks {
     private static final String TAG = "CausentryZygote";
     private static final String ACTION_USB_STATE = "android.hardware.usb.action.USB_STATE";
     private static final String EXTRA_ADB = "adb";
-    /** Every AOSP path that publishes a sticky broadcast goes through ContextImpl. */
-    private static final Set<String> STICKY_SENDERS = Collections.unmodifiableSet(
+    private static final Set<String> REGISTER_METHODS = Collections.unmodifiableSet(
             new HashSet<>(Arrays.asList(
-                    "sendStickyBroadcast",
-                    "sendStickyBroadcastAsUser",
-                    "sendStickyOrderedBroadcast",
-                    "sendStickyOrderedBroadcastAsUser")));
+                    "registerReceiverWithFeature",
+                    "registerReceiver"
+            )));
     private static volatile int installedHooks;
 
     private UsbStateHooks() {}
 
-    static synchronized int install() {
+    static synchronized int install(ClassLoader loader) {
         if (installedHooks > 0) return installedHooks;
+        int installed = 0;
         try {
-            CloakPolicy.refreshNow();
-            Class<?> contextImpl;
-            try {
-                contextImpl = Class.forName("android.app.ContextImpl");
-            } catch (ClassNotFoundException missing) {
-                Log.w(TAG, "ContextImpl unavailable; usb state hook skipped");
-                return 0;
-            }
-            int installed = 0;
+            Class<?> amsClass = Class.forName("com.android.server.am.ActivityManagerService", true, loader);
             Set<Executable> seen = new HashSet<>();
-            for (Class<?> cursor = contextImpl; cursor != null; cursor = cursor.getSuperclass()) {
-                for (Executable executable : Reflection.getHiddenExecutables(cursor)) {
-                    if (!(executable instanceof Method)) continue;
-                    if (!STICKY_SENDERS.contains(executable.getName())) continue;
-                    if (!seen.add(executable)) continue;
-                    Class<?>[] parameters = ((Method) executable).getParameterTypes();
-                    if (parameters.length < 1 || parameters.length > 2) continue;
-                    if (parameters[0] != Intent.class) continue;
+            for (Class<?> cursor = amsClass; cursor != null; cursor = cursor.getSuperclass()) {
+                for (Executable exe : Reflection.getHiddenExecutables(cursor)) {
+                    if (!(exe instanceof Method) || !seen.add(exe)) continue;
+                    Method method = (Method) exe;
+                    if (!REGISTER_METHODS.contains(method.getName())) continue;
+                    if (method.getReturnType() != Intent.class) continue;
                     try {
-                        Hooks.hook((Method) executable, Hooks.EntryPointType.DIRECT,
-                                UsbStateHooks::intercept, Hooks.EntryPointType.DIRECT);
+                        Hooks.hook(method, Hooks.EntryPointType.DIRECT,
+                                UsbStateHooks::interceptRegisterReceiver, Hooks.EntryPointType.DIRECT);
                         installed++;
-                        Log.i(TAG, "hooked usb state sender " + executable);
-                    } catch (Throwable error) {
-                        Log.w(TAG, "usb state hook unavailable " + executable, error);
+                        Log.i(TAG, "hooked AMS receiver: " + method.getName());
+                    } catch (Throwable err) {
+                        Log.w(TAG, "usb hook unavailable: " + method, err);
                     }
                 }
             }
-            installedHooks = installed;
-            return installed;
         } catch (Throwable error) {
             Log.e(TAG, "usb state hook initialization failed", error);
-            return 0;
         }
+        installedHooks = installed;
+        return installed;
     }
 
-    private static void intercept(MethodHandle original, EmulatedStackFrame frame) throws Throwable {
-        try {
-            if (CloakPolicy.anyDeveloperOptionsHidden()) {
-                // Argument 0 is the ContextImpl instance; argument 1 is the Intent.
-                Object candidate = frame.accessor().getReference(1);
-                if (candidate instanceof Intent) spoof((Intent) candidate);
-            }
-        } catch (Throwable error) {
-            // A failed rewrite must never break USB state delivery.
-            Log.w(TAG, "usb state rewrite failed", error);
-        }
+    private static void interceptRegisterReceiver(MethodHandle original, EmulatedStackFrame frame) throws Throwable {
         Transformers.invokeExactNoChecks(original, frame);
-    }
+        int callingUid = Binder.getCallingUid();
+        if (!CloakPolicy.hidesDeveloperOptions(callingUid)) return;
 
-    private static void spoof(Intent intent) {
-        if (intent == null || !ACTION_USB_STATE.equals(intent.getAction())) return;
-        if (!intent.getBooleanExtra(EXTRA_ADB, false)) return;
-        intent.putExtra(EXTRA_ADB, false);
-        Log.i(TAG, "usb state adb extra masked");
+        Object ret = frame.accessor().getReference(EmulatedStackFrame.RETURN_VALUE_IDX);
+        if (!(ret instanceof Intent)) return;
+        Intent sticky = (Intent) ret;
+        if (ACTION_USB_STATE.equals(sticky.getAction()) && sticky.getBooleanExtra(EXTRA_ADB, false)) {
+            Intent sanitized = new Intent(sticky);
+            sanitized.putExtra(EXTRA_ADB, false);
+            frame.accessor().setValue(EmulatedStackFrame.RETURN_VALUE_IDX, sanitized);
+        }
     }
 }

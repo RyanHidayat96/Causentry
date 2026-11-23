@@ -12,24 +12,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.causentry.app.R
 import com.causentry.app.model.AppFilter
-import com.causentry.app.ui.theme.BorderDark
-import com.causentry.app.ui.theme.PrimaryBlue
-import com.causentry.app.ui.theme.SurfaceDark
-import com.causentry.app.ui.theme.TextSecondary
-import com.causentry.app.ui.theme.TextTertiary
+import com.causentry.app.ui.theme.LocalCausentryColors
 
 @Composable
 fun FilterChipRow(
@@ -49,7 +47,7 @@ fun FilterChipRow(
     ) {
         item {
             FilterChipItem(
-                label = "All",
+                label = stringResource(R.string.filter_all),
                 count = allCount,
                 selected = selectedFilter == AppFilter.ALL,
                 onClick = { onFilterSelect(AppFilter.ALL) }
@@ -57,7 +55,7 @@ fun FilterChipRow(
         }
         item {
             FilterChipItem(
-                label = "Protected",
+                label = stringResource(R.string.filter_protected),
                 count = protectedCount,
                 selected = selectedFilter == AppFilter.PROTECTED,
                 onClick = { onFilterSelect(AppFilter.PROTECTED) }
@@ -65,7 +63,7 @@ fun FilterChipRow(
         }
         item {
             FilterChipItem(
-                label = "User",
+                label = stringResource(R.string.filter_user),
                 count = userCount,
                 selected = selectedFilter == AppFilter.USER,
                 onClick = { onFilterSelect(AppFilter.USER) }
@@ -73,7 +71,7 @@ fun FilterChipRow(
         }
         item {
             FilterChipItem(
-                label = "System",
+                label = stringResource(R.string.filter_system),
                 count = systemCount,
                 selected = selectedFilter == AppFilter.SYSTEM,
                 onClick = { onFilterSelect(AppFilter.SYSTEM) }
@@ -89,11 +87,13 @@ private fun FilterChipItem(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val cs = MaterialTheme.colorScheme
+    val ext = LocalCausentryColors.current
     val haptic = LocalHapticFeedback.current
 
-    val bg = if (selected) PrimaryBlue.copy(alpha = 0.16f) else SurfaceDark
-    val borderCol = if (selected) PrimaryBlue else BorderDark.copy(alpha = 0.7f)
-    val textCol = if (selected) PrimaryBlue else TextSecondary
+    val bg = if (selected) cs.primary.copy(alpha = 0.16f) else cs.surface
+    val borderCol = if (selected) cs.primary else ext.border.copy(alpha = 0.8f)
+    val textCol = if (selected) cs.primary else cs.onSurfaceVariant
 
     Row(
         modifier = Modifier
@@ -104,7 +104,7 @@ private fun FilterChipItem(
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
             }
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 10.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -119,7 +119,7 @@ private fun FilterChipItem(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
-                    .background(if (selected) PrimaryBlue.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.07f))
+                    .background(if (selected) cs.primary.copy(alpha = 0.22f) else ext.surfaceHigh)
                     .padding(horizontal = 5.dp, vertical = 1.dp)
             ) {
                 Text(
@@ -127,7 +127,7 @@ private fun FilterChipItem(
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
-                    color = if (selected) PrimaryBlue else TextTertiary
+                    color = if (selected) cs.primary else cs.onSurfaceVariant
                 )
             }
         }

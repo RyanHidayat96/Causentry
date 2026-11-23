@@ -1,9 +1,9 @@
 id=causentry
 name=Causentry
-version=v1.1.0
-versionCode=110
+version=v3.0.0
+versionCode=300
 minSdkVersion=26
 author=exery
-description=Universal detection hardening for developer options, mock location/fake GPS, root indicators, root paths, and PairIP/RASP targets. Default mode is system/kernel-side shell hardening; package cloaking uses the bundled Zygisk backend only.
+description=Zero-leak anti-detection engine powered by full native Rust (causentryd daemon, pure Rust Zygisk v4 loader, Rust FuseHide safety core, and rust-anything verified JNI App Core) for package cloaking, Settings/USB/A11y spoofing, and FUSE storage cloaking.
 entrypoint=com.causentry.zygote.ZygoteEntry
 attachNativeLibs=false

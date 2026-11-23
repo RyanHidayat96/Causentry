@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
@@ -5,28 +7,41 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val localProps = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) {
+        file.inputStream().use { load(it) }
+    }
+}
+
+fun signingProp(envKey: String, propKey: String, fallback: String): String =
+    System.getenv(envKey)?.takeIf { it.isNotBlank() }
+        ?: localProps.getProperty(propKey)?.takeIf { it.isNotBlank() }
+        ?: fallback
+
 android {
     namespace = "com.causentry.app"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.causentry.app"
         minSdk = 26
-        targetSdk = 37
-        versionCode = 110
-        versionName = "1.1.0"
+        targetSdk = 35
+        versionCode = 300
+        versionName = "3.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
         create("release") {
-            val ksFile = rootProject.file("../causentry.keystore")
+            val ksPath = signingProp("CAUSENTRY_KEYSTORE", "causentry.keystore", "../causentry.keystore")
+            val ksFile = rootProject.file(ksPath)
             if (ksFile.exists()) {
                 storeFile = ksFile
-                storePassword = "causentry"
-                keyAlias = "causentry"
-                keyPassword = "causentry"
+                storePassword = signingProp("CAUSENTRY_STORE_PASS", "causentry.storePass", "causentry")
+                keyAlias = signingProp("CAUSENTRY_KEY_ALIAS", "causentry.keyAlias", "causentry")
+                keyPassword = signingProp("CAUSENTRY_KEY_PASS", "causentry.keyPass", "causentry")
             }
         }
     }
@@ -35,14 +50,20 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            val relSigning = signingConfigs.getByName("release")
+            if (relSigning.storeFile != null) {
+                signingConfig = relSigning
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
         debug {
-            signingConfig = signingConfigs.getByName("release")
+            val relSigning = signingConfigs.getByName("release")
+            if (relSigning.storeFile != null) {
+                signingConfig = relSigning
+            }
         }
     }
 
@@ -50,14 +71,21 @@ android {
         buildConfig = true
         compose = true
     }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 kotlin {
-    jvmToolchain(21)
-}
-
-ksp {
-    arg("room.schemaLocation", "$projectDir/schemas")
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }
 
 dependencies {
@@ -66,14 +94,10 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.room.ktx)
-    implementation(libs.androidx.room.runtime)
     implementation(libs.hilt.android)
 
-    ksp(libs.androidx.room.compiler)
     ksp(libs.hilt.compiler)
 
     debugImplementation(libs.androidx.compose.ui.tooling)

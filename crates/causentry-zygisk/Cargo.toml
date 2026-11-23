@@ -1,0 +1,15 @@
+[package]
+name = "causentry-zygisk"
+version = "3.0.0"
+edition = "2024"
+description = "Pure Rust Zygisk v4 native loader, Companion SCM_RIGHTS broker, DEX loader, and Dobby hook adapter"
+license = "Apache-2.0"
+
+[lib]
+name = "causentry_zygisk"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+causentry-proto = { path = "../causentry-proto" }
+jni-sys = "0.3"
+libc = "0.2"

@@ -1,4 +1,139 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Causentry</string>
+    <string name="subtitle_control">Anti-Detection Control</string>
+    <string name="subtitle_syncing">Applying policies via native daemon…</string>
+    <string name="badge_syncing">SYNCING</string>
+
+    <!-- Navigation -->
+    <string name="nav_apps">Apps</string>
+    <string name="nav_features">Features</string>
+    <string name="nav_templates">Templates</string>
+    <string name="nav_forensics">Forensics</string>
+    <string name="nav_system">System</string>
+
+    <!-- Hero Status Card -->
+    <string name="hero_system_protection">System Protection</string>
+    <string name="status_active">ACTIVE</string>
+    <string name="status_standby">STANDBY</string>
+    <string name="status_offline">OFFLINE</string>
+    <string name="status_healthy">HEALTHY</string>
+    <string name="status_degraded">DEGRADED</string>
+    <string name="zygisk_active">Zygisk active</string>
+    <string name="zygisk_ready">Zygisk ready</string>
+    <string name="zygisk_standby">Zygisk standby</string>
+
+    <!-- Apps Tab -->
+    <string name="search_apps_count">Search %1$d apps or package…</string>
+    <string name="search_apps_hint">Search app name or package…</string>
+    <string name="filter_all">All</string>
+    <string name="filter_protected">Protected</string>
+    <string name="filter_user">User</string>
+    <string name="filter_system">System</string>
+    <string name="section_protected_apps">PROTECTED APPLICATIONS</string>
+    <string name="section_other_apps">ALL OTHER APPLICATIONS</string>
+    <string name="empty_no_match">No applications match \'%1$s\'</string>
+    <string name="empty_no_protected_title">No Protected Applications</string>
+    <string name="empty_no_protected_desc">Tap any application from the list to configure anti-detection protection.</string>
+    <string name="empty_no_user_apps">No user-installed applications found.</string>
+    <string name="empty_no_system_apps">No system applications found.</string>
+    <string name="empty_no_apps">No applications found.</string>
+
+    <!-- Features Tab -->
+    <string name="feature_dev_title">Hide Developer Options &amp; ADB</string>
+    <string name="feature_dev_short">Hide Dev</string>
+    <string name="feature_dev_desc">Spoofs development_settings_enabled, adb_enabled &amp; USB state as 0.</string>
+    <string name="feature_mock_title">Hide Mock Location (GPS)</string>
+    <string name="feature_mock_short">Hide Mock</string>
+    <string name="feature_mock_desc">Forces mock_location=0 for this app to conceal GPS spoofing tools.</string>
+    <string name="feature_a11y_title">Spoof Accessibility Services</string>
+    <string name="feature_a11y_short">Accessibility</string>
+    <string name="feature_a11y_desc">Conceals active accessibility services from detection queries.</string>
+    <string name="feature_isolate_title">Demote App-Zygote (RASP)</string>
+    <string name="feature_isolate_short">App-Zygote</string>
+    <string name="feature_isolate_desc">Optional: demotes App-Zygote while keeping isolated services intact. Leave off unless needed.</string>
+    <string name="action_select_all">Select All</string>
+    <string name="action_deselect">Deselect</string>
+    <string name="filter_enabled">Enabled</string>
+    <string name="filter_disabled">Disabled</string>
+    <string name="unsaved_changes_title">Unsaved Policy Changes</string>
+    <string name="unsaved_changes_subtitle">%1$d apps enabled in draft</string>
+    <string name="action_reset">Reset</string>
+    <string name="action_save_changes">Save Changes</string>
+    <string name="action_applying">Applying…</string>
+
+    <!-- App Detail Dialog -->
+    <string name="label_quick_preset">QUICK PRESET</string>
+    <string name="preset_banking">Banking</string>
+    <string name="preset_basic">Basic</string>
+    <string name="preset_none">None</string>
+    <string name="label_granular_features">GRANULAR BYPASS FEATURES</string>
+    <string name="label_root_cloaking">ROOT APP CLOAKING</string>
+    <string name="template_selected">Template: %1$s</string>
+    <string name="template_none">No cloaked root packages</string>
+    <string name="action_inspect_logs">Inspect Logs</string>
+    <string name="action_clear_rules">Clear Rules</string>
+    <string name="action_apply_protection">Apply Protection</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_close">Close</string>
+
+    <!-- Templates Tab -->
+    <string name="templates_title">Hidden-App Templates</string>
+    <string name="templates_subtitle">Configure groups of apps to cloak from target package queries in system_server.</string>
+    <string name="action_new_template">+ New</string>
+    <string name="templates_empty">No custom templates configured yet. Tap \'+ New\' to create one.</string>
+    <string name="action_implement_apps">Implement to apps</string>
+
+    <!-- Forensics Tab -->
+    <string name="forensics_search_hint">Search logs, tags…</string>
+    <string name="forensics_regex_hint">Regex pattern…</string>
+    <string name="forensics_record">Record</string>
+    <string name="forensics_stop">Stop</string>
+    <string name="forensics_crashes_title">Detected Crashes &amp; RASP Traps (%1$d)</string>
+    <string name="forensics_clear_all">Clear All</string>
+    <string name="forensics_dismiss">Dismiss</string>
+    <string name="forensics_jump_latest">Jump to latest</string>
+    <string name="forensics_empty_title">No logcat events matching current filters.</string>
+    <string name="forensics_empty_subtitle">Logcat streams lazily only while Forensics is open or recording.</string>
+
+    <!-- System / Diagnostics Tab -->
+    <string name="diag_title">System Diagnostics</string>
+    <string name="diag_subtitle">Live telemetry from native daemon &amp; Zygisk hooks</string>
+    <string name="diag_root_provider">Root Environment</string>
+    <string name="diag_daemon">Native Daemon (causentryd)</string>
+    <string name="diag_zygisk">Zygisk Package Cloak</string>
+    <string name="diag_settings">SettingsProvider Cloak</string>
+    <string name="diag_usb">Per-UID USB Cloak</string>
+    <string name="diag_a11y_zygote">A11y &amp; App-Zygote</string>
+    <string name="diag_fuse">FUSE Storage Cloak</string>
+    <string name="diag_susfs">SUSFS Kernel Module</string>
+
+    <!-- Appearance & Language -->
+    <string name="appearance_title">Appearance &amp; Language</string>
+    <string name="appearance_subtitle">Material You dynamic theme, AMOLED black, and interface language</string>
+    <string name="theme_label">Theme</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_amoled">AMOLED</string>
+    <string name="dynamic_color_title">Material You (Dynamic Color)</string>
+    <string name="dynamic_color_desc">Match accent colors to your device wallpaper</string>
+    <string name="language_label">Language</string>
+    <string name="lang_system">System</string>
+    <string name="lang_en">English</string>
+    <string name="lang_id">Indonesia</string>
+
+    <!-- Engine Management -->
+    <string name="engine_title">Engine Management</string>
+    <string name="engine_subtitle">Push live policy to Zygisk hooks or restore defaults</string>
+    <string name="action_resync">Re-sync Engine</string>
+    <string name="action_restore_all">Restore All</string>
+    <string name="restore_dialog_title">Restore Default Settings?</string>
+    <string name="restore_dialog_body">This will revert all developer options, mock location, and app cloak overrides to system defaults. Are you sure?</string>
+    <string name="action_restore_defaults">Restore Defaults</string>
+    <string name="daemon_logs_title">Daemon &amp; Zygisk Logs</string>
+    <string name="daemon_logs_subtitle">In-memory ring buffer from causentryd</string>
+    <string name="action_copy">Copy</string>
+    <string name="logs_copied">Logs copied to clipboard</string>
+    <string name="logs_empty">No recent log events recorded by daemon.</string>
 </resources>

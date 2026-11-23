@@ -145,67 +145,29 @@ class ConfigBackupManager @Inject constructor(
                 BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).readText()
             } ?: return@withContext Result.failure(Exception("Cannot open file stream"))
 
-            val clean = content.replace("\uFEFF", "").trim()
-            val root = JSONObject(clean)
-
-            if (root.optString("format") == "causentry_backup") {
-                val cfg = root.optJSONObject("config") ?: JSONObject()
-                val ver = root.optInt("version", 1)
-                val targets = jsonArrayToList(cfg.optJSONArray("targets"))
-                val tpls = cfg.optJSONObject("hideTemplates") ?: JSONObject()
-                val tplNames = mutableListOf<String>()
-                val keys = tpls.keys()
-                while (keys.hasNext()) tplNames.add(keys.next())
-
-                val appsObj = cfg.optJSONObject("apps")
-                val storageObj = cfg.optJSONObject("storageRules")
-
-                return@withContext Result.success(
-                    ParsedBackupInfo(
-                        format = "Causentry v$ver",
-                        targetCount = targets.size,
-                        templateCount = tplNames.size,
-                        targetNames = targets,
-                        templateNames = tplNames,
-                        fullConfigJson = cfg,
-                        sourceVersion = ver,
-                        hardenedCount = jsonArrayToList(cfg.optJSONArray("hardened")).size,
-                        appPolicyCount = appsObj?.length() ?: 0,
-                        storageRuleCount = (jsonArrayToList(storageObj?.optJSONArray("hiddenRootEntryNames")).size +
-                                jsonArrayToList(storageObj?.optJSONArray("hiddenRelativePaths")).size),
-                        systemCloak = cfg.optBoolean("systemCloak", false),
-                        hideMode = cfg.optString("hideMode", "none")
-                    )
+            val inspectedJson = com.causentry.app.core.CausentryRustBridge.inspectBackupJson(content)
+            val inspected = JSONObject(inspectedJson)
+            if (!inspected.optBoolean("ok", false)) {
+                return@withContext Result.failure(
+                    Exception(inspected.optString("error", "Unrecognized backup format."))
                 )
             }
-
-            // HMA-OSS or direct config.json format detection
-            if (root.has("hideTemplates") || root.has("apps") || root.has("templates")) {
-                val targets = jsonArrayToList(root.optJSONArray("targets"))
-                val tpls = root.optJSONObject("hideTemplates") ?: root.optJSONObject("templates") ?: JSONObject()
-                val tplNames = mutableListOf<String>()
-                val keys = tpls.keys()
-                while (keys.hasNext()) tplNames.add(keys.next())
-
-                val configObj = JSONObject(clean)
-                // Normalize templates key if coming from HMA
-                if (!configObj.has("hideTemplates") && configObj.has("templates")) {
-                    configObj.put("hideTemplates", configObj.get("templates"))
-                }
-
-                return@withContext Result.success(
-                    ParsedBackupInfo(
-                        format = if (root.has("templates")) "HMA-OSS" else "Direct Config",
-                        targetCount = targets.size,
-                        templateCount = tplNames.size,
-                        targetNames = targets,
-                        templateNames = tplNames,
-                        fullConfigJson = configObj
-                    )
+            Result.success(
+                ParsedBackupInfo(
+                    format = inspected.optString("format", "Causentry"),
+                    targetCount = inspected.optInt("targetCount", 0),
+                    templateCount = inspected.optInt("templateCount", 0),
+                    targetNames = jsonArrayToList(inspected.optJSONArray("targetNames")),
+                    templateNames = jsonArrayToList(inspected.optJSONArray("templateNames")),
+                    fullConfigJson = inspected.optJSONObject("config") ?: JSONObject(),
+                    sourceVersion = inspected.optInt("sourceVersion", 1),
+                    hardenedCount = inspected.optInt("hardenedCount", 0),
+                    appPolicyCount = inspected.optInt("appPolicyCount", 0),
+                    storageRuleCount = inspected.optInt("storageRuleCount", 0),
+                    systemCloak = inspected.optBoolean("systemCloak", false),
+                    hideMode = inspected.optString("hideMode", "none")
                 )
-            }
-
-            Result.failure(Exception("Unrecognized backup format. File must be a Causentry or HMA-OSS JSON backup."))
+            )
         } catch (t: Throwable) {
             Result.failure(t)
         }
@@ -225,11 +187,15 @@ class ConfigBackupManager @Inject constructor(
             // fall back to defaults and silently switch protection off.
             runCatching { daemonBridge.refresh() }
             val currentStatus = daemonBridge.statusFlow.value
-            val finalCfg = buildFinalConfig(currentStatus, backupInfo.fullConfigJson, replaceAll)
-
-            val resultJsonString = finalCfg.toString()
+            val currentJson = JSONObject(createBackupJson(currentStatus)).optJSONObject("config")?.toString() ?: "{}"
+            val resultJsonString = com.causentry.app.core.CausentryRustBridge.mergeBackupConfigJson(
+                currentJson,
+                backupInfo.fullConfigJson.toString(),
+                replaceAll
+            ).ifEmpty { buildFinalConfig(currentStatus, backupInfo.fullConfigJson, replaceAll).toString() }
             val op = daemonBridge.importConfig(resultJsonString)
-            Result.success(op)
+            if (op.rpcError == null) Result.success("applied")
+            else Result.failure(Exception(op.rpcError))
         } catch (t: Throwable) {
             Result.failure(t)
         }
@@ -313,7 +279,7 @@ class ConfigBackupManager @Inject constructor(
         )
         out.put(
             "cloakPackages",
-            if (imported.has("cloakPackages")) jsonArrayToList(imported.optJSONArray("cloakPackages"))
+            if (imported.has("cloakPackages")) toJsonArray(jsonArrayToList(imported.optJSONArray("cloakPackages")))
             else toJsonArray(current.cloakPackages)
         )
         out.put(

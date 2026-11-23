@@ -18,20 +18,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.causentry.app.ui.theme.BorderDark
-import com.causentry.app.ui.theme.SurfaceDark
-import com.causentry.app.ui.theme.SurfaceHighDark
+import com.causentry.app.ui.theme.LocalCausentryColors
 
 @Composable
 fun ShimmerAppCard(modifier: Modifier = Modifier) {
+    val cs = MaterialTheme.colorScheme
+    val ext = LocalCausentryColors.current
     val transition = rememberInfiniteTransition(label = "shimmer")
     val translateAnim = transition.animateFloat(
         initialValue = 0f,
@@ -44,9 +44,9 @@ fun ShimmerAppCard(modifier: Modifier = Modifier) {
     )
 
     val shimmerColors = listOf(
-        SurfaceHighDark.copy(alpha = 0.5f),
-        Color.White.copy(alpha = 0.12f),
-        SurfaceHighDark.copy(alpha = 0.5f)
+        ext.surfaceHigh.copy(alpha = 0.6f),
+        cs.onSurface.copy(alpha = 0.08f),
+        ext.surfaceHigh.copy(alpha = 0.6f)
     )
 
     val brush = Brush.linearGradient(
@@ -58,25 +58,21 @@ fun ShimmerAppCard(modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 5.dp)
+            .padding(horizontal = 16.dp, vertical = 5.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(SurfaceDark)
-            .border(1.dp, BorderDark, RoundedCornerShape(12.dp))
+            .background(cs.surface)
+            .border(1.dp, ext.border, RoundedCornerShape(12.dp))
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // App icon skeleton
         Box(
             modifier = Modifier
                 .size(44.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(brush)
         )
-
         Spacer(modifier = Modifier.width(14.dp))
-
         Column(modifier = Modifier.weight(1f)) {
-            // Label skeleton
             Box(
                 modifier = Modifier
                     .fillMaxWidth(0.45f)
@@ -84,10 +80,7 @@ fun ShimmerAppCard(modifier: Modifier = Modifier) {
                     .clip(RoundedCornerShape(4.dp))
                     .background(brush)
             )
-
             Spacer(modifier = Modifier.height(8.dp))
-
-            // Package skeleton
             Box(
                 modifier = Modifier
                     .fillMaxWidth(0.7f)

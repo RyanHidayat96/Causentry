@@ -23,6 +23,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -46,22 +47,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.causentry.app.R
 import com.causentry.app.model.DaemonStatus
-import com.causentry.app.ui.theme.BorderDark
-import com.causentry.app.ui.theme.DangerRed
-import com.causentry.app.ui.theme.PrimaryBlue
-import com.causentry.app.ui.theme.SuccessGreen
-import com.causentry.app.ui.theme.SurfaceDark
-import com.causentry.app.ui.theme.SurfaceHighDark
-import com.causentry.app.ui.theme.TextPrimary
-import com.causentry.app.ui.theme.TextSecondary
+import com.causentry.app.ui.theme.LocalCausentryColors
 
-private val DEFAULT_ROOT_NAMES = setOf(
-    "MT2", "TWRP", "Fox", "su", "daemonsu", ".magisk", "busybox",
-    "TitaniumBackup", "SwiftBackup", "xinhao"
+private val CANONICAL_DEFAULT_ROOTS = listOf(
+    "MT2", "TWRP", "twrp", "Fox", "OrangeFox", "su", "daemonsu",
+    "Magisk", "magisk", ".magisk", "SuperSU", "KernelSU", "APatch",
+    "busybox", "TitaniumBackup", "SwiftBackup", "xinhao"
 )
 
-private val DEFAULT_RELATIVE_PATHS = setOf(
-    "Download/KernelSU", "Download/Magisk", "Download/APatch"
+private val CANONICAL_DEFAULT_RELATIVES = listOf(
+    "Download/KernelSU", "Download/KernelSU.apk", "Download/kernelsu.apk",
+    "Download/Magisk", "Download/Magisk.apk", "Download/magisk.apk",
+    "Download/Magisk.zip", "Download/APatch", "Download/APatch.apk",
+    "TWRP/TWRP.app"
 )
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -71,19 +69,27 @@ fun StorageCloakCard(
     onSaveStorageRules: (roots: List<String>, relatives: List<String>) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val cs = MaterialTheme.colorScheme
+    val ext = LocalCausentryColors.current
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
-    val customRoots = remember(status.storageHiddenRoots) {
-        status.storageHiddenRoots.filter { !DEFAULT_ROOT_NAMES.contains(it) }.sorted()
+    val allDefaultRoots = remember(status.defaultStorageRoots) {
+        (if (status.defaultStorageRoots.isNotEmpty()) status.defaultStorageRoots else CANONICAL_DEFAULT_ROOTS).sorted()
     }
-    val customRelatives = remember(status.storageHiddenRelatives) {
-        status.storageHiddenRelatives.filter { !DEFAULT_RELATIVE_PATHS.contains(it) }.sorted()
+    val allDefaultRelatives = remember(status.defaultStorageRelatives) {
+        (if (status.defaultStorageRelatives.isNotEmpty()) status.defaultStorageRelatives else CANONICAL_DEFAULT_RELATIVES).sorted()
+    }
+    val defaultRootSet = remember(allDefaultRoots) { allDefaultRoots.toSet() }
+    val defaultRelSet = remember(allDefaultRelatives) { allDefaultRelatives.toSet() }
+
+    val customRoots = remember(status.storageHiddenRoots, defaultRootSet) {
+        status.storageHiddenRoots.filter { !defaultRootSet.contains(it) }.sorted()
+    }
+    val customRelatives = remember(status.storageHiddenRelatives, defaultRelSet) {
+        status.storageHiddenRelatives.filter { !defaultRelSet.contains(it) }.sorted()
     }
     val totalCustomCount = customRoots.size + customRelatives.size
-
-    val allDefaultRoots = remember { DEFAULT_ROOT_NAMES.sorted() }
-    val allDefaultRelatives = remember { DEFAULT_RELATIVE_PATHS.sorted() }
     val totalDefaultCount = allDefaultRoots.size + allDefaultRelatives.size
 
     var showDefaultRules by remember { mutableStateOf(false) }
@@ -99,7 +105,7 @@ fun StorageCloakCard(
             title = {
                 Text(
                     text = "Add Hidden Storage Path",
-                    color = TextPrimary,
+                    color = cs.onSurface,
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp
                 )
@@ -108,29 +114,29 @@ fun StorageCloakCard(
                 Column {
                     Text(
                         text = "Enter a first-level folder name (e.g. 'private') or relative path (e.g. 'Download/my_folder'). Paths containing '/' are treated as relative subpaths.",
-                        color = TextSecondary,
+                        color = cs.onSurfaceVariant,
                         fontSize = 12.sp
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
                         value = inputPath,
                         onValueChange = { inputPath = it },
-                        placeholder = { Text("e.g. Download/secret", color = TextSecondary, fontSize = 13.sp) },
+                        placeholder = { Text("e.g. Download/secret", color = cs.onSurfaceVariant, fontSize = 13.sp) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PrimaryBlue,
-                            unfocusedBorderColor = BorderDark,
-                            focusedContainerColor = SurfaceHighDark,
-                            unfocusedContainerColor = SurfaceHighDark,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
+                            focusedBorderColor = cs.primary,
+                            unfocusedBorderColor = ext.border,
+                            focusedContainerColor = ext.surfaceHigh,
+                            unfocusedContainerColor = ext.surfaceHigh,
+                            focusedTextColor = cs.onSurface,
+                            unfocusedTextColor = cs.onSurface
                         )
                     )
                 }
             },
-            containerColor = SurfaceDark,
+            containerColor = cs.surface,
             confirmButton = {
                 Button(
                     onClick = {
@@ -149,7 +155,7 @@ fun StorageCloakCard(
                             inputPath = ""
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
+                    colors = ButtonDefaults.buttonColors(containerColor = cs.primary, contentColor = cs.onPrimary)
                 ) {
                     Text("Add Path", fontWeight = FontWeight.Bold)
                 }
@@ -159,7 +165,7 @@ fun StorageCloakCard(
                     showAddDialog = false
                     inputPath = ""
                 }) {
-                    Text("Cancel", color = TextSecondary)
+                    Text("Cancel", color = cs.onSurfaceVariant)
                 }
             }
         )
@@ -169,11 +175,10 @@ fun StorageCloakCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(SurfaceDark)
-            .border(1.dp, BorderDark, RoundedCornerShape(16.dp))
+            .background(cs.surface)
+            .border(1.dp, ext.border, RoundedCornerShape(16.dp))
             .padding(16.dp)
     ) {
-        // Header
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -186,20 +191,20 @@ fun StorageCloakCard(
                 Icon(
                     painter = painterResource(id = R.drawable.ic_shield),
                     contentDescription = null,
-                    tint = PrimaryBlue,
+                    tint = cs.primary,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
                     Text(
                         text = "FUSE Storage Cloak",
-                        color = TextPrimary,
+                        color = cs.onSurface,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = "/storage/emulated/0 filesystem hook",
-                        color = TextSecondary,
+                        color = cs.onSurfaceVariant,
                         fontSize = 11.sp
                     )
                 }
@@ -207,18 +212,17 @@ fun StorageCloakCard(
 
             StatusPill(
                 text = if (status.fuseCovered) "COVERED" else if (status.fuseActive) "ACTIVE" else "STANDBY",
-                color = if (status.fuseCovered || status.fuseActive) SuccessGreen else PrimaryBlue
+                color = if (status.fuseCovered || status.fuseActive) ext.success else cs.primary
             )
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Scope description banner
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
-                .background(SurfaceHighDark)
+                .background(ext.surfaceHigh)
                 .padding(horizontal = 12.dp, vertical = 9.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
@@ -226,13 +230,13 @@ fun StorageCloakCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Protection Scope: ${status.targets.size} Protected App(s)",
-                    color = TextPrimary,
+                    color = cs.onSurface,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
                     text = "Target apps observe virtual file absence (ENOENT) on cloaked paths",
-                    color = TextSecondary,
+                    color = cs.onSurfaceVariant,
                     fontSize = 11.sp
                 )
             }
@@ -240,19 +244,12 @@ fun StorageCloakCard(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Custom Rules Section
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Custom Rules ($totalCustomCount)",
-                color = TextPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
+        Text(
+            text = "Custom Rules ($totalCustomCount)",
+            color = cs.onSurface,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold
+        )
         Spacer(modifier = Modifier.height(6.dp))
 
         if (totalCustomCount > 0) {
@@ -287,7 +284,7 @@ fun StorageCloakCard(
         } else {
             Text(
                 text = "No custom paths added yet. Tap '+ Add Path' below to hide custom directories from target apps.",
-                color = TextSecondary.copy(alpha = 0.8f),
+                color = cs.onSurfaceVariant.copy(alpha = 0.85f),
                 fontSize = 11.5.sp,
                 lineHeight = 16.sp
             )
@@ -295,7 +292,6 @@ fun StorageCloakCard(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Built-in System Rules (Collapsible accordion)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -304,19 +300,19 @@ fun StorageCloakCard(
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     showDefaultRules = !showDefaultRules
                 }
-                .padding(vertical = 4.dp),
+                .padding(vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "Built-in System Rules ($totalDefaultCount)",
-                color = TextPrimary,
+                color = cs.onSurface,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = if (showDefaultRules) "Hide Rules ▴" else "Show All ▾",
-                color = PrimaryBlue,
+                text = if (showDefaultRules) "Hide Rules" else "Show All",
+                color = cs.primary,
                 fontSize = 11.5.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -324,7 +320,6 @@ fun StorageCloakCard(
         Spacer(modifier = Modifier.height(6.dp))
 
         if (!showDefaultRules) {
-            // Collapsed preview: show first 4 chips + more pill
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -336,22 +331,21 @@ fun StorageCloakCard(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(SurfaceHighDark)
-                        .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
+                        .background(ext.surfaceHigh)
+                        .border(1.dp, ext.border, RoundedCornerShape(8.dp))
                         .clickable { showDefaultRules = true }
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "+${totalDefaultCount - 4} more…",
-                        color = PrimaryBlue,
+                        text = "+${(totalDefaultCount - 4).coerceAtLeast(0)} more…",
+                        color = cs.primary,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
             }
         } else {
-            // Expanded view
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -368,7 +362,6 @@ fun StorageCloakCard(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Action Buttons
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -381,9 +374,9 @@ fun StorageCloakCard(
                 },
                 modifier = Modifier
                     .weight(1f)
-                    .height(42.dp),
+                    .height(48.dp),
                 shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
+                colors = ButtonDefaults.buttonColors(containerColor = cs.primary, contentColor = cs.onPrimary)
             ) {
                 Text("+ Add Path", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             }
@@ -394,10 +387,10 @@ fun StorageCloakCard(
                     onSaveStorageRules(emptyList(), emptyList())
                     Toast.makeText(context, "Restored default storage paths", Toast.LENGTH_SHORT).show()
                 },
-                modifier = Modifier.height(42.dp),
+                modifier = Modifier.height(48.dp),
                 shape = RoundedCornerShape(10.dp),
-                border = BorderStroke(1.dp, BorderDark),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary)
+                border = BorderStroke(1.dp, ext.border),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = cs.onSurfaceVariant)
             ) {
                 Text("Reset Defaults", fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
             }
@@ -411,45 +404,52 @@ private fun PathChipItem(
     isDefault: Boolean,
     onDelete: () -> Unit
 ) {
+    val cs = MaterialTheme.colorScheme
+    val ext = LocalCausentryColors.current
     val haptic = LocalHapticFeedback.current
 
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(SurfaceHighDark)
+            .background(ext.surfaceHigh)
             .border(
                 1.dp,
-                if (isDefault) BorderDark else PrimaryBlue.copy(alpha = 0.5f),
+                if (isDefault) ext.border else cs.primary.copy(alpha = 0.5f),
                 RoundedCornerShape(8.dp)
             )
-            .padding(start = 8.dp, end = if (isDefault) 8.dp else 4.dp, top = 4.dp, bottom = 4.dp),
+            .then(
+                if (!isDefault) {
+                    Modifier.clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onDelete()
+                    }
+                } else Modifier
+            )
+            .padding(start = 10.dp, end = if (isDefault) 10.dp else 6.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = name,
-            color = if (isDefault) TextSecondary else PrimaryBlue,
+            color = if (isDefault) cs.onSurfaceVariant else cs.primary,
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = if (isDefault) FontWeight.Normal else FontWeight.Medium
         )
 
         if (!isDefault) {
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Box(
                 modifier = Modifier
-                    .size(16.dp)
+                    .size(22.dp)
                     .clip(CircleShape)
-                    .clickable {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onDelete()
-                    },
+                    .background(ext.danger.copy(alpha = 0.14f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_close),
-                    contentDescription = "Remove",
-                    tint = DangerRed,
-                    modifier = Modifier.size(12.dp)
+                    contentDescription = "Remove $name",
+                    tint = ext.danger,
+                    modifier = Modifier.size(13.dp)
                 )
             }
         }

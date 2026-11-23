@@ -1,9 +1,9 @@
 [package]
 name = "causentryd"
-version = "0.1.0"
+version = "3.0.0"
 edition = "2024"
-description = "Privileged diagnostic daemon for Causentry"
-license = "UNLICENSED"
+description = "Privileged native daemon for Causentry"
+license = "Apache-2.0"
 
 [lib]
 path = "src/lib.rs"
@@ -11,3 +11,9 @@ path = "src/lib.rs"
 [[bin]]
 name = "causentryd"
 path = "src/main.rs"
+
+[dependencies]
+causentry-proto = { path = "../crates/causentry-proto" }
+libc = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

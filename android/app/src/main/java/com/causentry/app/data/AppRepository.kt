@@ -2,10 +2,11 @@ package com.causentry.app.data
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
 import com.causentry.app.model.AppInfo
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -20,10 +21,8 @@ class AppRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val daemonBridge: DaemonBridge
 ) {
-    // In-memory cache for fast label lookup without IPC
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val labelCache = ConcurrentHashMap<String, String>()
-
-    // Raw installed app definitions: (packageName, isSystem)
     private val rawInstalledApps = MutableStateFlow<List<RawApp>>(emptyList())
 
     private data class RawApp(
@@ -33,26 +32,22 @@ class AppRepository @Inject constructor(
     )
 
     init {
-        // Initial async load
-        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+        scope.launch {
             refreshInstalledApps()
         }
     }
 
     suspend fun refreshInstalledApps() = withContext(Dispatchers.IO) {
         val pm = context.packageManager
-        val installed = pm.getInstalledApplications(PackageManager.MATCH_UNINSTALLED_PACKAGES or 0)
+        val installed = pm.getInstalledApplications(0)
         val list = ArrayList<RawApp>(installed.size)
 
         for (ai in installed) {
             val pkg = ai.packageName ?: continue
             val isSys = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-            val cachedLabel = labelCache[pkg]
-            val label = if (cachedLabel != null) {
-                cachedLabel
-            } else {
+            val label = labelCache[pkg] ?: run {
                 val l = pm.getApplicationLabel(ai).toString().trim()
-                val cleaned = if (l.isEmpty()) pkg else l
+                val cleaned = l.ifEmpty { pkg }
                 labelCache[pkg] = cleaned
                 cleaned
             }

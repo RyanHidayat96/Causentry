@@ -1,0 +1,495 @@
+{"fn":"parseLogcatLine","args":["Hello World"],"ok":""}
+{"fn":"parseLogcatLine","args":["a\ud83d\ude00b\ud83d\ude00c"],"ok":""}
+{"fn":"parseLogcatLine","args":["hello"],"ok":""}
+{"fn":"parseLogcatLine","args":["trailing."],"ok":""}
+{"fn":"parseLogcatLine","args":[":tab\tseparated"],"ok":""}
+{"fn":"parseLogcatLine","args":["a:b:c"],"ok":""}
+{"fn":"parseLogcatLine","args":[""],"ok":""}
+{"fn":"parseLogcatLine","args":["a.b.ctrailing."],"ok":""}
+{"fn":"parseLogcatLine","args":["key_name-1:"],"ok":""}
+{"fn":"parseLogcatLine","args":["a"],"ok":""}
+{"fn":"parseLogcatLine","args":[":"],"ok":""}
+{"fn":"parseLogcatLine","args":["  padded  "],"ok":""}
+{"fn":"parseLogcatLine","args":["hello world"],"ok":""}
+{"fn":"parseLogcatLine","args":["a\ud83d\ude00b\ud83d\ude00ctrailing."],"ok":""}
+{"fn":"parseLogcatLine","args":["line1\nline2"],"ok":""}
+{"fn":"parseLogcatLine","args":["﻿bom"],"ok":""}
+{"fn":"parseLogcatLine","args":["\ud83d\ude00"],"ok":""}
+{"fn":"parseLogcatLine","args":["é"],"ok":""}
+{"fn":"parseLogcatLine","args":["key_name-1"],"ok":""}
+{"fn":"parseLogcatLine","args":["a.b.c"],"ok":""}
+{"fn":"parseLogcatLine","args":["straße"],"ok":""}
+{"fn":"parseLogcatLine","args":["Hello World﻿bom"],"ok":""}
+{"fn":"parseLogcatLine","args":["İstanbul"],"ok":""}
+{"fn":"parseLogcatLine","args":["./x/**/*.jsoné"],"ok":""}
+{"fn":"parseLogcatLine","args":["straßeünïcödé"],"ok":""}
+{"fn":"parseLogcatLine","args":["a..b"],"ok":""}
+{"fn":"parseLogcatLine","args":["emoji \ud83d\udc4d\ud83c\udffd mix"],"ok":""}
+{"fn":"parseLogcatLine","args":["./x/**/*.jsonab"],"ok":""}
+{"fn":"parseLogcatLine","args":["a..b﻿bom"],"ok":""}
+{"fn":"parseLogcatLine","args":["日本語のテキスト"],"ok":""}
+{"fn":"parseLogcatLine","args":["./x/**/*.jsonline1\nline2"],"ok":""}
+{"fn":"parseLogcatLine","args":["./x/**/*.json"],"ok":""}
+{"fn":"parseLogcatLine","args":[":emoji \ud83d\udc4d\ud83c\udffd mix"],"ok":""}
+{"fn":"parseLogcatLine","args":["ns:key.path"],"ok":""}
+{"fn":"parseLogcatLine","args":["{name} has {count} itemsa"],"ok":""}
+{"fn":"parseLogcatLine","args":[".leading"],"ok":""}
+{"fn":"parseLogcatLine","args":["ΣΊΣΥΦΟΣ"],"ok":""}
+{"fn":"parseLogcatLine","args":["tab\tseparated"],"ok":""}
+{"fn":"parseLogcatLine","args":["ünïcödé"],"ok":""}
+{"fn":"parseLogcatLine","args":["a  padded  "],"ok":""}
+{"fn":"parseLogcatLine","args":["abcab"],"ok":""}
+{"fn":"parseLogcatLine","args":["﻿bomé"],"ok":""}
+{"fn":"parseLogcatLine","args":["﻿bomabc"],"ok":""}
+{"fn":"parseLogcatLine","args":["abc"],"ok":""}
+{"fn":"parseLogcatLine","args":["a﻿bom"],"ok":""}
+{"fn":"parseLogcatLine","args":["{name} has {count} items"],"ok":""}
+{"fn":"parseLogcatLine","args":["HELLOline1\nline2"],"ok":""}
+{"fn":"parseLogcatLine","args":["日本語のテキストline1\nline2"],"ok":""}
+{"fn":"parseLogcatLine","args":["trailing.key_name-1"],"ok":""}
+{"fn":"parseLogcatLine","args":["ab"],"ok":""}
+{"fn":"parseLogcatLine","args":["src/a/b.ts"],"ok":""}
+{"fn":"parseLogcatLine","args":["trailing.HELLO"],"ok":""}
+{"fn":"parseLogcatLine","args":["{name} has {count} itemstab\tseparated"],"ok":""}
+{"fn":"parseLogcatLine","args":["ékey_name-1"],"ok":""}
+{"fn":"parseLogcatLine","args":[":\ud83d\ude00"],"ok":""}
+{"fn":"parseLogcatLine","args":["emoji \ud83d\udc4d\ud83c\udffd mixa:b:c"],"ok":""}
+{"fn":"parseLogcatLine","args":["ΣΊΣΥΦΟΣsrc/a/b.ts"],"ok":""}
+{"fn":"parseLogcatLine","args":["ünïcödéΣΊΣΥΦΟΣ"],"ok":""}
+{"fn":"parseLogcatLine","args":["{name} has {count} itemsa..b"],"ok":""}
+{"fn":"parseLogcatLine","args":["日本語のテキスト./x/**/*.json"],"ok":""}
+{"fn":"parseLogcatLine","args":["src/a/b.tsHello World"],"ok":""}
+{"fn":"parseLogcatLine","args":["a\ud83d\ude00b\ud83d\ude00ca.b.c"],"ok":""}
+{"fn":"parseLogcatLine","args":["HELLO"],"ok":""}
+{"fn":"parseLogcatLine","args":["emoji \ud83d\udc4d\ud83c\udffd mixHELLO"],"ok":""}
+{"fn":"parseLogcatLine","args":["abcline1\nline2"],"ok":""}
+{"fn":"parseLogcatLine","args":["ns:key.pathabc"],"ok":""}
+{"fn":"parseLogcatLine","args":[".leadingHello World"],"ok":""}
+{"fn":"parseLogcatLine","args":["abtab\tseparated"],"ok":""}
+{"fn":"parseLogcatLine","args":["ns:key.patha\ud83d\ude00b\ud83d\ude00c"],"ok":""}
+{"fn":"parseLogcatLine","args":["İstanbulİstanbul"],"ok":""}
+{"fn":"parseLogcatLine","args":["abca.b.c"],"ok":""}
+{"fn":"parseLogcatLine","args":["line1\nline2a..b"],"ok":""}
+{"fn":"parseLogcatLine","args":["helloemoji \ud83d\udc4d\ud83c\udffd mix"],"ok":""}
+{"fn":"parseLogcatLine","args":["éünïcödé"],"ok":""}
+{"fn":"parseLogcatLine","args":["emoji \ud83d\udc4d\ud83c\udffd mixHello World"],"ok":""}
+{"fn":"parseLogcatLine","args":["ns:key.path  padded  "],"ok":""}
+{"fn":"parseLogcatLine","args":["key_name-1emoji \ud83d\udc4d\ud83c\udffd mix"],"ok":""}
+{"fn":"parseLogcatLine","args":["\ud83d\ude00\ud83d\ude00"],"ok":""}
+{"fn":"parseLogcatLine","args":["ünïcödétab\tseparated"],"ok":""}
+{"fn":"parseLogcatLine","args":["  padded  a\ud83d\ude00b\ud83d\ude00c"],"ok":""}
+{"fn":"parseLogcatLine","args":["{name} has {count} itemsHello World"],"ok":""}
+{"fn":"parseLogcatLine","args":["a:b:c{name} has {count} items"],"ok":""}
+{"fn":"parseLogcatLine","args":["trailing.a..b"],"ok":""}
+{"fn":"parseLogcatLine","args":[":a\ud83d\ude00b\ud83d\ude00c"],"ok":""}
+{"fn":"parseLogcatLine","args":["\ud83d\ude00﻿bom"],"ok":""}
+{"fn":"parseLogcatLine","args":["HELLO{name} has {count} items"],"ok":""}
+{"fn":"parseLogcatLine","args":["./x/**/*.json  padded  "],"ok":""}
+{"fn":"parseLogcatLine","args":["abca:b:c"],"ok":""}
+{"fn":"parseLogcatLine","args":["\ud83d\ude00emoji \ud83d\udc4d\ud83c\udffd mix"],"ok":""}
+{"fn":"parseLogcatLine","args":["aHello World"],"ok":""}
+{"fn":"parseLogcatLine","args":["ns:key.path\ud83d\ude00"],"ok":""}
+{"fn":"parseLogcatLine","args":[":ab"],"ok":""}
+{"fn":"parseLogcatLine","args":["a.b.chello"],"ok":""}
+{"fn":"parseLogcatLine","args":["日本語のテキスト  padded  "],"ok":""}
+{"fn":"parseLogcatLine","args":["İstanbul{name} has {count} items"],"ok":""}
+{"fn":"parseLogcatLine","args":["line1\nline2日本語のテキスト"],"ok":""}
+{"fn":"parseLogcatLine","args":["{name} has {count} itemsé"],"ok":""}
+{"fn":"parseLogcatLine","args":["src/a/b.tsemoji \ud83d\udc4d\ud83c\udffd mix"],"ok":""}
+{"fn":"parseLogcatLine","args":["hello world\ud83d\ude00"],"ok":""}
+{"fn":"parseLogcatLine","args":["ab\ud83d\ude00"],"ok":""}
+{"fn":"parseLogcatLine","args":["abca\ud83d\ude00b\ud83d\ude00c"],"ok":""}
+{"fn":"parseLogcatLine","args":["./x/**/*.jsonkey_name-1"],"ok":""}
+{"fn":"parseLogcatLine","args":["key_name-1Hello World"],"ok":""}
+{"fn":"parseLogcatLine","args":["{name} has {count} items  padded  "],"ok":""}
+{"fn":"parseLogcatLine","args":["asrc/a/b.ts"],"ok":""}
+{"fn":"parseLogcatLine","args":["ésrc/a/b.ts"],"ok":""}
+{"fn":"parseLogcatLine","args":["tab\tseparated.leading"],"ok":""}
+{"fn":"parseLogcatLine","args":["./x/**/*.jsonünïcödé"],"ok":""}
+{"fn":"parseLogcatLine","args":["éa..b"],"ok":""}
+{"fn":"parseLogcatLine","args":["hello world./x/**/*.json"],"ok":""}
+{"fn":"parseLogcatLine","args":["hello worlda..b"],"ok":""}
+{"fn":"parseLogcatLine","args":[".leadinga.b.c"],"ok":""}
+{"fn":"parseLogcatLine","args":["\ud83d\ude00a..b"],"ok":""}
+{"fn":"parseLogcatLine","args":["./x/**/*.jsona"],"ok":""}
+{"fn":"parseLogcatLine","args":[".leading:"],"ok":""}
+{"fn":"parseLogcatLine","args":["a..bab"],"ok":""}
+{"fn":"parseLogcatLine","args":[":./x/**/*.json"],"ok":""}
+{"fn":"parseLogcatLine","args":["a\ud83d\ude00b\ud83d\ude00ca"],"ok":""}
+{"fn":"parseLogcatLine","args":["{name} has {count} items.leading"],"ok":""}
+{"fn":"parseLogcatLine","args":["a\ud83d\ude00b\ud83d\ude00c\ud83d\ude00"],"ok":""}
+{"fn":"parseLogcatLine","args":["a\ud83d\ude00b\ud83d\ude00cline1\nline2"],"ok":""}
+{"fn":"parseLogcatLine","args":["İstanbul\ud83d\ude00"],"ok":""}
+{"fn":"parseLogcatLine","args":["straßeé"],"ok":""}
+{"fn":"parseLogcatLine","args":["key_name-1\ud83d\ude00"],"ok":""}
+{"fn":"parseLogcatLine","args":["./x/**/*.json.leading"],"ok":""}
+{"fn":"parseLogcatLine","args":["{name} has {count} itemskey_name-1"],"ok":""}
+{"fn":"parseLogcatLine","args":[":ns:key.path"],"ok":""}
+{"fn":"parseLogcatLine","args":["ünïcödéa"],"ok":""}
+{"fn":"parseLogcatLine","args":["\ud83d\ude00ab"],"ok":""}
+{"fn":"parseLogcatLine","args":["\ud83d\ude00HELLO"],"ok":""}
+{"fn":"parseLogcatLine","args":["abc\ud83d\ude00"],"ok":""}
+{"fn":"parseLogcatLine","args":["a:b:ca..b"],"ok":""}
+{"fn":"parseLogcatLine","args":["aa\ud83d\ude00b\ud83d\ude00c"],"ok":""}
+{"fn":"parseLogcatLine","args":["a:b:cabc"],"ok":""}
+{"fn":"parseLogcatLine","args":["absrc/a/b.ts"],"ok":""}
+{"fn":"parseLogcatLine","args":["HELLOhello"],"ok":""}
+{"fn":"parseLogcatLine","args":["日本語のテキストhello world"],"ok":""}
+{"fn":"parseLogcatLine","args":["straßeHELLO"],"ok":""}
+{"fn":"parseLogcatLine","args":["a.b.c﻿bom"],"ok":""}
+{"fn":"parseLogcatLine","args":["./x/**/*.jsonΣΊΣΥΦΟΣ"],"ok":""}
+{"fn":"parseLogcatLine","args":["aé"],"ok":""}
+{"fn":"parseLogcatLine","args":["hello日本語のテキスト"],"ok":""}
+{"fn":"parseLogcatLine","args":["atab\tseparated"],"ok":""}
+{"fn":"parseLogcatLine","args":["İstanbula\ud83d\ude00b\ud83d\ude00c"],"ok":""}
+{"fn":"parseLogcatLine","args":["étab\tseparated"],"ok":""}
+{"fn":"parseLogcatLine","args":["ünïcödéHello World"],"ok":""}
+{"fn":"parseLogcatLine","args":["emoji \ud83d\udc4d\ud83c\udffd mixabc"],"ok":""}
+{"fn":"parseLogcatLine","args":["line1\nline2straße"],"ok":""}
+{"fn":"parseLogcatLine","args":["a:b:c日本語のテキスト"],"ok":""}
+{"fn":"parseLogcatLine","args":["hello worldhello"],"ok":""}
+{"fn":"parseLogcatLine","args":["abckey_name-1"],"ok":""}
+{"fn":"parseLogcatLine","args":["Hello World日本語のテキスト"],"ok":""}
+{"fn":"parseLogcatLine","args":["emoji \ud83d\udc4d\ud83c\udffd mixab"],"ok":""}
+{"fn":"parseLogcatLine","args":["src/a/b.ts./x/**/*.json"],"ok":""}
+{"fn":"parseLogcatLine","args":["  padded  a"],"ok":""}
+{"fn":"parseLogcatLine","args":["key_name-1./x/**/*.json"],"ok":""}
+{"fn":"parseLogcatLine","args":["  padded  .leading"],"ok":""}
+{"fn":"parseLogcatLine","args":["./x/**/*.jsonns:key.path"],"ok":""}
+{"fn":"parseLogcatLine","args":["key_name-1a\ud83d\ude00b\ud83d\ude00c"],"ok":""}
+{"fn":"parseLogcatLine","args":[":straße"],"ok":""}
+{"fn":"parseLogcatLine","args":["HELLOa\ud83d\ude00b\ud83d\ude00c"],"ok":""}
+{"fn":"parseLogcatLine","args":["HELLOa"],"ok":""}
+{"fn":"parseLogcatLine","args":["﻿boma\ud83d\ude00b\ud83d\ude00c"],"ok":""}
+{"fn":"parseLogcatLine","args":["key_name-1﻿bom"],"ok":""}
+{"fn":"parseLogcatLine","args":["﻿bomünïcödé"],"ok":""}
+{"fn":"parseLogcatLine","args":["a:b:cline1\nline2"],"ok":""}
+{"fn":"parseLogcatLine","args":["a./x/**/*.json"],"ok":""}
+{"fn":"parseLogcatLine","args":["helloΣΊΣΥΦΟΣ"],"ok":""}
+{"fn":"parseLogcatLine","args":["src/a/b.tsΣΊΣΥΦΟΣ"],"ok":""}
+{"fn":"parseLogcatLine","args":["ΣΊΣΥΦΟΣ./x/**/*.json"],"ok":""}
+{"fn":"parseLogcatLine","args":["ΣΊΣΥΦΟΣhello world"],"ok":""}
+{"fn":"parseLogcatLine","args":["src/a/b.tshello"],"ok":""}
+{"fn":"parseLogcatLine","args":["\ud83d\ude00İstanbul"],"ok":""}
+{"fn":"parseLogcatLine","args":["日本語のテキストHELLO"],"ok":""}
+{"fn":"parseLogcatLine","args":["İstanbula.b.c"],"ok":""}
+{"fn":"parseLogcatLine","args":["hello worldline1\nline2"],"ok":""}
+{"fn":"parseLogcatLine","args":["ab./x/**/*.json"],"ok":""}
+{"fn":"parseLogcatLine","args":[".leadingΣΊΣΥΦΟΣ"],"ok":""}
+{"fn":"parseLogcatLine","args":["./x/**/*.jsona:b:c"],"ok":""}
+{"fn":"parseLogcatLine","args":["{name} has {count} itemsİstanbul"],"ok":""}
+{"fn":"parseLogcatLine","args":["trailing.trailing."],"ok":""}
+{"fn":"parseLogcatLine","args":["src/a/b.tsé"],"ok":""}
+{"fn":"parseLogcatLine","args":["ab:"],"ok":""}
+{"fn":"parseLogcatLine","args":["{name} has {count} items日本語のテキスト"],"ok":""}
+{"fn":"parseLogcatLine","args":["emoji \ud83d\udc4d\ud83c\udffd mixsrc/a/b.ts"],"ok":""}
+{"fn":"parseLogcatLine","args":["  padded  tab\tseparated"],"ok":""}
+{"fn":"parseLogcatLine","args":["\ud83d\ude00line1\nline2"],"ok":""}
+{"fn":"parseLogcatLine","args":["HELLOa.b.c"],"ok":""}
+{"fn":"parseLogcatLine","args":["key_name-1ns:key.path"],"ok":""}
+{"fn":"parseLogcatLine","args":["a\ud83d\ude00b\ud83d\ude00csrc/a/b.ts"],"ok":""}
+{"fn":"parseLogcatLine","args":["line1\nline2a.b.c"],"ok":""}
+{"fn":"parseLogcatLine","args":["\ud83d\ude00:"],"ok":""}
+{"fn":"parseLogcatLine","args":["  padded  hello"],"ok":""}
+{"fn":"parseLogcatLine","args":[".leading.leading"],"ok":""}
+{"fn":"parseLogcatLine","args":["{name} has {count} itemshello"],"ok":""}
+{"fn":"parseLogcatLine","args":["a.leading"],"ok":""}
+{"fn":"parseLogcatLine","args":["a..bhello world"],"ok":""}
+{"fn":"parseLogcatLine","args":["a:b:ckey_name-1"],"ok":""}
+{"fn":"parseLogcatLine","args":[".leading﻿bom"],"ok":""}
+{"fn":"parseLogcatLine","args":["line1\nline2a:b:c"],"ok":""}
+{"fn":"parseLogcatLine","args":["héllo wörld"],"ok":""}
+{"fn":"parseLogcatLine","args":["\ud83d\udc4d\ud83c\udffd thumbs"],"ok":""}
+{"fn":"parseLogcatLine","args":["日本語"],"ok":""}
+{"fn":"parseLogcatLine","args":["ılık ırmak"],"ok":""}
+{"fn":"parseLogcatLine","args":["\ud83d\udc68‍\ud83d\udc69‍\ud83d\udc67 family"],"ok":""}
+{"fn":"parseLogcatLine","args":["a b"],"ok":""}
+{"fn":"parseLogcatLine","args":["a\ud83d\ude00b"],"ok":""}
+{"fn":"parseLogcatLine","args":["a²b x½ y①"],"ok":""}
+{"fn":"parseLogcatLine","args":["aⅠb Ⅻ"],"ok":""}
+{"fn":"parseLogcatLine","args":["a\ud801\udc00b \ud835\udc00bc"],"ok":""}
+{"fn":"parseLogcatLine","args":["कि ٣٤"],"ok":""}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["\ud83d\ude00","a\ud83d\ude00b\ud83d\ude00c","a\ud83d\ude00b\ud83d\ude00c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello","ns:key.path","straße"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["line1\nline2","İstanbul","HELLOHello World"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["Hello World","ab","straßea\ud83d\ude00b\ud83d\ude00c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["Hello World","abHELLO",""],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["src/a/b.ts  padded  ","é","Hello World"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["line1\nline2","ünïcödé","﻿bom"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hell","hello","emoji \ud83d\udc4d\ud83c\udffd mixa:b:c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["src/a/b.ts","  padded  ","C/A/"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["  padded  ","a..b","key_name-1"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["line1\nline2","ΣΊΣΥΦΟΣé","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a","{name} has {count} items",":"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ra","a..b","trailing."],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a.b.c","a:b:c","HELLO"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["trailing.src/a/b.ts","  padded  ",".leading"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["abc","src/a/b.ts","\ud83d\ude00"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["  padded  ","İstanbul﻿bom",""],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["line1\nline2","hello.leading","abcemoji \ud83d\udc4d\ud83c\udffd mix"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["İstanbul","HELLO","  padded  "],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["O","HELLO","line1\nline2"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["  padded  ","Hello Worlda:b:c",":"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a.b.c","c","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["emoji \ud83d\udc4d\ud83c\udffd mix","{name} has {count} items","a"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["abc","trailing.","a:b:c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["trailing.","src/a/b.tsHello World","{name} has {count} items"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":[":Hello World","tab\tseparated","emoji \ud83d\udc4d\ud83c\udffd mixa:b:c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["\ud83d\ude00  padded  ","hello","L"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":[".leading","日本語のテキストa:b:c","Hello Worldns:key.path"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["line1\nline2","emoji \ud83d\udc4d\ud83c\udffd mix","﻿bom"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ns:key.pathline1\nline2","{name} has {count} items","ab"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["key_name-1","İstanbulemoji \ud83d\udc4d\ud83c\udffd mix","HELLO"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["{name} has {count} items","a\ud83d\ude00b\ud83d\ude00c","{name} has {count} items"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["HELLOline1\nline2","","tab\tseparated"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["trailing.src/a/b.ts","{name} has {count} items","ling.src/a/b"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ΣΊΣΥΦΟΣ","ab  padded  ","Ο"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["tab\tseparated","  padded  ","é"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["\ud83d\ude00ΣΊΣΥΦΟΣ",".leading","g"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ΣΊΣΥΦΟΣ","\ud83d\ude00","ΊΣΥ"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["lo Worl","Hello World","İstanbula"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a\ud83d\ude00b\ud83d\ude00c","ab","a..b"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ns:key.path","﻿bom","hello world"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ünïcödé","İstanbul  padded  ","straße"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["Hello World","HELLO","key_name-1  padded  "],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["./x/**/*.json",".b","a.b.c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["İstanbul","a..bhello world","a"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ns:key.path","straße.leading","{name} has {count} items"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["trailing.","tab\tseparated","a\ud83d\ude00b\ud83d\ude00c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["straße","src/a/b.ts","ns:key.path"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":[":","hello world","line1\nline2abc"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a:b:c",".leading","emoji \ud83d\udc4d\ud83c\udffd mix"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a..b","﻿bomns:key.path","emoji \ud83d\udc4d\ud83c\udffd mix"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":[".leading﻿bom","llo world","hello world"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["eading","a",".leading"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ello World","hello world","Hello World"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["日本語のテキストa..b","a","a.b.c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ünïcödé","a\ud83d\ude00b\ud83d\ude00c./x/**/*.json","a"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a..b",".leadingHello World","hello world"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["{name} has {count} items","日本語のテキスト","{NAME} HAS {COUNT} ITEMS"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a\ud83d\ude00b\ud83d\ude00c./x/**/*.json","a:b:c","ünïcödé"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["Hello World","a:b:c","O WORLD"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["﻿bom","abc","﻿bom"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":[":","line1\nline2","ns:key.path"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["straßea","日本語のテキストhello","a..b"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":[":","a","key_name-1"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["s","{name} has {count} items","日本語のテキスト"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["abhello world","/x/**/*","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a:b:c","a","hello./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["abc","a:b:c","Hello World"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["\ud83d\ude00","İstanbul","a\ud83d\ude00b\ud83d\ude00c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["  padded  key_name-1","a\ud83d\ude00b\ud83d\ude00c","am"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["tab\tseparated","straße","İstanbul"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a.b.cabc","é","\ud83d\ude00"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a","trailing.","{name} has {count} itemsemoji \ud83d\udc4d\ud83c\udffd mix"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["emoji \ud83d\udc4d\ud83c\udffd mix","日本語のテキス","日本語のテキスト"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["é","/B","src/a/b.ts"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["\ud83d\ude00","trailing.","İstanbul"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ns:key.path","a",""],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["Hello Worldkey_name-1","日本語のテキストtrailing.","日本語のテキスト"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["d","﻿bom","Hello Worldstraße"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["HELLO","line1\nline2",":İstanbul"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["emoji \ud83d\udc4d\ud83c\udffd mixemoji \ud83d\udc4d\ud83c\udffd mix","HELLO","hello world"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["{name} has {count} itemsé","hello world","a"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["abcé","key_name-1","ab{name} has {count} items"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ns:key.path","a..b","ΣΊΣΥΦΟΣ"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["emoji \ud83d\udc4d\ud83c\udffd mix","a","a"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["key_name-1","trailing.","Hello World"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello","C","a\ud83d\ude00b\ud83d\ude00c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":[":","é","Hello World﻿bom"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["","trailing.","hello"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["src/a/b.ts","İstanbul  padded  ","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["tab\tseparatedns:key.path","{name} has {count} items","ab\tseparatedns:"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ns:key.path./x/**/*.json","./x/**/*.json","trailing."],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["trailing.HELLO","ailing.HEL","日本語のテキスト"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["line1\nline2","src/a/b.ts","b.t"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ans:key.path","abc","hello"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["tab\tseparated","{name} has {count} items","ns:key.path"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["日本語のテキスト","tab\tseparated","﻿bomHELLO"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a..b","Hello World","a\ud83d\ude00b\ud83d\ude00c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["","a:b:c","ΣΊΣΥΦΟΣ"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["İstanbul","./x/**/*.json",":hello"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["HELLO","ünïcödéé","HELLO"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":[":","emoji \ud83d\udc4d\ud83c\udffd mixa","İstanbul"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["","ns:key.path","straße"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["  padded  ","é","HELLO"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["l","{name} has {count} items","hello"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","b","a\ud83d\ude00b\ud83d\ude00c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a..b","o World","Hello World"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ns:key.path","Hello World","a"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["emoji \ud83d\udc4d\ud83c\udffd mix﻿bom","trailing.","emoji \ud83d\udc4d\ud83c\udffd mixtab\tseparated"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ünïcödé","ünïcöd","trailing."],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["src/a/b.ts","","hello"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a\ud83d\ude00b\ud83d\ude00c","tab\tseparated","ns:key.path"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["tab\tseparatedab","a:b:cİstanbul","{name} has {count} items"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["emoji \ud83d\udc4d\ud83c\udffd mix","tab\tseparated","ns:key.path"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["abc","ünïcödé","line1\nline2"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["./x/**/*.json","a",":"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["src/a/b.ts","HELLO","a.b.cHELLO"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["G",".leading","tab\tseparatedemoji \ud83d\udc4d\ud83c\udffd mix"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["","./x/**/*.json","src/a/b.ts"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["日本語のテキスト","abcHello World","src/a/b.ts"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["emoji \ud83d\udc4d\ud83c\udffd mix./x/**/*.json","hello world","é"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["straße","HELLO",""],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a.b.c","  padded  ","key_name-1"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":[" padde","a..bİstanbul","  padded  "],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["日本語のテキストline1\nline2","ns:key.path",".leading"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["","﻿bomtrailing.","\ud83d\ude00"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":[":","hello","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a..b","a","trailing."],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a",".leading","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a:b:c","{name} has {count} items","has {count"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ΣΊΣΥΦΟΣ","{name} has {count} items","nt} items"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["me-1İstanbu","key_name-1İstanbul","Hello Worldtab\tseparated"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["日本語のテキスト","ab","abc"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["\ud83d\ude00","tab\tseparated","\ud83d\ude00"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["﻿bom","a.b.c","key_name-1"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["éab","tssrc/a/b.","src/a/b.tssrc/a/b.ts"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["straße","a\ud83d\ude00b\ud83d\ude00cünïcödé","  padded  Hello World"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a..b","\ud83d\ude00ünïcödé","é"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["é","{name} has {count} items","é"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["src/a/b.ts","a:b:c","trailing.src/a/b.ts"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["\ud83d\ude00é","key_name-1","hello"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["İstanbul","n","hello\ud83d\ude00"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ns:key.path","ünïcödé","tab\tseparated"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["","İstanbul","é"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["﻿bom","a:b:c","HELLO"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["moji \ud83d\udc4d\ud83c\udffd","a\ud83d\ude00b\ud83d\ude00cé","emoji \ud83d\udc4d\ud83c\udffd mix"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["trailing.","src/a/b.ts","a:b:c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","src/a/b.tsa..b","a"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["key_name-1",":","a:b:c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello","./x/**/*.jsona.b.c","é"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["Hello World","ünïcödé","İstanbul"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ΣΊΣΥΦΟΣ","HELLO","{name} has {count} itemsa:b:c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["CÖD",":","ünïcödé"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["  padded  ","hello","d"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a","./x/**/*.json\ud83d\ude00","hello"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["abc","a..b","tab\tseparated"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["{name} has {count} items","\ud83d\ude00","hello world"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["́","a\ud83d\ude00b\ud83d\ude00c","é"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["日本語のテキスト",".leading","emoji \ud83d\udc4d\ud83c\udffd mix"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a","src/a/b.ts",".leading"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ünïcödé","key_name-1","e-1"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["emoji \ud83d\udc4d\ud83c\udffd mix","abİstanbul","ünïcödé"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["*.","Hello Worlda","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":[":","a","src/a/b.ts"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a","src/a/b.ts",""],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["\ud83d\ude00","\ud83d\ude00","{name} has {count} items"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a.b.c","a\ud83d\ude00b\ud83d\ude00c","hello world"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["key_name-1","HELLO","_"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","{name} has {count} items","emoji \ud83d\udc4d\ud83c\udffd mix"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["tab\tseparated","日本語のテキスト","a\ud83d\ude00b\ud83d\ude00c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["line1\nline2trailing.","a","abc"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ns:key.path","tab\tseparated","ΣΊΣΥΦΟΣ"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","","ns:key.path"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["tab\tseparated","日本語のテキスト","スト"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a.b.c","日本語のテキスト","a\ud83d\ude00b\ud83d\ude00ca..b"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":[":abc","\ud83d\ude00",".leading"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["straße","日本語のテキスト","キ"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ELLO ","trailing.","Hello Worldsrc/a/b.ts"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a:b:c","a..b","日本語のテキスト"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ünïcödé","tab\tseparated","hello world"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["","İstanbul","emoji \ud83d\udc4d\ud83c\udffd mix"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["Hello World","parat","tab\tseparated\ud83d\ude00"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["key_name-1hello world","HELLO","﻿bom"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ünïcödé","Hello World","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["{name} has {count} items","src/a/b.ts","﻿bom"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["İstanbul","anbul","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["c","tab\tseparated:","a:b:c"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a..b","tab\tseparatedtrailing.","b"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a\ud83d\ude00b\ud83d\ude00c  padded  ",":","﻿bom"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["li","a.b.c","trailing."],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","tab\tseparated","\ud83d\ude00"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["Hello World","hello world","Hello World"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["{name} has {count} itemsa","ab","tab\tseparated"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":[":日本語のテキスト","trailing.","日本語のテキス"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a.b.c","b","trailing."],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["日本語のテキスト","I \ud83d\udc4d\ud83c\udffd MI","emoji \ud83d\udc4d\ud83c\udffd mix\ud83d\ude00"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a.b.c  padded  ","abhel","abhello"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a..b","hello world","hello\ud83d\ude00"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a.b.ca..b","é",".leading"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["héllo wörld","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["\ud83d\udc4d\ud83c\udffd thumbs","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["日本語","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["é","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["İstanbul","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["straße","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ılık ırmak","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["\ud83d\udc68‍\ud83d\udc69‍\ud83d\udc67 family","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a b","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["ΣΊΣΥΦΟΣ","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a\ud83d\ude00b","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["﻿bom","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a²b x½ y①","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["aⅠb Ⅻ","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["a\ud801\udc00b \ud835\udc00bc","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["कि ٣٤","a..b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","héllo wörld","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","\ud83d\udc4d\ud83c\udffd thumbs","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","日本語","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","é","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","İstanbul","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","straße","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","ılık ırmak","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","\ud83d\udc68‍\ud83d\udc69‍\ud83d\udc67 family","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","ΣΊΣΥΦΟΣ","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a\ud83d\ude00b","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","﻿bom","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a²b x½ y①","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","aⅠb Ⅻ","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a\ud801\udc00b \ud835\udc00bc","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","कि ٣٤","./x/**/*.json"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","héllo wörld"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","\ud83d\udc4d\ud83c\udffd thumbs"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","日本語"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b",""],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","é"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","İstanbul"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","straße"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","ılık ırmak"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","\ud83d\udc68‍\ud83d\udc69‍\ud83d\udc67 family"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","a b"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","ΣΊΣΥΦΟΣ"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","a\ud83d\ude00b"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","﻿bom"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","a²b x½ y①"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","aⅠb Ⅻ"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","a\ud801\udc00b \ud835\udc00bc"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"classifyCrashTrace","args":["hello world","a..b","कि ٣٤"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"formatUptimeSeconds","args":[7],"ok":"7s"}
+{"fn":"formatUptimeSeconds","args":[255],"ok":"4m 15s"}
+{"fn":"formatUptimeSeconds","args":[-100],"ok":"0s"}
+{"fn":"formatUptimeSeconds","args":[1],"ok":"1s"}
+{"fn":"formatUptimeSeconds","args":[0],"ok":"0s"}
+{"fn":"formatUptimeSeconds","args":[2],"ok":"2s"}
+{"fn":"formatUptimeSeconds","args":[2147483647],"ok":"596523h 14m"}
+{"fn":"formatUptimeSeconds","args":[-2147483648],"ok":"0s"}
+{"fn":"formatUptimeSeconds","args":[9223372036854775807],"ok":"2562047788015215h 30m"}
+{"fn":"formatUptimeSeconds","args":[-1],"ok":"0s"}
+{"fn":"formatUptimeSeconds","args":[42],"ok":"42s"}
+{"fn":"formatUptimeSeconds","args":[100],"ok":"1m 40s"}
+{"fn":"formatUptimeSeconds","args":[-7],"ok":"0s"}
+{"fn":"formatUptimeSeconds","args":[2147483648],"ok":"596523h 14m"}
+{"fn":"formatUptimeSeconds","args":[-2147483649],"ok":"0s"}
+{"fn":"formatUptimeSeconds","args":[9007199254740993],"ok":"2501999792983h 36m"}
+{"fn":"formatUptimeSeconds","args":[-9223372036854775808],"ok":"0s"}
+{"fn":"parseLogcatLine","args":["11-23 14:22:01.123  1234  5678 I ActivityManager: Start proc 9876:com.gojek.app/u0a245 for activity {com.gojek.app/.Main}"],"ok":"{\"ts\":\"11-23 14:22:01.123\",\"pid\":1234,\"tid\":5678,\"lvl\":\"I\",\"tag\":\"ActivityManager\",\"msg\":\"Start proc 9876:com.gojek.app/u0a245 for activity {com.gojek.app/.Main}\",\"hintPid\":9876,\"hintPkg\":\"com.gojek.app\"}"}
+{"fn":"parseLogcatLine","args":["11-23 14:22:02.456  9876  9876 E AndroidRuntime: Process: com.bca.mobile:remote, PID: 9876"],"ok":"{\"ts\":\"11-23 14:22:02.456\",\"pid\":9876,\"tid\":9876,\"lvl\":\"E\",\"tag\":\"AndroidRuntime\",\"msg\":\"Process: com.bca.mobile:remote, PID: 9876\",\"hintPid\":9876,\"hintPkg\":\"com.bca.mobile\"}"}
+{"fn":"parseLogcatLine","args":["11-23 14:22:03.789  1000  1012 W CausentryNative: cloaked \"com.topjohnwu.magisk\" for uid=10245\t(emoji \ud83d\udee1️)"],"ok":"{\"ts\":\"11-23 14:22:03.789\",\"pid\":1000,\"tid\":1012,\"lvl\":\"W\",\"tag\":\"CausentryNative\",\"msg\":\"cloaked \\\"com.topjohnwu.magisk\\\" for uid=10245\\t(emoji \ud83d\udee1️)\",\"hintPid\":0,\"hintPkg\":\"\"}"}
+{"fn":"parseLogcatLine","args":["not a valid logcat line"],"ok":""}
+{"fn":"parseLogcatLine","args":["11-23 14:22:03.789  1000  1012 X BadLevel: should reject"],"ok":""}
+{"fn":"classifyCrashTrace","args":["java.lang.ArrayIndexOutOfBoundsException: length=4; index=-1\n at com.pairip.VMRunner.invoke","com.gojek.app","JAVA_CRASH"],"ok":"{\"title\":\"PairIP Anti-Tamper Trap\",\"diagnosis\":\"Target detected root or uncloaked indicator and triggered a deliberate bounds trap.\",\"fix\":\"Enable Hide Developer Options + Hide Template for com.gojek.app.\"}"}
+{"fn":"classifyCrashTrace","args":["java.lang.OutOfMemoryError: Failed to allocate a 2147483648 byte allocation with 100 free bytes","com.bca.mobile","JAVA_CRASH"],"ok":"{\"title\":\"RASP Intentional OOM Trap\",\"diagnosis\":\"Target intentionally triggered an impossible allocation to self-terminate.\",\"fix\":\"Verify Hide Template and App-Zygote settings for com.bca.mobile.\"}"}
+{"fn":"classifyCrashTrace","args":["backtrace: #00 pc 00042a10 libpairipcore.so","com.livin.bank","NATIVE_CRASH"],"ok":"{\"title\":\"RASP Native Self-Defense\",\"diagnosis\":\"Native security library detected an environment anomaly.\",\"fix\":\"Ensure target is protected with system_server package cloak and SUSFS.\"}"}
+{"fn":"classifyCrashTrace","args":["signal 11 (SIGSEGV), code 1 (SEGV_MAPERR)","com.example.app","NATIVE_CRASH"],"ok":"{\"title\":\"Native Signal Crash (SIGSEGV/SIGABRT)\",\"diagnosis\":\"Process terminated with a native signal.\",\"fix\":\"Inspect fault address and library offset in stack trace.\"}"}
+{"fn":"classifyCrashTrace","args":["java.lang.NullPointerException: null object","com.example.app","JAVA_CRASH"],"ok":"{\"title\":\"App Crash (FATAL EXCEPTION)\",\"diagnosis\":\"\",\"fix\":\"\"}"}
+{"fn":"formatUptimeSeconds","args":[0],"ok":"0s"}
+{"fn":"formatUptimeSeconds","args":[-5],"ok":"0s"}
+{"fn":"formatUptimeSeconds","args":[45],"ok":"45s"}
+{"fn":"formatUptimeSeconds","args":[125],"ok":"2m 5s"}
+{"fn":"formatUptimeSeconds","args":[3665],"ok":"1h 1m"}
+{"fn":"formatUptimeSeconds","args":[90061],"ok":"25h 1m"}

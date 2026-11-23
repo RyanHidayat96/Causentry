@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Causentry</string>
+    <string name="subtitle_control">Kontrol Anti-Deteksi</string>
+    <string name="subtitle_syncing">Menerapkan kebijakan via daemon native…</string>
+    <string name="badge_syncing">SINKRON</string>
+
+    <!-- Navigation -->
+    <string name="nav_apps">Aplikasi</string>
+    <string name="nav_features">Fitur</string>
+    <string name="nav_templates">Templat</string>
+    <string name="nav_forensics">Forensik</string>
+    <string name="nav_system">Sistem</string>
+
+    <!-- Hero Status Card -->
+    <string name="hero_system_protection">Proteksi Sistem</string>
+    <string name="status_active">AKTIF</string>
+    <string name="status_standby">SIAGA</string>
+    <string name="status_offline">OFFLINE</string>
+    <string name="status_healthy">SEHAT</string>
+    <string name="status_degraded">TERBATAS</string>
+    <string name="zygisk_active">Zygisk aktif</string>
+    <string name="zygisk_ready">Zygisk siap</string>
+    <string name="zygisk_standby">Zygisk siaga</string>
+
+    <!-- Apps Tab -->
+    <string name="search_apps_count">Cari %1$d aplikasi atau paket…</string>
+    <string name="search_apps_hint">Cari nama aplikasi atau paket…</string>
+    <string name="filter_all">Semua</string>
+    <string name="filter_protected">Terproteksi</string>
+    <string name="filter_user">Pengguna</string>
+    <string name="filter_system">Sistem</string>
+    <string name="section_protected_apps">APLIKASI TERPROTEKSI</string>
+    <string name="section_other_apps">APLIKASI LAINNYA</string>
+    <string name="empty_no_match">Tidak ada aplikasi yang cocok dengan \'%1$s\'</string>
+    <string name="empty_no_protected_title">Belum Ada Aplikasi Terproteksi</string>
+    <string name="empty_no_protected_desc">Ketuk aplikasi mana saja dari daftar untuk mengatur proteksi anti-deteksi.</string>
+    <string name="empty_no_user_apps">Tidak ada aplikasi pengguna ditemukan.</string>
+    <string name="empty_no_system_apps">Tidak ada aplikasi sistem ditemukan.</string>
+    <string name="empty_no_apps">Tidak ada aplikasi ditemukan.</string>
+
+    <!-- Features Tab -->
+    <string name="feature_dev_title">Sembunyikan Opsi Pengembang &amp; ADB</string>
+    <string name="feature_dev_short">Sembunyi Dev</string>
+    <string name="feature_dev_desc">Menyamarkan development_settings_enabled, adb_enabled &amp; status USB menjadi 0.</string>
+    <string name="feature_mock_title">Sembunyikan Lokasi Palsu (GPS)</string>
+    <string name="feature_mock_short">Lokasi Palsu</string>
+    <string name="feature_mock_desc">Memaksa mock_location=0 khusus aplikasi ini untuk menyamarkan fake GPS.</string>
+    <string name="feature_a11y_title">Samarkan Layanan Aksesibilitas</string>
+    <string name="feature_a11y_short">Aksesibilitas</string>
+    <string name="feature_a11y_desc">Menyembunyikan layanan aksesibilitas aktif dari deteksi aplikasi.</string>
+    <string name="feature_isolate_title">Demote App-Zygote (RASP)</string>
+    <string name="feature_isolate_short">App-Zygote</string>
+    <string name="feature_isolate_desc">Opsional: mendemote App-Zygote tanpa merusak isolated service. Biarkan mati jika tidak perlu.</string>
+    <string name="action_select_all">Pilih Semua</string>
+    <string name="action_deselect">Batal Pilih</string>
+    <string name="filter_enabled">Aktif</string>
+    <string name="filter_disabled">Nonaktif</string>
+    <string name="unsaved_changes_title">Perubahan Belum Disimpan</string>
+    <string name="unsaved_changes_subtitle">%1$d aplikasi aktif di draf</string>
+    <string name="action_reset">Reset</string>
+    <string name="action_save_changes">Simpan</string>
+    <string name="action_applying">Menerapkan…</string>
+
+    <!-- App Detail Dialog -->
+    <string name="label_quick_preset">PRESET CEPAT</string>
+    <string name="preset_banking">Perbankan</string>
+    <string name="preset_basic">Dasar</string>
+    <string name="preset_none">Mati</string>
+    <string name="label_granular_features">FITUR BYPASS PER-APLIKASI</string>
+    <string name="label_root_cloaking">PENYAMARAN APLIKASI ROOT</string>
+    <string name="template_selected">Templat: %1$s</string>
+    <string name="template_none">Tidak menyembunyikan aplikasi root</string>
+    <string name="action_inspect_logs">Lihat Log</string>
+    <string name="action_clear_rules">Hapus Aturan</string>
+    <string name="action_apply_protection">Terapkan Proteksi</string>
+    <string name="action_cancel">Batal</string>
+    <string name="action_close">Tutup</string>
+
+    <!-- Templates Tab -->
+    <string name="templates_title">Templat Aplikasi Tersembunyi</string>
+    <string name="templates_subtitle">Atur grup aplikasi yang disembunyikan dari query paket di system_server.</string>
+    <string name="action_new_template">+ Baru</string>
+    <string name="templates_empty">Belum ada templat kustom. Ketuk \'+ Baru\' untuk membuat.</string>
+    <string name="action_implement_apps">Terapkan ke aplikasi</string>
+
+    <!-- Forensics Tab -->
+    <string name="forensics_search_hint">Cari log, tag…</string>
+    <string name="forensics_regex_hint">Pola regex…</string>
+    <string name="forensics_record">Rekam</string>
+    <string name="forensics_stop">Berhenti</string>
+    <string name="forensics_crashes_title">Crash &amp; Deteksi RASP Terdeteksi (%1$d)</string>
+    <string name="forensics_clear_all">Hapus Semua</string>
+    <string name="forensics_dismiss">Tutup</string>
+    <string name="forensics_jump_latest">Ke log terbaru</string>
+    <string name="forensics_empty_title">Tidak ada logcat yang cocok dengan filter.</string>
+    <string name="forensics_empty_subtitle">Logcat berjalan hemat daya hanya saat tab Forensik dibuka atau merekam.</string>
+
+    <!-- System / Diagnostics Tab -->
+    <string name="diag_title">Diagnostik Sistem</string>
+    <string name="diag_subtitle">Telemetri real-time dari daemon native &amp; hook Zygisk</string>
+    <string name="diag_root_provider">Lingkungan Root</string>
+    <string name="diag_daemon">Daemon Native (causentryd)</string>
+    <string name="diag_zygisk">Penyamaran Paket Zygisk</string>
+    <string name="diag_settings">Cloak SettingsProvider</string>
+    <string name="diag_usb">Cloak USB Per-UID</string>
+    <string name="diag_a11y_zygote">A11y &amp; App-Zygote</string>
+    <string name="diag_fuse">Cloak Storage FUSE</string>
+    <string name="diag_susfs">Modul Kernel SUSFS</string>
+
+    <!-- Appearance & Language -->
+    <string name="appearance_title">Tampilan &amp; Bahasa</string>
+    <string name="appearance_subtitle">Tema dinamis Material You, hitam AMOLED, dan bahasa antarmuka</string>
+    <string name="theme_label">Tema</string>
+    <string name="theme_system">Sistem</string>
+    <string name="theme_light">Terang</string>
+    <string name="theme_dark">Gelap</string>
+    <string name="theme_amoled">AMOLED</string>
+    <string name="dynamic_color_title">Material You (Warna Dinamis)</string>
+    <string name="dynamic_color_desc">Sesuaikan warna aksen dengan wallpaper perangkat</string>
+    <string name="language_label">Bahasa</string>
+    <string name="lang_system">Sistem</string>
+    <string name="lang_en">English</string>
+    <string name="lang_id">Indonesia</string>
+
+    <!-- Engine Management -->
+    <string name="engine_title">Manajemen Mesin</string>
+    <string name="engine_subtitle">Kirim kebijakan live ke hook Zygisk atau kembalikan default</string>
+    <string name="action_resync">Sinkron Ulang</string>
+    <string name="action_restore_all">Pulihkan Semua</string>
+    <string name="restore_dialog_title">Pulihkan Pengaturan Default?</string>
+    <string name="restore_dialog_body">Ini akan mengembalikan seluruh pengaturan opsi pengembang, lokasi palsu, dan penyamaran aplikasi ke standar sistem. Lanjutkan?</string>
+    <string name="action_restore_defaults">Pulihkan Default</string>
+    <string name="daemon_logs_title">Log Daemon &amp; Zygisk</string>
+    <string name="daemon_logs_subtitle">Ring buffer memori langsung dari causentryd</string>
+    <string name="action_copy">Salin</string>
+    <string name="logs_copied">Log disalin ke papan klip</string>
+    <string name="logs_empty">Belum ada log terbaru dari daemon.</string>
+</resources>

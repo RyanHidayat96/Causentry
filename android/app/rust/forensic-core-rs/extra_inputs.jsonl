@@ -1,0 +1,16 @@
+{"fn":"parseLogcatLine","args":["11-23 14:22:01.123  1234  5678 I ActivityManager: Start proc 9876:com.gojek.app/u0a245 for activity {com.gojek.app/.Main}"]}
+{"fn":"parseLogcatLine","args":["11-23 14:22:02.456  9876  9876 E AndroidRuntime: Process: com.bca.mobile:remote, PID: 9876"]}
+{"fn":"parseLogcatLine","args":["11-23 14:22:03.789  1000  1012 W CausentryNative: cloaked \"com.topjohnwu.magisk\" for uid=10245\t(emoji \ud83d\udee1\ufe0f)"]}
+{"fn":"parseLogcatLine","args":["not a valid logcat line"]}
+{"fn":"parseLogcatLine","args":["11-23 14:22:03.789  1000  1012 X BadLevel: should reject"]}
+{"fn":"classifyCrashTrace","args":["java.lang.ArrayIndexOutOfBoundsException: length=4; index=-1\n at com.pairip.VMRunner.invoke","com.gojek.app","JAVA_CRASH"]}
+{"fn":"classifyCrashTrace","args":["java.lang.OutOfMemoryError: Failed to allocate a 2147483648 byte allocation with 100 free bytes","com.bca.mobile","JAVA_CRASH"]}
+{"fn":"classifyCrashTrace","args":["backtrace: #00 pc 00042a10 libpairipcore.so","com.livin.bank","NATIVE_CRASH"]}
+{"fn":"classifyCrashTrace","args":["signal 11 (SIGSEGV), code 1 (SEGV_MAPERR)","com.example.app","NATIVE_CRASH"]}
+{"fn":"classifyCrashTrace","args":["java.lang.NullPointerException: null object","com.example.app","JAVA_CRASH"]}
+{"fn":"formatUptimeSeconds","args":[0]}
+{"fn":"formatUptimeSeconds","args":[-5]}
+{"fn":"formatUptimeSeconds","args":[45]}
+{"fn":"formatUptimeSeconds","args":[125]}
+{"fn":"formatUptimeSeconds","args":[3665]}
+{"fn":"formatUptimeSeconds","args":[90061]}

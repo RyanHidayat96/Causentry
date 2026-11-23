@@ -13,8 +13,22 @@
 // limitations under the License.
 
 #include "fusehide/core/state.hpp"
+#include "causentry_fuse_core.h"
 
 namespace fusehide {
+
+namespace {
+
+std::string TakeRustString(CausentryBuf buf) {
+    std::string out;
+    if (buf.ptr != nullptr && buf.len > 0) {
+        out.assign(reinterpret_cast<const char*>(buf.ptr), buf.len);
+    }
+    causentry_fuse_buf_free(buf);
+    return out;
+}
+
+}  // namespace
 
 std::string UnicodePolicy::DebugPreview(std::string_view value, size_t limit) {
     const size_t n = value.size() < limit ? value.size() : limit;
@@ -22,11 +36,8 @@ std::string UnicodePolicy::DebugPreview(std::string_view value, size_t limit) {
 }
 
 bool ContainsInterestingIgnorableUtf8Bytes(std::string_view value) {
-    return value.find("\xE2\x80\x8B") != std::string_view::npos ||  // U+200B
-           value.find("\xE2\x80\x8C") != std::string_view::npos ||  // U+200C
-           value.find("\xE2\x80\x8D") != std::string_view::npos ||  // U+200D
-           value.find("\xE2\x81\xA0") != std::string_view::npos ||  // U+2060
-           value.find("\xEF\xBB\xBF") != std::string_view::npos;    // U+FEFF
+    return causentry_fuse_contains_ignorable_utf8(
+        reinterpret_cast<const uint8_t*>(value.data()), value.size());
 }
 
 void UnicodePolicy::LogSuspiciousDirectPath(const char* hookName, std::string_view path) {
@@ -41,37 +52,19 @@ void UnicodePolicy::LogSuspiciousDirectPath(const char* hookName, std::string_vi
 }
 
 // Keep this table aligned with the Unicode 12.1 data used by the Android kernel casefold path.
-// Source: DerivedCoreProperties.txt / Default_Ignorable_Code_Point and the original FuseFixer
-// implementation that mirrors fs/unicode/mkutf8data.c.
+// Implemented in Rust (`causentry-fuse-core`).
 bool IsDefaultIgnorableCodePoint(uint32_t cp) {
-    return cp == 0x00AD || cp == 0x034F || cp == 0x061C || (0x115F <= cp && cp <= 0x1160) ||
-           (0x17B4 <= cp && cp <= 0x17B5) || (0x180B <= cp && cp <= 0x180E) ||
-           (0x200B <= cp && cp <= 0x200F) || (0x202A <= cp && cp <= 0x202E) ||
-           (0x2060 <= cp && cp <= 0x206F) || cp == 0x3164 || (0xFE00 <= cp && cp <= 0xFE0F) ||
-           cp == 0xFEFF || cp == 0xFFA0 || (0xFFF0 <= cp && cp <= 0xFFF8) ||
-           (0x1BCA0 <= cp && cp <= 0x1BCA3) || (0x1D173 <= cp && cp <= 0x1D17A) ||
-           (0xE0000 <= cp && cp <= 0xE0FFF);
+    return causentry_fuse_is_default_ignorable(cp);
 }
 
-// Logging helpers match the original log format closely enough to compare traces.
-
 // Escape for logging: printable ASCII as-is, else \xHH.
-// Original builds a std::string internally for the escaped form.
+// Implemented in Rust (`causentry-fuse-core`).
 std::string UnicodePolicy::EscapeForLog(const uint8_t* data, size_t length) {
-    std::string out;
-    out.reserve(length * 2);
-    for (size_t i = 0; i < length; ++i) {
-        const uint8_t ch = data[i];
-        if (ch >= 0x20 && ch <= 0x7e) {
-            out.push_back(static_cast<char>(ch));
-        } else {
-            char escaped[5] = {};
-            std::snprintf(escaped, sizeof(escaped), "%02x", ch);
-            out += "\\x";
-            out += escaped;
-        }
+    CausentryBuf buf{};
+    if (!causentry_fuse_escape_for_log(data, length, &buf)) {
+        return {};
     }
-    return out;
+    return TakeRustString(buf);
 }
 
 // Original logs at level 5 (WARN), with format "invalid char at %zu-%zu : %s"
@@ -81,87 +74,10 @@ void UnicodePolicy::LogInvalidUtf8(const uint8_t* data, size_t dataLen, size_t b
     __android_log_print(5, kLogTag, "invalid char at %zu-%zu : %s", begin, end, escaped.c_str());
 }
 
-// Inline UTF-8 decoder that mirrors the hand-rolled logic seen in the device binary.
-// The reverse-engineered build validates 3-byte and 4-byte sequences through internal lookup
-// tables; here we express the same rules with explicit range checks.
-
-// Returns: true if a valid code point was decoded. Sets *cp and *width.
-// On failure, returns false. Caller decides how to handle invalid bytes.
+// Strict UTF-8 decoder implemented in Rust (`causentry-fuse-core`).
 bool UnicodePolicy::DecodeUtf8CodePoint(const uint8_t* data, size_t len, size_t index, uint32_t* cp,
                                         size_t* width) {
-    if (index >= len)
-        return false;
-
-    const uint8_t b0 = data[index];
-    if (b0 < 0x80) {
-        *cp = b0;
-        *width = 1;
-        return true;
-    }
-
-    if (index + 1 >= len)
-        return false;
-
-    if (b0 < 0xe0) {
-        if (b0 <= 0xc1)
-            return false;  // overlong
-        const uint8_t b1 = data[index + 1];
-        if ((b1 ^ 0x80) >= 0x40)
-            return false;
-        *cp = ((b0 & 0x1f) << 6) | (b1 & 0x3f);
-        *width = 2;
-        return true;
-    }
-
-    if (b0 < 0xf0) {
-        if (index + 2 >= len)
-            return false;
-        const uint8_t b1 = data[index + 1];
-        // Replicate the original's lookup table validation:
-        // Reject overlong (E0 80..9F) and surrogates (ED A0..BF)
-        if (b0 == 0xe0 && b1 < 0xa0)
-            return false;
-        if (b0 == 0xed && b1 >= 0xa0)
-            return false;
-        if ((b1 ^ 0x80) >= 0x40)
-            return false;
-        const uint8_t b2 = data[index + 2];
-        if ((b2 ^ 0x80) >= 0x40)
-            return false;
-        *cp = ((b0 & 0x0f) << 12) | ((b1 & 0x3f) << 6) | (b2 & 0x3f);
-        *width = 3;
-        return true;
-    }
-
-    if (b0 >= 0xf5)
-        return false;  // > U+10FFFF
-
-    if (index + 1 >= len)
-        return false;
-    const uint8_t b1 = data[index + 1];
-    // Reject overlong (F0 80..8F) and too large (F4 90+)
-    if (b0 == 0xf0 && b1 < 0x90)
-        return false;
-    if (b0 == 0xf4 && b1 >= 0x90)
-        return false;
-    if ((b1 ^ 0x80) >= 0x40)
-        return false;
-
-    if (index + 2 >= len)
-        return false;
-    const uint8_t b2 = data[index + 2];
-    if ((b2 ^ 0x80) >= 0x40)
-        return false;
-
-    if (index + 3 >= len)
-        return false;
-    const uint8_t b3 = data[index + 3];
-    if ((b3 ^ 0x80) >= 0x40)
-        return false;
-
-    *cp = ((b0 & 0x07) << 18) | ((b1 & 0x3f) << 12) | ((b2 & 0x3f) << 6) | (b3 & 0x3f);
-    *width = 4;
-    return true;
+    return causentry_fuse_decode_utf8(data, len, index, cp, width);
 }
 
 size_t UnicodePolicy::InvalidUtf8SpanEnd(const uint8_t* data, size_t len, size_t index) {

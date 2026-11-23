@@ -2,11 +2,14 @@ package com.causentry.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.causentry.app.data.AppLanguage
 import com.causentry.app.data.AppRepository
 import com.causentry.app.data.ConfigBackupManager
 import com.causentry.app.data.DaemonBridge
 import com.causentry.app.data.ForensicManager
 import com.causentry.app.data.IconLoader
+import com.causentry.app.data.ThemeMode
+import com.causentry.app.data.UserPreferences
 import com.causentry.app.model.AppFilter
 import com.causentry.app.model.AppInfo
 import com.causentry.app.model.CrashThreatReport
@@ -34,11 +37,16 @@ class MainViewModel @Inject constructor(
     val daemonBridge: DaemonBridge,
     val iconLoader: IconLoader,
     val forensicManager: ForensicManager,
-    val configBackupManager: ConfigBackupManager
+    val configBackupManager: ConfigBackupManager,
+    val userPreferences: UserPreferences
 ) : ViewModel() {
 
     val daemonStatus: StateFlow<DaemonStatus> = daemonBridge.statusFlow
     val isSyncing: StateFlow<Boolean> = daemonBridge.isSyncing
+
+    val themeMode: StateFlow<ThemeMode> = userPreferences.themeMode
+    val dynamicColor: StateFlow<Boolean> = userPreferences.dynamicColor
+    val language: StateFlow<AppLanguage> = userPreferences.language
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -46,16 +54,14 @@ class MainViewModel @Inject constructor(
     private val _selectedFilter = MutableStateFlow(AppFilter.ALL)
     val selectedFilter: StateFlow<AppFilter> = _selectedFilter.asStateFlow()
 
-    private val _selectedApp = MutableStateFlow<AppInfo?>(null)
-    val selectedApp: StateFlow<AppInfo?> = _selectedApp.asStateFlow()
-
-    private val _currentTab = MutableStateFlow(0) // 0 = Apps, 1 = Features, 2 = Templates, 3 = Forensics, 4 = Diagnostics
+    private val _selectedAppPkg = MutableStateFlow<String?>(null)
+    private val _currentTab = MutableStateFlow(0)
     val currentTab: StateFlow<Int> = _currentTab.asStateFlow()
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
-    // --- Forensic & LogFox Engine ---
+    // --- Forensics (Lazy: only active when tab 3 is open or recording) ---
     val isLiveStreaming: StateFlow<Boolean> = forensicManager.isLiveStreaming
     val crashReports: StateFlow<List<CrashThreatReport>> = forensicManager.crashReportsFlow
     val isRecording: StateFlow<Boolean> = forensicManager.isRecording
@@ -70,7 +76,6 @@ class MainViewModel @Inject constructor(
     private val _forensicSelectedLevel = MutableStateFlow<LogLevel?>(null)
     val forensicSelectedLevel: StateFlow<LogLevel?> = _forensicSelectedLevel.asStateFlow()
 
-    // LogFox-style advanced filters: tag substring, PID exact, and regex mode
     private val _forensicTagFilter = MutableStateFlow("")
     val forensicTagFilter: StateFlow<String> = _forensicTagFilter.asStateFlow()
 
@@ -103,9 +108,7 @@ class MainViewModel @Inject constructor(
             ForensicFilterState(query, pkg, level, tag, pid, false)
         },
         _forensicRegexMode
-    ) { base, regexMode ->
-        base.copy(regexMode = regexMode)
-    }
+    ) { base, regexMode -> base.copy(regexMode = regexMode) }
 
     val filteredLogs: StateFlow<List<LogEntry>> = combine(
         forensicManager.logsFlow,
@@ -115,7 +118,6 @@ class MainViewModel @Inject constructor(
         val tagQ = filters.tag.trim().lowercase()
         val pidQ = filters.pid.trim()
 
-        // Pre-compile the regex once; invalid patterns surface an error and fall back to substring
         var regex: Regex? = null
         if (filters.regexMode && filters.query.isNotBlank()) {
             regex = try {
@@ -145,27 +147,30 @@ class MainViewModel @Inject constructor(
             }
 
             val matchesTag = tagQ.isEmpty() || entry.tag.lowercase().contains(tagQ)
-
             val matchesPid = pidQ.isEmpty() || entry.pid.toString() == pidQ
-
             val matchesQuery = when {
                 q.isEmpty() -> true
                 filters.regexMode && regex != null -> regex.containsMatchIn(entry.message) || regex.containsMatchIn(entry.tag)
-                filters.regexMode && regex == null -> false
+                filters.regexMode -> false
                 else -> entry.message.lowercase().contains(q) ||
                     entry.tag.lowercase().contains(q) ||
                     entry.pid.toString().contains(q)
             }
-
             matchesPkg && matchesLevel && matchesTag && matchesPid && matchesQuery
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Full list of installed apps for templates & bulk operations
     val allApps: StateFlow<List<AppInfo>> = appRepository.appsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // 120Hz smooth debounced search & filter pipeline
+    // Reactive selectedApp derived from package name (handles cold-start deep links automatically!)
+    val selectedApp: StateFlow<AppInfo?> = combine(
+        _selectedAppPkg,
+        allApps
+    ) { pkg, apps ->
+        if (pkg == null) null else apps.find { it.packageName == pkg }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     val filteredApps: StateFlow<List<AppInfo>> = combine(
         appRepository.appsFlow,
         _searchQuery.debounce(150),
@@ -182,7 +187,6 @@ class MainViewModel @Inject constructor(
             val matchesQuery = q.isEmpty() ||
                 app.label.lowercase().contains(q) ||
                 app.packageName.lowercase().contains(q)
-
             matchesFilter && matchesQuery
         }.sortedWith(
             compareByDescending<AppInfo> { it.isProtected }
@@ -191,21 +195,18 @@ class MainViewModel @Inject constructor(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun onSearchQueryChanged(query: String) {
-        _searchQuery.value = query
-    }
-
-    fun onFilterSelected(filter: AppFilter) {
-        _selectedFilter.value = filter
-    }
-
-    fun onSelectApp(app: AppInfo?) {
-        _selectedApp.value = app
-    }
-
+    fun onSearchQueryChanged(query: String) { _searchQuery.value = query }
+    fun onFilterSelected(filter: AppFilter) { _selectedFilter.value = filter }
+    fun onSelectApp(app: AppInfo?) { _selectedAppPkg.value = app?.packageName }
+    fun requestOpenApp(packageName: String) { _selectedAppPkg.value = packageName }
     fun onTabChanged(tab: Int) {
         _currentTab.value = tab
+        forensicManager.setScreenActive(tab == 3)
     }
+
+    fun setThemeMode(mode: ThemeMode) = userPreferences.setThemeMode(mode)
+    fun setDynamicColor(enabled: Boolean) = userPreferences.setDynamicColor(enabled)
+    fun setLanguage(lang: AppLanguage) = userPreferences.setLanguage(lang)
 
     fun refreshAll() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -219,38 +220,13 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun setAppConfig(
-        pkg: String,
-        devOff: Boolean,
-        mock: Boolean,
-        isolate: Boolean,
-        accOff: Boolean = true,
-        template: String?
-    ) {
+    fun setAppConfig(pkg: String, devOff: Boolean, mock: Boolean, isolate: Boolean, accOff: Boolean, template: String?) {
         viewModelScope.launch(Dispatchers.IO) {
             daemonBridge.setApp(pkg, devOff, mock, isolate, accOff, template)
         }
     }
 
-    fun batchConfigureApps(
-        pkgs: List<String>,
-        devOff: Boolean? = null,
-        mock: Boolean? = null,
-        isolate: Boolean? = null,
-        accOff: Boolean? = null,
-        template: String? = null,
-        remove: Boolean = false
-    ) {
-        viewModelScope.launch(Dispatchers.IO) {
-            daemonBridge.batchConfigureApps(pkgs, devOff, mock, isolate, accOff, template, remove)
-        }
-    }
-
-    fun batchConfigureFeature(
-        featureKey: String,
-        enabledPackages: Set<String>,
-        allPackages: Set<String>
-    ) {
+    fun batchConfigureFeature(featureKey: String, enabledPackages: Set<String>, allPackages: Set<String>) {
         viewModelScope.launch(Dispatchers.IO) {
             daemonBridge.batchConfigureFeature(featureKey, enabledPackages, allPackages)
         }
@@ -274,22 +250,7 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    /**
-     * "Implement" an existing hidden-app template onto one, several or every app:
-     * attaches each chosen package to the cloak target list AND assigns it this
-     * template, then detaches the template from any app the user unchecked -- all
-     * in a single atomic config write (importcfg -> cloak.sh) so there is exactly
-     * one reconcile (no flicker). The optimistic in-memory update keeps the UI
-     * instant.
-     *
-     * @param packages apps that should now USE this template (attach / enable)
-     * @param detach   apps that previously used it and must be released (detach)
-     */
-    fun applyTemplateToApps(
-        template: String,
-        packages: List<String>,
-        detach: List<String> = emptyList()
-    ) {
+    fun applyTemplateToApps(template: String, packages: List<String>, detach: List<String> = emptyList()) {
         val tpl = template.trim()
         val add = packages.filter { it.isNotBlank() }.distinct()
         val rem = detach.filter { it.isNotBlank() }.distinct().filter { it !in add }
@@ -300,24 +261,17 @@ class MainViewModel @Inject constructor(
     }
 
     fun applyChanges() {
-        viewModelScope.launch(Dispatchers.IO) {
-            daemonBridge.apply()
-        }
+        viewModelScope.launch(Dispatchers.IO) { daemonBridge.apply() }
     }
 
     fun restoreAll() {
-        viewModelScope.launch(Dispatchers.IO) {
-            daemonBridge.restore()
-        }
+        viewModelScope.launch(Dispatchers.IO) { daemonBridge.restore() }
     }
 
     fun updateStorageRules(roots: List<String>, relatives: List<String>) {
-        viewModelScope.launch(Dispatchers.IO) {
-            daemonBridge.saveStorageRules(roots, relatives)
-        }
+        viewModelScope.launch(Dispatchers.IO) { daemonBridge.saveStorageRules(roots, relatives) }
     }
 
-    // --- Forensic & LogFox Controls ---
     fun toggleLiveStreaming() = forensicManager.toggleLiveStreaming()
     fun clearLogs() = forensicManager.clearLogs()
     fun clearCrashes() = forensicManager.clearCrashes()
@@ -343,11 +297,15 @@ class MainViewModel @Inject constructor(
     fun exportLogsToFile(): File? = forensicManager.exportLogsToFile()
     fun exportSessionZip(): File? = forensicManager.exportSessionZip()
     fun toggleRecording(): Boolean = forensicManager.toggleRecording()
-    fun stopRecording() { forensicManager.stopRecording() }
 
     fun inspectAppLogs(packageName: String) {
         _forensicSelectedPackage.value = packageName
-        _currentTab.value = 3 // Tab Forensics
-        _selectedApp.value = null
+        onTabChanged(3)
+        _selectedAppPkg.value = null
+    }
+
+    override fun onCleared() {
+        forensicManager.setScreenActive(false)
+        super.onCleared()
     }
 }

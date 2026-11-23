@@ -1,0 +1,19 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/causentry-proto",
+    "crates/causentry-zygisk",
+    "crates/causentry-fuse-core",
+    "daemon",
+]
+exclude = [
+    "android/app/rust/forensic-core-rs",
+    "android/app/rust/backup-core-rs",
+]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

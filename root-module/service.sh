@@ -1,71 +1,51 @@
 #!/system/bin/sh
-# Causentry - boot stage: harden, stage the runtime, start the daemon and the UI.
-# post-fs-data.sh only prepares backend storage; Android settings wait until here.
+# Causentry v2.0 - late_start service stage
+# Ensures causentryd is alive, installs/updates Causentry.apk if needed, applies policy,
+# and grants READ_LOGS for lazy on-demand Forensics. Zero httpd, zero polling loops.
+
 MODDIR=${0%/*}
 DIR=/data/adb/causentry
-LOG="$DIR/causentry.log"
-mkdir -p "$DIR" "$DIR/webroot/cgi-bin" 2>/dev/null
-echo "$(date '+%m-%d %H:%M:%S') [service] starting" >> "$LOG"
+BIN="$DIR/causentryd"
 
-# --- stage writable copies (the module dir itself is read-only) ---
-for f in lib.sh apply.sh apply-async.sh restore.sh causentryd.sh causentry-loop.sh root-apps.sh enforce-denylist.sh status.sh doctor.sh uirpc.sh uirpc-wake.sh appcfg.sh cloak.sh hidden.sh bibit-state.sh; do
-  [ -f "$MODDIR/bin/$f" ] && cp -f "$MODDIR/bin/$f" "$DIR/$f" 2>/dev/null
-done
-[ -f "$MODDIR/payload/Causentry.apk" ] && cp -f "$MODDIR/payload/Causentry.apk" "$DIR/Causentry.apk" 2>/dev/null
-cp -rf "$MODDIR/webroot/." "$DIR/webroot/" 2>/dev/null
-chmod 700 "$DIR" 2>/dev/null
-chmod 755 "$DIR"/*.sh "$DIR/webroot/cgi-bin/api.sh" 2>/dev/null
-tr -d '\r' < "$DIR/causentryd.sh" > "$DIR/.causentryd.tmp" 2>/dev/null && mv -f "$DIR/.causentryd.tmp" "$DIR/causentryd.sh"
+# Ensure native daemon is running (in case post-fs-data didn't start or was restarted)
+if [ -x "$BIN" ] && ! pidof causentryd >/dev/null 2>&1; then
+  if command -v setsid >/dev/null 2>&1; then
+    setsid "$BIN" serve >/dev/null 2>&1 < /dev/null &
+  else
+    "$BIN" serve >/dev/null 2>&1 < /dev/null &
+  fi
+fi
 
-[ -f "$DIR/config.json" ] || cp -f "$MODDIR/config.default.json" "$DIR/config.json" 2>/dev/null
-
-# optional-tool discovery (self-contained: no hard dependency on busybox)
-[ -f "$DIR/lib.sh" ] && . "$DIR/lib.sh"
-[ -s "$DIR/ui.token" ] || { head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$DIR/ui.token"; chmod 600 "$DIR/ui.token"; }
-
-stop_old_daemons() {
-  # Service may be called by boot, module Action, or manual update. Always collapse
-  # older supervisors first; stacked shell loops poll system services and burn power.
-  kill_cmdline "$DIR/causentry-loop.sh" term
-  kill_cmdline "$DIR/causentryd.sh" term
+# Wait for boot completion so package manager is ready
+i=0
+while [ "$(getprop sys.boot_completed 2>/dev/null)" != "1" ] && [ "$i" -lt 60 ]; do
   sleep 1
-  kill_cmdline "$DIR/causentry-loop.sh" kill
-  kill_cmdline "$DIR/causentryd.sh" kill
-  rm -f "$DIR/daemon.pid" "$DIR/runtime.active" 2>/dev/null
-  rm -rf "$DIR/loop.lock" "$DIR/evaluate.lock" 2>/dev/null
-}
+  i=$((i + 1))
+done
 
-kill_cmdline() {
-  needle="$1"
-  mode="$2"
-  for proc in /proc/[0-9]*; do
-    [ -d "$proc" ] || continue
-    p=${proc##*/}
-    [ "$p" = "$$" ] && continue
-    cmd=$(tr '\0' ' ' < "$proc/cmdline" 2>/dev/null)
-    case "$cmd" in
-      *"$needle"*)
-        if [ "$mode" = kill ]; then
-          kill -9 "$p" 2>/dev/null
-        else
-          kill "$p" 2>/dev/null
-        fi
-        ;;
-    esac
-  done
-}
+# Install or update bundled Control UI APK if fingerprint changed
+APK="$DIR/Causentry.apk"
+if [ -f "$APK" ]; then
+  WANT=$(sha256sum "$APK" 2>/dev/null | cut -d' ' -f1)
+  HAVE=$(cat "$DIR/.uiapk.fingerprint" 2>/dev/null)
+  INSTALLED=0
+  pm path com.causentry.app >/dev/null 2>&1 && INSTALLED=1
 
-stop_old_daemons
+  if [ "$INSTALLED" -eq 0 ] || { [ -n "$WANT" ] && [ "$WANT" != "$HAVE" ]; }; then
+    TMP_APK="/data/local/tmp/causentry-ui.apk"
+    if cp -f "$APK" "$TMP_APK" 2>/dev/null; then
+      chmod 644 "$TMP_APK" 2>/dev/null
+      chcon u:object_r:shell_data_file:s0 "$TMP_APK" 2>/dev/null
+      if cmd package install -r "$TMP_APK" >/dev/null 2>&1 || pm install -r "$TMP_APK" >/dev/null 2>&1; then
+        [ -n "$WANT" ] && printf '%s\n' "$WANT" > "$DIR/.uiapk.fingerprint" 2>/dev/null
+      fi
+      rm -f "$TMP_APK" 2>/dev/null
+    fi
+  fi
+fi
 
-# --- protection layer (boot props + kernel hiding + denylist + root apps) ---
-sh "$DIR/apply.sh" boot >> "$LOG" 2>&1
+# Grant READ_LOGS so Forensics works lazily without su
+pm grant com.causentry.app android.permission.READ_LOGS >/dev/null 2>&1
 
-# --- watch daemon (supervised so a logcat hiccup cannot kill the bypass) ---
-setsid /system/bin/sh "$DIR/causentry-loop.sh" >/dev/null 2>&1 < /dev/null &
-echo "$(date '+%m-%d %H:%M:%S') [service] daemon supervisor restarted" >> "$LOG"
-
-# --- control UI: disabled in stealth mode (VGuard scans /proc/net/tcp) ---
-# The busybox httpd on port 8899 is a root indicator visible to banking apps.
-# Causentry now uses the native APK UI exclusively; httpd is no longer started.
-pm grant com.causentry.app android.permission.READ_LOGS >/dev/null 2>&1 &
-echo "$(date '+%m-%d %H:%M:%S') [service] httpd disabled (stealth); native APK UI only" >> "$LOG"
+# Trigger initial policy sync (re-syncs UID socket permissions & pushes snapshot to Zygisk)
+[ -x "$BIN" ] && "$BIN" apply >/dev/null 2>&1

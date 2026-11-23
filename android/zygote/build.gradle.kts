@@ -37,8 +37,8 @@ android {
         applicationId = "com.causentry.zygote"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.1.0"
+        versionCode = 300
+        versionName = "3.0.0"
     }
 
     buildTypes {
@@ -53,15 +53,8 @@ android {
 }
 
 zygisk {
-    // PACKAGE_SYSTEM_SERVER + providers: binder-level hooks (PackageManager, Settings,
-    // Accessibility, USB state) that must intercept queries from any app.
-    // ALL_PACKAGES: in-process root-detection bypass (File, Runtime.exec,
-    // SystemProperties) injected into every app process; ZygoteEntry.main()
-    // gates actual hook installation on CloakPolicy.hasHiddenPackages(uid)
-    // so overhead for unprotected apps is a single UID check and an early return.
     packages(
         ZygoteLoader.PACKAGE_SYSTEM_SERVER,
-        ZygoteLoader.ALL_PACKAGES,
         "com.android.providers.settings",
         "com.google.android.providers.media.module",
         "com.android.providers.media.module",
@@ -69,7 +62,7 @@ zygisk {
     id = "causentry"
     name = "Causentry"
     author = "exery"
-    description = "Causentry system-side package and Settings cloak backend"
+    description = "Causentry system-side package, Settings, and FUSE cloak backend"
     entrypoint = "com.causentry.zygote.ZygoteEntry"
     archiveName = "Causentry-Zygisk"
     isAddVariantToArchiveName = false

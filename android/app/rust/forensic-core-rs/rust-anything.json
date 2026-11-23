@@ -1,0 +1,89 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "C:\\Users\\exery\\Documents\\MyProject\\Causentry\\android\\app\\src\\main\\java\\com\\causentry\\app\\core",
+  "unit": "forensic/",
+  "language": "java",
+  "kind": "ffi",
+  "crate_name": "forensic-core-rs",
+  "exports": [
+    {
+      "name": "parseLogcatLine",
+      "file": "forensic/ForensicCore.java",
+      "line": 82,
+      "params": [
+        {
+          "name": "raw",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false,
+          "native_type": "String"
+        }
+      ],
+      "returns": "string",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false,
+      "native_return": "String",
+      "prototype": "com.causentry.app.core.forensic.ForensicCore.parseLogcatLine(String raw)"
+    },
+    {
+      "name": "classifyCrashTrace",
+      "file": "forensic/ForensicCore.java",
+      "line": 165,
+      "params": [
+        {
+          "name": "trace",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false,
+          "native_type": "String"
+        },
+        {
+          "name": "pkg",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false,
+          "native_type": "String"
+        },
+        {
+          "name": "crashType",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false,
+          "native_type": "String"
+        }
+      ],
+      "returns": "string",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false,
+      "native_return": "String",
+      "prototype": "com.causentry.app.core.forensic.ForensicCore.classifyCrashTrace(String trace, String pkg, String crashType)"
+    },
+    {
+      "name": "formatUptimeSeconds",
+      "file": "forensic/ForensicCore.java",
+      "line": 197,
+      "params": [
+        {
+          "name": "seconds",
+          "ts_type": "int",
+          "optional": false,
+          "rest": false,
+          "native_type": "long"
+        }
+      ],
+      "returns": "string",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false,
+      "native_return": "String",
+      "prototype": "com.causentry.app.core.forensic.ForensicCore.formatUptimeSeconds(long seconds)"
+    }
+  ],
+  "classes": [],
+  "js_only": []
+}

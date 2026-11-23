@@ -2,21 +2,16 @@ package com.causentry.app.ui
 
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,27 +22,33 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,20 +57,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.causentry.app.R
+import com.causentry.app.data.AppLanguage
+import com.causentry.app.data.ThemeMode
 import com.causentry.app.model.AppFilter
 import com.causentry.app.model.AppInfo
 import com.causentry.app.model.DaemonStatus
@@ -80,26 +85,35 @@ import com.causentry.app.ui.components.DiagnosticsCard
 import com.causentry.app.ui.components.FilterChipRow
 import com.causentry.app.ui.components.HeroStatusCard
 import com.causentry.app.ui.components.ShimmerAppList
-import com.causentry.app.ui.components.StatusPill
 import com.causentry.app.ui.components.StorageCloakCard
+import com.causentry.app.ui.components.TemplateApplyDialog
 import com.causentry.app.ui.components.TemplateCard
 import com.causentry.app.ui.components.TemplateEditorDialog
-import com.causentry.app.ui.components.TemplateApplyDialog
-import com.causentry.app.ui.theme.BgDark
-import com.causentry.app.ui.theme.BorderDark
-import com.causentry.app.ui.theme.DangerRed
-import com.causentry.app.ui.theme.PrimaryBlue
-import com.causentry.app.ui.theme.SuccessGreen
-import com.causentry.app.ui.theme.SurfaceDark
-import com.causentry.app.ui.theme.SurfaceHighDark
-import com.causentry.app.ui.theme.TextPrimary
-import com.causentry.app.ui.theme.TextSecondary
-import com.causentry.app.ui.theme.WarningAmber
+import com.causentry.app.ui.components.ThemeAndLanguageCard
+import com.causentry.app.ui.theme.LocalCausentryColors
+
+private data class NavDestination(
+    val index: Int,
+    val labelRes: Int,
+    val iconRes: Int
+)
+
+private val NAV_DESTINATIONS = listOf(
+    NavDestination(0, R.string.nav_apps, R.drawable.ic_apps),
+    NavDestination(1, R.string.nav_features, R.drawable.ic_tune),
+    NavDestination(2, R.string.nav_templates, R.drawable.ic_layers),
+    NavDestination(3, R.string.nav_forensics, R.drawable.ic_terminal),
+    NavDestination(4, R.string.nav_system, R.drawable.ic_settings)
+)
 
 @Composable
 fun CausentryApp(
-    viewModel: MainViewModel
+    viewModel: MainViewModel,
+    onLanguageChanged: (AppLanguage) -> Unit = {}
 ) {
+    val cs = MaterialTheme.colorScheme
+    val haptic = LocalHapticFeedback.current
+
     val status by viewModel.daemonStatus.collectAsState()
     val apps by viewModel.filteredApps.collectAsState()
     val allApps by viewModel.allApps.collectAsState()
@@ -110,151 +124,159 @@ fun CausentryApp(
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
 
-    // Forensic live log & crash stream
-    val logs by viewModel.filteredLogs.collectAsState()
+    val themeMode by viewModel.themeMode.collectAsState()
+    val dynamicColor by viewModel.dynamicColor.collectAsState()
+    val language by viewModel.language.collectAsState()
+
+    // Crash count badge only (low-frequency) — high-frequency log stream is collected inside ForensicsTabHost only!
     val crashReports by viewModel.crashReports.collectAsState()
-    val isStreaming by viewModel.isLiveStreaming.collectAsState()
-    val isRecording by viewModel.isRecording.collectAsState()
-    val recordedCount by viewModel.recordedCount.collectAsState()
-    val forensicQuery by viewModel.forensicSearchQuery.collectAsState()
-    val forensicPkg by viewModel.forensicSelectedPackage.collectAsState()
-    val forensicLevel by viewModel.forensicSelectedLevel.collectAsState()
-    val forensicTagFilter by viewModel.forensicTagFilter.collectAsState()
-    val forensicPidFilter by viewModel.forensicPidFilter.collectAsState()
-    val forensicRegexMode by viewModel.forensicRegexMode.collectAsState()
-    val forensicRegexError by viewModel.forensicRegexError.collectAsState()
+
+    // Hoisted scroll states so switching tabs preserves scroll position
+    val appsListState = rememberLazyListState()
+    val featuresListState = rememberLazyListState()
+    val templatesScrollState = rememberScrollState()
+    val systemScrollState = rememberScrollState()
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = BgDark,
+        containerColor = cs.background,
         topBar = {
             TopAppBar(
                 isRefreshing = isRefreshing,
                 isSyncing = isSyncing,
                 onRefresh = { viewModel.refreshAll() }
             )
+        },
+        bottomBar = {
+            NavigationBar(
+                containerColor = cs.surface,
+                tonalElevation = 2.dp
+            ) {
+                NAV_DESTINATIONS.forEach { dest ->
+                    val selected = currentTab == dest.index
+                    NavigationBarItem(
+                        selected = selected,
+                        onClick = {
+                            if (!selected) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                viewModel.onTabChanged(dest.index)
+                            }
+                        },
+                        icon = {
+                            if (dest.index == 3 && crashReports.isNotEmpty()) {
+                                BadgedBox(
+                                    badge = {
+                                        Badge(containerColor = cs.error, contentColor = cs.onError) {
+                                            Text(
+                                                text = if (crashReports.size > 99) "99+" else "${crashReports.size}",
+                                                fontSize = 9.sp
+                                            )
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = dest.iconRes),
+                                        contentDescription = stringResource(dest.labelRes),
+                                        modifier = Modifier.size(21.dp)
+                                    )
+                                }
+                            } else {
+                                Icon(
+                                    painter = painterResource(id = dest.iconRes),
+                                    contentDescription = stringResource(dest.labelRes),
+                                    modifier = Modifier.size(21.dp)
+                                )
+                            }
+                        },
+                        label = {
+                            Text(
+                                text = stringResource(dest.labelRes),
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = cs.onPrimaryContainer,
+                            selectedTextColor = cs.primary,
+                            indicatorColor = cs.primaryContainer,
+                            unselectedIconColor = cs.onSurfaceVariant,
+                            unselectedTextColor = cs.onSurfaceVariant
+                        )
+                    )
+                }
+            }
         }
     ) { paddingValues ->
-        Column(
+        AnimatedContent(
+            targetState = currentTab,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(160)) togetherWith fadeOut(animationSpec = tween(120))
+            },
+            label = "TabTransition",
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-        ) {
-            // Tab Selector (Apps, Templates, Status & Actions)
-            TabRowSelector(
-                selectedTab = currentTab,
-                onTabSelect = { viewModel.onTabChanged(it) }
-            )
+        ) { tab ->
+            when (tab) {
+                0 -> AppsScreen(
+                    status = status,
+                    apps = apps,
+                    allApps = allApps,
+                    searchQuery = query,
+                    onSearchChange = { viewModel.onSearchQueryChanged(it) },
+                    selectedFilter = filter,
+                    onFilterSelect = { viewModel.onFilterSelected(it) },
+                    onAppClick = { viewModel.onSelectApp(it) },
+                    iconLoader = viewModel.iconLoader,
+                    listState = appsListState
+                )
 
-            AnimatedContent(
-                targetState = currentTab,
-                transitionSpec = {
-                    if (targetState > initialState) {
-                        (slideInHorizontally { width -> width / 4 } + fadeIn(animationSpec = tween(220)))
-                            .togetherWith(slideOutHorizontally { width -> -width / 4 } + fadeOut(animationSpec = tween(220)))
-                    } else {
-                        (slideInHorizontally { width -> -width / 4 } + fadeIn(animationSpec = tween(220)))
-                            .togetherWith(slideOutHorizontally { width -> width / 4 } + fadeOut(animationSpec = tween(220)))
-                    }
-                },
-                label = "TabTransition",
-                modifier = Modifier.fillMaxSize()
-            ) { tab ->
-                when (tab) {
-                    0 -> {
-                        // Apps Tab: Search, Filter, Hero Card, Virtualized 120Hz List
-                        AppsScreen(
-                            status = status,
-                            apps = apps,
-                            allApps = allApps,
-                            searchQuery = query,
-                            onSearchChange = { viewModel.onSearchQueryChanged(it) },
-                            selectedFilter = filter,
-                            onFilterSelect = { viewModel.onFilterSelected(it) },
-                            onAppClick = { viewModel.onSelectApp(it) },
-                            iconLoader = viewModel.iconLoader
-                        )
-                    }
-                    1 -> {
-                        // Features Tab: Feature-centric policy configuration for all apps
-                        FeaturesScreen(
-                            allApps = allApps,
-                            iconLoader = viewModel.iconLoader,
-                            isSyncing = isSyncing,
-                            onSaveFeature = { featureKey, enabledPackages, allPackages ->
-                                viewModel.batchConfigureFeature(featureKey, enabledPackages, allPackages)
-                            }
-                        )
-                    }
-                    2 -> {
-                        // Templates Tab: Multi-select interactive cloaking manager
-                        TemplatesScreen(
-                            status = status,
-                            allApps = allApps,
-                            iconLoader = viewModel.iconLoader,
-                            onSaveTemplate = { name, pkgs, deleteName -> viewModel.saveTemplate(name, pkgs, deleteName) },
-                            onDeleteTemplate = { name -> viewModel.deleteTemplate(name) },
-                            onApplyTemplateToApps = { template, pkgs, detach -> viewModel.applyTemplateToApps(template, pkgs, detach) }
-                        )
-                    }
-                    3 -> {
-                        // Forensics Tab: Real-time LogCat, Crash Detector & Threat Heuristics
-                        ForensicsScreen(
-                            logs = logs,
-                            crashReports = crashReports,
-                            allApps = allApps,
-                            iconLoader = viewModel.iconLoader,
-                            isStreaming = isStreaming,
-                            isRecording = isRecording,
-                            recordedCount = recordedCount,
-                            searchQuery = forensicQuery,
-                            tagFilter = forensicTagFilter,
-                            pidFilter = forensicPidFilter,
-                            regexMode = forensicRegexMode,
-                            regexError = forensicRegexError,
-                            selectedPackage = forensicPkg,
-                            selectedLevel = forensicLevel,
-                            onToggleStream = { viewModel.toggleLiveStreaming() },
-                            onToggleRecording = { viewModel.toggleRecording() },
-                            onClearLogs = { viewModel.clearLogs() },
-                            onClearCrashes = { viewModel.clearCrashes() },
-                            onDismissCrash = { viewModel.dismissCrash(it) },
-                            onSelectPackage = { viewModel.setForensicPackage(it) },
-                            onSelectLevel = { viewModel.setForensicLevel(it) },
-                            onSearchQueryChange = { viewModel.setForensicSearchQuery(it) },
-                            onTagFilterChange = { viewModel.setForensicTagFilter(it) },
-                            onPidFilterChange = { viewModel.setForensicPidFilter(it) },
-                            onToggleRegexMode = { viewModel.setForensicRegexMode(!forensicRegexMode) },
-                            onResetFilters = { viewModel.clearForensicFilters() },
-                            onExportZip = { viewModel.exportSessionZip() },
-                            onExportLogs = { viewModel.exportLogsToFile() },
-                            onInspectApp = { pkg ->
-                                val target = allApps.find { it.packageName == pkg }
-                                if (target != null) {
-                                    viewModel.onSelectApp(target)
-                                }
-                            }
-                        )
-                    }
-                    4 -> {
-                        // Actions & Diagnostics Tab
-                        ActionsScreen(
-                            status = status,
-                            backupManager = viewModel.configBackupManager,
-                            onSaveStorageRules = { roots, relatives ->
-                                viewModel.updateStorageRules(roots, relatives)
-                            },
-                            onApply = { viewModel.applyChanges() },
-                            onRestore = { viewModel.restoreAll() },
-                            onRefresh = { viewModel.refreshAll() }
-                        )
-                    }
-                }
+                1 -> FeaturesScreen(
+                    allApps = allApps,
+                    iconLoader = viewModel.iconLoader,
+                    isSyncing = isSyncing,
+                    onSaveFeature = { featureKey, enabledPackages, allPackages ->
+                        viewModel.batchConfigureFeature(featureKey, enabledPackages, allPackages)
+                    },
+                    listState = featuresListState
+                )
+
+                2 -> TemplatesScreen(
+                    status = status,
+                    allApps = allApps,
+                    iconLoader = viewModel.iconLoader,
+                    scrollState = templatesScrollState,
+                    onSaveTemplate = { name, pkgs, deleteName -> viewModel.saveTemplate(name, pkgs, deleteName) },
+                    onDeleteTemplate = { name -> viewModel.deleteTemplate(name) },
+                    onApplyTemplateToApps = { template, pkgs, detach -> viewModel.applyTemplateToApps(template, pkgs, detach) }
+                )
+
+                3 -> ForensicsTabHost(
+                    viewModel = viewModel,
+                    allApps = allApps
+                )
+
+                4 -> ActionsScreen(
+                    status = status,
+                    themeMode = themeMode,
+                    dynamicColor = dynamicColor,
+                    language = language,
+                    scrollState = systemScrollState,
+                    backupManager = viewModel.configBackupManager,
+                    onThemeModeChange = { viewModel.setThemeMode(it) },
+                    onDynamicColorChange = { viewModel.setDynamicColor(it) },
+                    onLanguageChange = onLanguageChanged,
+                    onSaveStorageRules = { roots, relatives -> viewModel.updateStorageRules(roots, relatives) },
+                    onApply = { viewModel.applyChanges() },
+                    onRestore = { viewModel.restoreAll() },
+                    onRefresh = { viewModel.refreshAll() }
+                )
             }
         }
     }
 
-    // App Detail dialog when an app is tapped
     selectedApp?.let { app ->
         AppDetailDialog(
             app = app,
@@ -273,25 +295,95 @@ fun CausentryApp(
     }
 }
 
+/**
+ * Isolates high-frequency forensic logcat StateFlows inside Tab 3 so 150ms log
+ * emissions never trigger recompositions of the root Scaffold or other tabs.
+ */
+@Composable
+private fun ForensicsTabHost(
+    viewModel: MainViewModel,
+    allApps: List<AppInfo>
+) {
+    DisposableEffect(Unit) {
+        viewModel.forensicManager.setScreenActive(true)
+        onDispose {
+            viewModel.forensicManager.setScreenActive(false)
+        }
+    }
+
+    val logs by viewModel.filteredLogs.collectAsState()
+    val crashReports by viewModel.crashReports.collectAsState()
+    val isStreaming by viewModel.isLiveStreaming.collectAsState()
+    val isRecording by viewModel.isRecording.collectAsState()
+    val recordedCount by viewModel.recordedCount.collectAsState()
+    val forensicQuery by viewModel.forensicSearchQuery.collectAsState()
+    val forensicPkg by viewModel.forensicSelectedPackage.collectAsState()
+    val forensicLevel by viewModel.forensicSelectedLevel.collectAsState()
+    val forensicTagFilter by viewModel.forensicTagFilter.collectAsState()
+    val forensicPidFilter by viewModel.forensicPidFilter.collectAsState()
+    val forensicRegexMode by viewModel.forensicRegexMode.collectAsState()
+    val forensicRegexError by viewModel.forensicRegexError.collectAsState()
+
+    ForensicsScreen(
+        logs = logs,
+        crashReports = crashReports,
+        allApps = allApps,
+        iconLoader = viewModel.iconLoader,
+        isStreaming = isStreaming,
+        isRecording = isRecording,
+        recordedCount = recordedCount,
+        searchQuery = forensicQuery,
+        tagFilter = forensicTagFilter,
+        pidFilter = forensicPidFilter,
+        regexMode = forensicRegexMode,
+        regexError = forensicRegexError,
+        selectedPackage = forensicPkg,
+        selectedLevel = forensicLevel,
+        onToggleStream = { viewModel.toggleLiveStreaming() },
+        onToggleRecording = { viewModel.toggleRecording() },
+        onClearLogs = { viewModel.clearLogs() },
+        onClearCrashes = { viewModel.clearCrashes() },
+        onDismissCrash = { viewModel.dismissCrash(it) },
+        onSelectPackage = { viewModel.setForensicPackage(it) },
+        onSelectLevel = { viewModel.setForensicLevel(it) },
+        onSearchQueryChange = { viewModel.setForensicSearchQuery(it) },
+        onTagFilterChange = { viewModel.setForensicTagFilter(it) },
+        onPidFilterChange = { viewModel.setForensicPidFilter(it) },
+        onToggleRegexMode = { viewModel.setForensicRegexMode(!forensicRegexMode) },
+        onResetFilters = { viewModel.clearForensicFilters() },
+        onExportZip = { viewModel.exportSessionZip() },
+        onExportLogs = { viewModel.exportLogsToFile() },
+        onInspectApp = { pkg ->
+            val target = allApps.find { it.packageName == pkg }
+            if (target != null) {
+                viewModel.onSelectApp(target)
+            }
+        }
+    )
+}
+
 @Composable
 private fun TopAppBar(
     isRefreshing: Boolean,
     isSyncing: Boolean,
     onRefresh: () -> Unit
 ) {
+    val cs = MaterialTheme.colorScheme
+    val ext = LocalCausentryColors.current
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .padding(horizontal = 20.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "Causentry",
-                    color = TextPrimary,
+                    text = stringResource(R.string.app_name),
+                    color = cs.onBackground,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -300,13 +392,13 @@ private fun TopAppBar(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(WarningAmber.copy(alpha = 0.2f))
-                            .border(1.dp, WarningAmber.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                            .background(ext.warning.copy(alpha = 0.18f))
+                            .border(1.dp, ext.warning.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = "SYNCING",
-                            color = WarningAmber,
+                            text = stringResource(R.string.badge_syncing),
+                            color = ext.warning,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace
@@ -315,81 +407,35 @@ private fun TopAppBar(
                 }
             }
             Text(
-                text = if (isSyncing) "Applying policies via root daemon..." else "Anti-Detection Control",
-                color = if (isSyncing) PrimaryBlue else TextSecondary,
-                fontSize = 12.sp
+                text = stringResource(if (isSyncing) R.string.subtitle_syncing else R.string.subtitle_control),
+                color = if (isSyncing) cs.primary else cs.onSurfaceVariant,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
 
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(10.dp))
+                .size(44.dp)
+                .clip(RoundedCornerShape(12.dp))
                 .clickable(enabled = !isRefreshing && !isSyncing, onClick = onRefresh)
-                .background(SurfaceDark)
-                .border(1.dp, BorderDark, RoundedCornerShape(10.dp))
-                .padding(8.dp)
+                .background(cs.surface)
+                .border(1.dp, ext.border, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
         ) {
             if (isRefreshing || isSyncing) {
                 CircularProgressIndicator(
-                    modifier = Modifier.width(18.dp).height(18.dp),
+                    modifier = Modifier.size(18.dp),
                     strokeWidth = 2.dp,
-                    color = if (isSyncing) WarningAmber else PrimaryBlue
+                    color = if (isSyncing) ext.warning else cs.primary
                 )
             } else {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_refresh),
                     contentDescription = "Refresh",
-                    tint = TextPrimary,
-                    modifier = Modifier.padding(2.dp).width(16.dp).height(16.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun TabRowSelector(
-    selectedTab: Int,
-    onTabSelect: (Int) -> Unit
-) {
-    val tabs = listOf("Apps", "Features", "Templates", "Forensics", "Diagnostics")
-    val haptic = LocalHapticFeedback.current
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(SurfaceDark)
-            .border(1.dp, BorderDark, RoundedCornerShape(12.dp))
-            .horizontalScroll(rememberScrollState())
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        tabs.forEachIndexed { index, label ->
-            val isSelected = selectedTab == index
-            val animatedTabBg by animateColorAsState(
-                targetValue = if (isSelected) PrimaryBlue else Color.Transparent,
-                animationSpec = tween(180),
-                label = "tabBg"
-            )
-
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(animatedTabBg)
-                    .clickable {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onTabSelect(index)
-                    }
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = label,
-                    color = if (isSelected) TextPrimary else TextSecondary,
-                    fontSize = 12.5.sp,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                    tint = cs.onSurface,
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
@@ -406,23 +452,39 @@ private fun AppsScreen(
     selectedFilter: AppFilter,
     onFilterSelect: (AppFilter) -> Unit,
     onAppClick: (AppInfo) -> Unit,
-    iconLoader: com.causentry.app.data.IconLoader
+    iconLoader: com.causentry.app.data.IconLoader,
+    listState: LazyListState
 ) {
+    val cs = MaterialTheme.colorScheme
+    val ext = LocalCausentryColors.current
     val focusManager = LocalFocusManager.current
 
+    val protectedCount = remember(allApps) { allApps.count { it.isProtected } }
+    val userCount = remember(allApps) { allApps.count { !it.isSystem } }
+    val systemCount = remember(allApps) { allApps.count { it.isSystem } }
+
     Column(modifier = Modifier.fillMaxSize()) {
-        // Pinned Top Section: Compact Hero Card, Search Bar, and Filter Chips
+        // Slim HeroStatusCard (kept per user preference)
         HeroStatusCard(
             status = status,
-            protectedCount = allApps.count { it.isProtected },
+            protectedCount = protectedCount,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 3.dp)
         )
 
-        // High-performance search bar
         OutlinedTextField(
             value = searchQuery,
             onValueChange = onSearchChange,
-            placeholder = { Text(if (allApps.isNotEmpty()) "Search ${allApps.size} apps or package..." else "Search app name or package...", color = TextSecondary, fontSize = 13.5.sp) },
+            placeholder = {
+                Text(
+                    text = if (allApps.isNotEmpty()) {
+                        stringResource(R.string.search_apps_count, allApps.size)
+                    } else {
+                        stringResource(R.string.search_apps_hint)
+                    },
+                    color = cs.onSurfaceVariant,
+                    fontSize = 13.5.sp
+                )
+            },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
@@ -434,17 +496,17 @@ private fun AppsScreen(
                 Icon(
                     painter = painterResource(id = R.drawable.ic_search),
                     contentDescription = null,
-                    tint = TextSecondary,
-                    modifier = Modifier.padding(2.dp).width(18.dp).height(18.dp)
+                    tint = cs.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
                 )
             },
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = PrimaryBlue,
-                unfocusedBorderColor = BorderDark,
-                focusedContainerColor = SurfaceDark,
-                unfocusedContainerColor = SurfaceDark,
-                focusedTextColor = TextPrimary,
-                unfocusedTextColor = TextPrimary
+                focusedBorderColor = cs.primary,
+                unfocusedBorderColor = ext.border,
+                focusedContainerColor = cs.surface,
+                unfocusedContainerColor = cs.surface,
+                focusedTextColor = cs.onSurface,
+                unfocusedTextColor = cs.onSurface
             ),
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
@@ -452,8 +514,8 @@ private fun AppsScreen(
                         Icon(
                             painter = painterResource(id = R.drawable.ic_close),
                             contentDescription = "Clear",
-                            tint = TextSecondary,
-                            modifier = Modifier.padding(2.dp).width(16.dp).height(16.dp)
+                            tint = cs.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
@@ -464,22 +526,20 @@ private fun AppsScreen(
             selectedFilter = selectedFilter,
             onFilterSelect = onFilterSelect,
             allCount = allApps.size,
-            protectedCount = allApps.count { it.isProtected },
-            userCount = allApps.count { !it.isSystem },
-            systemCount = allApps.count { it.isSystem },
+            protectedCount = protectedCount,
+            userCount = userCount,
+            systemCount = systemCount,
             modifier = Modifier.padding(vertical = 6.dp)
         )
 
-        // Scrollable Apps List (Only the applications list scrolls beneath pinned top controls)
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
         ) {
             if (allApps.isEmpty()) {
-                item {
-                    ShimmerAppList(count = 7)
-                }
+                item { ShimmerAppList(count = 7) }
             } else if (apps.isEmpty()) {
                 item {
                     Box(
@@ -490,8 +550,8 @@ private fun AppsScreen(
                     ) {
                         if (searchQuery.isNotEmpty()) {
                             Text(
-                                text = "No applications match '$searchQuery'",
-                                color = TextSecondary,
+                                text = stringResource(R.string.empty_no_match, searchQuery),
+                                color = cs.onSurfaceVariant,
                                 fontSize = 14.sp
                             )
                         } else if (selectedFilter == AppFilter.PROTECTED) {
@@ -499,40 +559,33 @@ private fun AppsScreen(
                                 Icon(
                                     painter = painterResource(id = R.drawable.ic_shield),
                                     contentDescription = null,
-                                    tint = PrimaryBlue.copy(alpha = 0.5f),
+                                    tint = cs.primary.copy(alpha = 0.5f),
                                     modifier = Modifier.size(48.dp)
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Text(
-                                    text = "No Protected Applications",
-                                    color = TextPrimary,
+                                    text = stringResource(R.string.empty_no_protected_title),
+                                    color = cs.onBackground,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = "Tap any application from the list to configure anti-detection protection.",
-                                    color = TextSecondary,
+                                    text = stringResource(R.string.empty_no_protected_desc),
+                                    color = cs.onSurfaceVariant,
                                     fontSize = 12.sp,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    textAlign = TextAlign.Center
                                 )
                             }
-                        } else if (selectedFilter == AppFilter.USER) {
-                            Text(
-                                text = "No user-installed applications found.",
-                                color = TextSecondary,
-                                fontSize = 14.sp
-                            )
-                        } else if (selectedFilter == AppFilter.SYSTEM) {
-                            Text(
-                                text = "No system applications found.",
-                                color = TextSecondary,
-                                fontSize = 14.sp
-                            )
                         } else {
+                            val res = when (selectedFilter) {
+                                AppFilter.USER -> R.string.empty_no_user_apps
+                                AppFilter.SYSTEM -> R.string.empty_no_system_apps
+                                else -> R.string.empty_no_apps
+                            }
                             Text(
-                                text = "No applications found.",
-                                color = TextSecondary,
+                                text = stringResource(res),
+                                color = cs.onSurfaceVariant,
                                 fontSize = 14.sp
                             )
                         }
@@ -544,51 +597,36 @@ private fun AppsScreen(
 
                 if (protectedApps.isNotEmpty()) {
                     item {
-                        SectionHeader(title = "PROTECTED APPLICATIONS", count = protectedApps.size, isProtected = true)
-                    }
-                    items(
-                        items = protectedApps,
-                        key = { it.packageName }
-                    ) { app ->
-                        AppItemCard(
-                            app = app,
-                            iconLoader = iconLoader,
-                            onClick = { onAppClick(app) }
+                        SectionHeader(
+                            title = stringResource(R.string.section_protected_apps),
+                            count = protectedApps.size,
+                            isProtected = true
                         )
+                    }
+                    items(items = protectedApps, key = { it.packageName }) { app ->
+                        AppItemCard(app = app, iconLoader = iconLoader, onClick = { onAppClick(app) })
                     }
                 }
 
                 if (otherApps.isNotEmpty()) {
                     item {
-                        SectionHeader(title = "ALL OTHER APPLICATIONS", count = otherApps.size, isProtected = false)
-                    }
-                    items(
-                        items = otherApps,
-                        key = { it.packageName }
-                    ) { app ->
-                        AppItemCard(
-                            app = app,
-                            iconLoader = iconLoader,
-                            onClick = { onAppClick(app) }
+                        SectionHeader(
+                            title = stringResource(R.string.section_other_apps),
+                            count = otherApps.size,
+                            isProtected = false
                         )
+                    }
+                    items(items = otherApps, key = { it.packageName }) { app ->
+                        AppItemCard(app = app, iconLoader = iconLoader, onClick = { onAppClick(app) })
                     }
                 }
             } else {
-                items(
-                    items = apps,
-                    key = { it.packageName }
-                ) { app ->
-                    AppItemCard(
-                        app = app,
-                        iconLoader = iconLoader,
-                        onClick = { onAppClick(app) }
-                    )
+                items(items = apps, key = { it.packageName }) { app ->
+                    AppItemCard(app = app, iconLoader = iconLoader, onClick = { onAppClick(app) })
                 }
             }
 
-            item {
-                Spacer(modifier = Modifier.height(30.dp))
-            }
+            item { Spacer(modifier = Modifier.height(24.dp)) }
         }
     }
 }
@@ -599,6 +637,9 @@ private fun SectionHeader(
     count: Int,
     isProtected: Boolean = false
 ) {
+    val cs = MaterialTheme.colorScheme
+    val ext = LocalCausentryColors.current
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -611,14 +652,14 @@ private fun SectionHeader(
                 Icon(
                     painter = painterResource(id = R.drawable.ic_shield),
                     contentDescription = null,
-                    tint = SuccessGreen,
+                    tint = ext.success,
                     modifier = Modifier.size(13.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
             }
             Text(
                 text = title,
-                color = if (isProtected) TextPrimary else TextSecondary,
+                color = if (isProtected) cs.onBackground else cs.onSurfaceVariant,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.6.sp
@@ -628,13 +669,13 @@ private fun SectionHeader(
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(4.dp))
-                .background(SurfaceDark)
-                .border(0.7.dp, BorderDark, RoundedCornerShape(4.dp))
+                .background(cs.surface)
+                .border(0.7.dp, ext.border, RoundedCornerShape(4.dp))
                 .padding(horizontal = 6.dp, vertical = 1.5.dp)
         ) {
             Text(
                 text = "$count",
-                color = if (isProtected) SuccessGreen else TextSecondary,
+                color = if (isProtected) ext.success else cs.onSurfaceVariant,
                 fontSize = 10.5.sp,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold
@@ -648,10 +689,13 @@ private fun TemplatesScreen(
     status: DaemonStatus,
     allApps: List<AppInfo>,
     iconLoader: com.causentry.app.data.IconLoader,
+    scrollState: androidx.compose.foundation.ScrollState,
     onSaveTemplate: (name: String, packages: List<String>, deleteName: String?) -> Unit,
     onDeleteTemplate: (String) -> Unit,
     onApplyTemplateToApps: (template: String, packages: List<String>, detach: List<String>) -> Unit
 ) {
+    val cs = MaterialTheme.colorScheme
+
     var showEditor by remember { mutableStateOf(false) }
     var editingInitialName by remember { mutableStateOf("") }
     var editingName by remember { mutableStateOf("") }
@@ -690,29 +734,30 @@ private fun TemplatesScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = 16.dp)
     ) {
-        // Pinned Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 12.dp),
+                .padding(vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Hidden-App Templates",
-                    color = TextPrimary,
+                    text = stringResource(R.string.templates_title),
+                    color = cs.onBackground,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Configure groups of apps to cloak from target package queries in system_server.",
-                    color = TextSecondary,
+                    text = stringResource(R.string.templates_subtitle),
+                    color = cs.onSurfaceVariant,
                     fontSize = 12.sp
                 )
             }
+
+            Spacer(modifier = Modifier.width(10.dp))
 
             Button(
                 onClick = {
@@ -722,18 +767,17 @@ private fun TemplatesScreen(
                     showEditor = true
                 },
                 shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
+                colors = ButtonDefaults.buttonColors(containerColor = cs.primary, contentColor = cs.onPrimary)
             ) {
-                Text("+ New", color = TextPrimary, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.action_new_template), fontWeight = FontWeight.Bold)
             }
         }
 
-        // Scrollable Templates List (Only template cards scroll beneath pinned header)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(bottom = 20.dp)
         ) {
             if (status.templates.isEmpty()) {
@@ -744,9 +788,10 @@ private fun TemplatesScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No custom templates configured yet. Tap '+ New' to create one.",
-                        color = TextSecondary,
-                        fontSize = 14.sp
+                        text = stringResource(R.string.templates_empty),
+                        color = cs.onSurfaceVariant,
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center
                     )
                 }
             } else {
@@ -773,36 +818,46 @@ private fun TemplatesScreen(
 @Composable
 private fun ActionsScreen(
     status: DaemonStatus,
+    themeMode: ThemeMode,
+    dynamicColor: Boolean,
+    language: AppLanguage,
+    scrollState: androidx.compose.foundation.ScrollState,
     backupManager: com.causentry.app.data.ConfigBackupManager,
+    onThemeModeChange: (ThemeMode) -> Unit,
+    onDynamicColorChange: (Boolean) -> Unit,
+    onLanguageChange: (AppLanguage) -> Unit,
     onSaveStorageRules: (roots: List<String>, relatives: List<String>) -> Unit,
     onApply: () -> Unit,
     onRestore: () -> Unit,
     onRefresh: () -> Unit
 ) {
+    val cs = MaterialTheme.colorScheme
+    val ext = LocalCausentryColors.current
     var showRestoreConfirm by remember { mutableStateOf(false) }
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+    val copiedToast = stringResource(R.string.logs_copied)
 
     if (showRestoreConfirm) {
         AlertDialog(
             onDismissRequest = { showRestoreConfirm = false },
-            title = { Text("Restore Default Settings?", color = TextPrimary, fontWeight = FontWeight.Bold) },
-            text = { Text("This will revert all developer options, mock location, and app cloak overrides to system defaults. Are you sure?", color = TextSecondary) },
-            containerColor = SurfaceDark,
+            title = { Text(stringResource(R.string.restore_dialog_title), color = cs.onSurface, fontWeight = FontWeight.Bold) },
+            text = { Text(stringResource(R.string.restore_dialog_body), color = cs.onSurfaceVariant) },
+            containerColor = cs.surface,
             confirmButton = {
                 TextButton(
                     onClick = {
                         showRestoreConfirm = false
                         onRestore()
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = DangerRed)
+                    colors = ButtonDefaults.textButtonColors(contentColor = ext.danger)
                 ) {
-                    Text("Restore Defaults", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.action_restore_defaults), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showRestoreConfirm = false }) {
-                    Text("Cancel", color = TextSecondary)
+                    Text(stringResource(R.string.action_cancel), color = cs.onSurfaceVariant)
                 }
             }
         )
@@ -811,19 +866,30 @@ private fun ActionsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(20.dp)
-            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .verticalScroll(scrollState)
     ) {
         DiagnosticsCard(status = status)
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
+
+        ThemeAndLanguageCard(
+            themeMode = themeMode,
+            dynamicColor = dynamicColor,
+            language = language,
+            onThemeModeChange = onThemeModeChange,
+            onDynamicColorChange = onDynamicColorChange,
+            onLanguageChange = onLanguageChange
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
 
         StorageCloakCard(
             status = status,
             onSaveStorageRules = onSaveStorageRules
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         BackupRestoreCard(
             status = status,
@@ -831,15 +897,15 @@ private fun ActionsScreen(
             onRefresh = onRefresh
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         // Engine Management Card
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(SurfaceDark)
-                .border(1.dp, BorderDark, RoundedCornerShape(16.dp))
+                .background(cs.surface)
+                .border(1.dp, ext.border, RoundedCornerShape(16.dp))
                 .padding(16.dp)
         ) {
             Row(
@@ -849,20 +915,20 @@ private fun ActionsScreen(
                 Icon(
                     painter = painterResource(id = R.drawable.ic_refresh),
                     contentDescription = null,
-                    tint = PrimaryBlue,
+                    tint = cs.primary,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
                     Text(
-                        text = "Engine Management",
-                        color = TextPrimary,
+                        text = stringResource(R.string.engine_title),
+                        color = cs.onSurface,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Apply pending rules, force reload Zygisk policy, or rollback changes",
-                        color = TextSecondary,
+                        text = stringResource(R.string.engine_subtitle),
+                        color = cs.onSurfaceVariant,
                         fontSize = 11.sp
                     )
                 }
@@ -878,35 +944,35 @@ private fun ActionsScreen(
                     onClick = onApply,
                     modifier = Modifier
                         .weight(1f)
-                        .height(44.dp),
+                        .height(48.dp),
                     shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
+                    colors = ButtonDefaults.buttonColors(containerColor = cs.primary, contentColor = cs.onPrimary)
                 ) {
-                    Text("Re-sync Engine", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.action_resync), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Button(
                     onClick = { showRestoreConfirm = true },
                     modifier = Modifier
                         .weight(1f)
-                        .height(44.dp),
+                        .height(48.dp),
                     shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed.copy(alpha = 0.85f))
+                    colors = ButtonDefaults.buttonColors(containerColor = ext.danger, contentColor = cs.onError)
                 ) {
-                    Text("Restore All", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.action_restore_all), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         // Daemon & Zygisk Logs Card
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(SurfaceDark)
-                .border(1.dp, BorderDark, RoundedCornerShape(16.dp))
+                .background(cs.surface)
+                .border(1.dp, ext.border, RoundedCornerShape(16.dp))
                 .padding(16.dp)
         ) {
             Row(
@@ -921,20 +987,20 @@ private fun ActionsScreen(
                     Icon(
                         painter = painterResource(id = R.drawable.ic_code),
                         contentDescription = null,
-                        tint = PrimaryBlue,
+                        tint = cs.primary,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
-                            text = "Daemon & Zygisk Logs",
-                            color = TextPrimary,
+                            text = stringResource(R.string.daemon_logs_title),
+                            color = cs.onSurface,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Live event stream recorded by root daemon",
-                            color = TextSecondary,
+                            text = stringResource(R.string.daemon_logs_subtitle),
+                            color = cs.onSurfaceVariant,
                             fontSize = 11.sp
                         )
                     }
@@ -943,17 +1009,17 @@ private fun ActionsScreen(
                 TextButton(
                     onClick = {
                         clipboardManager.setText(AnnotatedString(status.log))
-                        Toast.makeText(context, "Logs copied to clipboard", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, copiedToast, Toast.LENGTH_SHORT).show()
                     }
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.ic_copy),
-                        contentDescription = "Copy Logs",
-                        tint = PrimaryBlue,
+                        contentDescription = stringResource(R.string.action_copy),
+                        tint = cs.primary,
                         modifier = Modifier.size(15.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Copy", color = PrimaryBlue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.action_copy), color = cs.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
 
@@ -962,21 +1028,23 @@ private fun ActionsScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(260.dp)
+                    .height(240.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .border(1.dp, BorderDark, RoundedCornerShape(10.dp))
+                    .background(ext.surfaceHigh)
+                    .border(1.dp, ext.border, RoundedCornerShape(10.dp))
                     .padding(12.dp)
                     .verticalScroll(rememberScrollState())
             ) {
                 Text(
-                    text = if (status.log.isBlank()) "No recent log events recorded by daemon." else status.log,
-                    color = TextSecondary,
+                    text = if (status.log.isBlank()) stringResource(R.string.logs_empty) else status.log,
+                    color = cs.onSurfaceVariant,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
                     lineHeight = 16.sp
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(20.dp))
     }
 }

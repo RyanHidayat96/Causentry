@@ -10,6 +10,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,24 +36,29 @@ import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Lazy LogCat & Crash/RASP Threat Forensics engine.
+ *
+ * Zero background overhead: logcat subprocess runs ONLY while the Forensics screen is visible
+ * OR an explicit recording session is active. Uses READ_LOGS directly (no `su` prompt).
+ */
 @Singleton
 class ForensicManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val notifier: ForensicNotifier
 ) {
-    private val scope = CoroutineScope(Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val streamLock = Any()
     private var streamJob: Job? = null
     private var currentProcess: Process? = null
+    private var screenVisible = false
 
     private val entryIdGen = AtomicLong(1)
     private val crashIdGen = AtomicLong(1)
 
-    // SharedPreferences to persist live streaming state across app restarts
-    private val prefs = context.getSharedPreferences("causentry_forensics", Context.MODE_PRIVATE)
-    private val KEY_LIVE_STREAMING = "live_streaming_enabled"
-
-    // Maximum log entries kept in memory to maintain 120Hz smooth UI with rich historical buffer
-    private val maxBufferEntries = 10000
+    private val maxBufferEntries = 5000
+    private val ringBuffer = ArrayDeque<LogEntry>(maxBufferEntries + 128)
+    private val bufferLock = Any()
 
     private val _logsFlow = MutableStateFlow<List<LogEntry>>(emptyList())
     val logsFlow: StateFlow<List<LogEntry>> = _logsFlow.asStateFlow()
@@ -59,20 +66,21 @@ class ForensicManager @Inject constructor(
     private val _crashReportsFlow = MutableStateFlow<List<CrashThreatReport>>(emptyList())
     val crashReportsFlow: StateFlow<List<CrashThreatReport>> = _crashReportsFlow.asStateFlow()
 
-    private val _isLiveStreaming = MutableStateFlow(
-        prefs.getBoolean(KEY_LIVE_STREAMING, true)
-    )
+    private val _isLiveStreaming = MutableStateFlow(true)
     val isLiveStreaming: StateFlow<Boolean> = _isLiveStreaming.asStateFlow()
 
-    // Cache of PID -> Package Name
+    private val _isRecording = MutableStateFlow(false)
+    val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
+
+    private val _recordedCount = MutableStateFlow(0)
+    val recordedCount: StateFlow<Int> = _recordedCount.asStateFlow()
+
     private val pidToPackage = ConcurrentHashMap<Int, String>()
 
-    // ThreadTime pattern: 05-18 11:21:45.123  1234  5678 E Tag: Message
     private val threadTimePattern = Pattern.compile(
         "^([0-9]{2}-[0-9]{2}\\s+[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]+)\\s+([0-9]+)\\s+([0-9]+)\\s+([VDIWEF])\\s+([^:]+):\\s*(.*)$"
     )
 
-    // Crash detection state machine
     private var activeCrashTrace = StringBuilder()
     private var activeCrashPkg: String? = null
     private var activeCrashPid = 0
@@ -80,26 +88,30 @@ class ForensicManager @Inject constructor(
     private var activeCrashType = CrashType.JAVA_CRASH
     private var activeCrashLastTime = 0L
 
-    // --- LogFox-style session recording (full capture to disk, not the 1500-entry UI ring) ---
-    private val _isRecording = MutableStateFlow(
-        prefs.getBoolean("session_recording_enabled", false)
-    )
-    val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
-    private val _recordedCount = MutableStateFlow(0)
-    val recordedCount: StateFlow<Int> = _recordedCount.asStateFlow()
-
     private val recordLock = Any()
     private var recordWriter: BufferedWriter? = null
     private var sessionFile: File? = null
     private var sessionCrashes = mutableListOf<CrashThreatReport>()
-    private var sessionStartedAt = 0L
-    private var sessionTagFilter: String? = null
-    private var sessionPidFilter: Int = 0
 
-    init {
-        preloadRunningProcesses()
-        streamJob = scope.launch {
-            runLogcatLoop()
+    fun setScreenActive(active: Boolean) {
+        synchronized(streamLock) {
+            screenVisible = active
+            reconcileStreamLocked()
+        }
+    }
+
+    private fun reconcileStreamLocked() {
+        val shouldRun = screenVisible || _isRecording.value
+        if (shouldRun) {
+            if (streamJob?.isActive != true) {
+                preloadRunningProcesses()
+                streamJob = scope.launch { runLogcatLoop() }
+            }
+        } else {
+            streamJob?.cancel()
+            streamJob = null
+            try { currentProcess?.destroy() } catch (_: Throwable) {}
+            currentProcess = null
         }
     }
 
@@ -111,8 +123,7 @@ class ForensicManager @Inject constructor(
                 if (proc.pkgList != null && proc.pkgList.isNotEmpty()) {
                     pidToPackage[proc.pid] = proc.pkgList[0]
                 } else if (proc.processName != null) {
-                    val pName = proc.processName.split(":")[0]
-                    pidToPackage[proc.pid] = pName
+                    pidToPackage[proc.pid] = proc.processName.split(":")[0]
                 }
             }
         } catch (_: Throwable) {}
@@ -123,40 +134,14 @@ class ForensicManager @Inject constructor(
         return cached.equals(packageName, ignoreCase = true) || cached.startsWith("$packageName:")
     }
 
-    fun startStreaming() {
-        _isLiveStreaming.value = true
-        prefs.edit().putBoolean(KEY_LIVE_STREAMING, true).apply()
-        if (streamJob?.isActive != true) {
-            streamJob = scope.launch {
-                runLogcatLoop()
-            }
-        }
-    }
-
-    fun pauseStreaming() {
-        _isLiveStreaming.value = false
-        prefs.edit().putBoolean(KEY_LIVE_STREAMING, false).apply()
-    }
-
-    fun resumeStreaming() {
-        _isLiveStreaming.value = true
-        prefs.edit().putBoolean(KEY_LIVE_STREAMING, true).apply()
-        if (streamJob?.isActive != true) {
-            streamJob = scope.launch {
-                runLogcatLoop()
-            }
-        }
-    }
-
     fun toggleLiveStreaming() {
-        if (_isLiveStreaming.value) {
-            pauseStreaming()
-        } else {
-            resumeStreaming()
-        }
+        _isLiveStreaming.value = !_isLiveStreaming.value
     }
 
     fun clearLogs() {
+        synchronized(bufferLock) {
+            ringBuffer.clear()
+        }
         _logsFlow.value = emptyList()
     }
 
@@ -171,36 +156,20 @@ class ForensicManager @Inject constructor(
     private suspend fun runLogcatLoop() = withContext(Dispatchers.IO) {
         while (isActive) {
             try {
-                // Try reading logcat via root su first for all buffers (main, system, crash)
-                val proc = try {
-                    val p = ProcessBuilder("su", "-c", "logcat -v threadtime -b main -b system -b crash")
-                        .redirectErrorStream(true)
-                        .start()
-                    // Check if su process immediately died with error (e.g. not found, permission denied)
-                    val exited = try {
-                        p.waitFor(200, java.util.concurrent.TimeUnit.MILLISECONDS)
-                    } catch (_: Exception) { false }
-                    if (exited && p.exitValue() != 0) {
-                        throw java.io.IOException("su exited with code " + p.exitValue())
-                    }
-                    p
-                } catch (_: Throwable) {
-                    ProcessBuilder("logcat", "-v", "threadtime", "-b", "main", "-b", "system", "-b", "crash")
-                        .redirectErrorStream(true)
-                        .start()
-                }
+                // Directly invoke logcat using granted READ_LOGS permission (no `su` prompt)
+                val proc = ProcessBuilder("logcat", "-v", "threadtime", "-b", "main", "-b", "system", "-b", "crash", "-T", "250")
+                    .redirectErrorStream(true)
+                    .start()
 
                 currentProcess = proc
                 val reader = BufferedReader(InputStreamReader(proc.inputStream, Charsets.UTF_8))
-
-                val batchList = ArrayList<LogEntry>(100)
+                val batchList = ArrayList<LogEntry>(64)
                 var lastBatchEmit = System.currentTimeMillis()
 
                 var line: String? = null
                 while (isActive && reader.readLine().also { line = it } != null) {
                     val currentLine = line ?: continue
                     val entry = parseLogLine(currentLine)
-
                     if (entry != null) {
                         detectThreatsAndCrashes(entry)
                         if (_isLiveStreaming.value) {
@@ -211,120 +180,69 @@ class ForensicManager @Inject constructor(
                         }
                     }
 
-                    // Flush in batches every 150ms or when 60 lines accumulate
                     val now = System.currentTimeMillis()
-                    if (batchList.size >= 60 || (now - lastBatchEmit > 150 && batchList.isNotEmpty())) {
-                        val current = _logsFlow.value
-                        val updated = (current + batchList).takeLast(maxBufferEntries)
-                        _logsFlow.value = updated
+                    if (batchList.size >= 60 || (now - lastBatchEmit > 180 && batchList.isNotEmpty())) {
+                        val snapshot = synchronized(bufferLock) {
+                            for (e in batchList) {
+                                if (ringBuffer.size >= maxBufferEntries) {
+                                    ringBuffer.removeFirst()
+                                }
+                                ringBuffer.addLast(e)
+                            }
+                            ArrayList(ringBuffer)
+                        }
+                        _logsFlow.value = snapshot
                         batchList.clear()
                         lastBatchEmit = now
                     }
                 }
             } catch (_: Exception) {
-                // Wait briefly before reconnecting
-                kotlinx.coroutines.delay(2000)
+                delay(2000)
             } finally {
-                currentProcess?.destroy()
+                try { currentProcess?.destroy() } catch (_: Throwable) {}
                 currentProcess = null
             }
         }
     }
 
     private fun parseLogLine(raw: String): LogEntry? {
-        val matcher = threadTimePattern.matcher(raw)
-        if (!matcher.matches()) return null
-
-        val ts = matcher.group(1) ?: ""
-        val pid = matcher.group(2)?.toIntOrNull() ?: 0
-        val tid = matcher.group(3)?.toIntOrNull() ?: 0
-        val lvlChar = matcher.group(4) ?: "I"
-        val tag = matcher.group(5)?.trim() ?: ""
-        val msg = matcher.group(6) ?: ""
-
-        val level = when (lvlChar) {
-            "V" -> LogLevel.VERBOSE
-            "D" -> LogLevel.DEBUG
-            "I" -> LogLevel.INFO
-            "W" -> LogLevel.WARN
-            "E" -> LogLevel.ERROR
-            "F" -> LogLevel.FATAL
-            else -> LogLevel.INFO
+        val parsedJson = com.causentry.app.core.CausentryRustBridge.parseLogcatLine(raw)
+        if (parsedJson.isEmpty()) return null
+        return try {
+            val obj = org.json.JSONObject(parsedJson)
+            val ts = obj.optString("ts", "")
+            val pid = obj.optInt("pid", 0)
+            val tid = obj.optInt("tid", 0)
+            val lvlChar = obj.optString("lvl", "I")
+            val tag = obj.optString("tag", "")
+            val msg = obj.optString("msg", "")
+            val hintPid = obj.optInt("hintPid", 0)
+            val hintPkg = obj.optString("hintPkg", "")
+            if (hintPid > 0 && hintPkg.isNotEmpty()) {
+                pidToPackage[hintPid] = hintPkg
+            }
+            val level = when (lvlChar) {
+                "V" -> LogLevel.VERBOSE
+                "D" -> LogLevel.DEBUG
+                "I" -> LogLevel.INFO
+                "W" -> LogLevel.WARN
+                "E" -> LogLevel.ERROR
+                "F" -> LogLevel.FATAL
+                else -> LogLevel.INFO
+            }
+            LogEntry(
+                id = entryIdGen.getAndIncrement(),
+                timestamp = ts,
+                pid = pid,
+                tid = tid,
+                level = level,
+                tag = tag,
+                message = msg,
+                packageName = pidToPackage[pid]
+            )
+        } catch (_: Throwable) {
+            null
         }
-
-        // Cache package mappings from system activity logs and runtime logs
-        if (tag == "ActivityManager") {
-            if (msg.contains("Start proc") && msg.contains(":")) {
-                extractPkgFromStartProc(pid, msg)
-            }
-        } else if (tag == "AndroidRuntime" && msg.contains("Process: ") && msg.contains("PID: ")) {
-            extractPkgFromAndroidRuntime(msg)
-        } else if (tag == "Zygote" && msg.contains("process_name_ptr:")) {
-            extractPkgFromZygote(msg)
-        }
-
-        val pkg = pidToPackage[pid]
-
-        return LogEntry(
-            id = entryIdGen.getAndIncrement(),
-            timestamp = ts,
-            pid = pid,
-            tid = tid,
-            level = level,
-            tag = tag,
-            message = msg,
-            packageName = pkg
-        )
-    }
-
-    private fun extractPkgFromStartProc(pid: Int, msg: String) {
-        // e.g.: Start proc 29573:com.bpjstku/u0a405 for activity ...
-        val idx = msg.indexOf("Start proc ")
-        if (idx >= 0) {
-            val sub = msg.substring(idx + 11)
-            val parts = sub.split(":")
-            if (parts.size >= 2) {
-                val p = parts[0].trim().toIntOrNull() ?: return
-                val pkgWithExtra = parts[1].split("/")[0].trim()
-                if (pkgWithExtra.isNotEmpty()) {
-                    pidToPackage[p] = pkgWithExtra
-                }
-            }
-        }
-    }
-
-    private fun extractPkgFromAndroidRuntime(msg: String) {
-        // e.g.: Process: com.bcadigital.blu, PID: 12307
-        try {
-            val pIdx = msg.indexOf("Process: ")
-            val pidIdx = msg.indexOf("PID: ")
-            if (pIdx >= 0 && pidIdx > pIdx) {
-                val pkgPart = msg.substring(pIdx + 9, pidIdx).replace(",", "").trim()
-                val pidPart = msg.substring(pidIdx + 5).trim().takeWhile { it.isDigit() }
-                val p = pidPart.toIntOrNull()
-                if (p != null && pkgPart.isNotEmpty()) {
-                    pidToPackage[p] = pkgPart.split(":")[0]
-                }
-            }
-        } catch (_: Throwable) {}
-    }
-
-    private fun extractPkgFromZygote(msg: String) {
-        // e.g.: process_name_ptr:12307 com.bcadigital.blu
-        try {
-            val idx = msg.indexOf("process_name_ptr:")
-            if (idx >= 0) {
-                val sub = msg.substring(idx + 17).trim()
-                val parts = sub.split("\\s+".toRegex())
-                if (parts.size >= 2) {
-                    val p = parts[0].toIntOrNull()
-                    val pkg = parts[1].split(":")[0]
-                    if (p != null && pkg.isNotEmpty()) {
-                        pidToPackage[p] = pkg
-                    }
-                }
-            }
-        } catch (_: Throwable) {}
     }
 
     private fun detectThreatsAndCrashes(entry: LogEntry) {
@@ -332,12 +250,10 @@ class ForensicManager @Inject constructor(
         val msg = entry.message
         val now = System.currentTimeMillis()
 
-        // Commit pending crash trace if timeout elapsed (1.5s idle)
         if (activeCrashTrace.isNotEmpty() && activeCrashLastTime > 0 && now - activeCrashLastTime > 1500) {
             commitActiveCrash()
         }
 
-        // 1. AndroidRuntime FATAL EXCEPTION (Java crash or RASP trap)
         if (tag == "AndroidRuntime" && msg.contains("FATAL EXCEPTION:")) {
             commitActiveCrash()
             activeCrashTrace.clear()
@@ -346,8 +262,6 @@ class ForensicManager @Inject constructor(
             activeCrashPid = entry.pid
             activeCrashLastTime = now
             activeCrashType = CrashType.JAVA_CRASH
-
-            // Parse process name if present in line
             val procIdx = msg.indexOf("Process: ")
             if (procIdx >= 0) {
                 val procSub = msg.substring(procIdx + 9).split(",")[0].trim()
@@ -357,25 +271,18 @@ class ForensicManager @Inject constructor(
             return
         }
 
-        // Append ongoing crash stack trace (do NOT drop on interleaved system tags)
         if (tag == "AndroidRuntime" && activeCrashTrace.isNotEmpty() && activeCrashPid == entry.pid) {
             activeCrashTrace.appendLine(msg)
             activeCrashLastTime = now
-
             if (msg.contains("Process: ")) {
                 val sub = msg.substringAfter("Process: ").substringBefore(",").trim()
                 activeCrashPkg = sub
                 pidToPackage[entry.pid] = sub
             }
-
-            // Cap trace buffer to avoid memory blowout
-            if (activeCrashTrace.length > 15000) {
-                commitActiveCrash()
-            }
+            if (activeCrashTrace.length > 15000) commitActiveCrash()
             return
         }
 
-        // 2. Native Crash (DEBUG tombstone)
         if (tag == "DEBUG" && (msg.contains("*** *** ***") || msg.contains("signal 11 (SIGSEGV)") || msg.contains("signal 6 (SIGABRT)"))) {
             commitActiveCrash()
             activeCrashTrace.clear()
@@ -384,9 +291,7 @@ class ForensicManager @Inject constructor(
             activeCrashPid = entry.pid
             activeCrashLastTime = now
             activeCrashType = CrashType.NATIVE_CRASH
-
-            val pkg = pidToPackage[entry.pid]
-            activeCrashPkg = pkg
+            activeCrashPkg = pidToPackage[entry.pid]
             return
         }
 
@@ -396,53 +301,51 @@ class ForensicManager @Inject constructor(
             return
         }
 
-        // 3. ActivityManager ANR
         if (tag == "ActivityManager" && msg.contains("ANR in ")) {
             val pkg = msg.substringAfter("ANR in ").substringBefore(" ").substringBefore("/").trim()
-            val report = CrashThreatReport(
-                id = crashIdGen.getAndIncrement(),
-                timestamp = entry.timestamp,
-                packageName = pkg.ifEmpty { "unknown" },
-                pid = entry.pid,
-                type = CrashType.ANR,
-                title = "Application Not Responding (ANR)",
-                summary = msg,
-                fullTrace = msg,
-                threatDiagnosis = "Main thread was blocked by prolonged execution or security probe deadlock.",
-                recommendedFix = "Verify if synchronous hooks or App-Zygote probes are holding the main looper."
+            addCrashReport(
+                CrashThreatReport(
+                    id = crashIdGen.getAndIncrement(),
+                    timestamp = entry.timestamp,
+                    packageName = pkg.ifEmpty { "unknown" },
+                    pid = entry.pid,
+                    type = CrashType.ANR,
+                    title = "Application Not Responding (ANR)",
+                    summary = msg,
+                    fullTrace = msg,
+                    threatDiagnosis = "Main thread blocked by prolonged execution or security probe.",
+                    recommendedFix = "Inspect hook latency or disable App-Zygote demotion for this app."
+                )
             )
-            addCrashReport(report)
             return
         }
 
-        // 4. ActivityManager Process Death / Force Stop (Detects silent RASP exits & OOM kills)
         if (tag == "ActivityManager") {
             if (activeCrashTrace.isNotEmpty() && activeCrashPid > 0 && msg.contains("pid $activeCrashPid")) {
                 commitActiveCrash()
             } else if (msg.contains("has died")) {
-                // Example: Process id.co.btn.mobilebanking.android (pid 15586) has died: clean
                 val procPart = msg.substringAfter("Process ").substringBefore(" ")
                 val pidPart = msg.substringAfter("(pid ").substringBefore(")").toIntOrNull() ?: 0
                 val reason = msg.substringAfter("has died: ", "terminated")
-
                 if (procPart.contains(".") && !procPart.startsWith("com.android.") && !procPart.startsWith("android.")) {
                     val alreadyReported = _crashReportsFlow.value.any {
                         it.packageName == procPart && (pidPart == 0 || it.pid == pidPart)
                     }
                     if (!alreadyReported) {
-                        val report = CrashThreatReport(
-                            id = crashIdGen.getAndIncrement(),
-                            timestamp = entry.timestamp,
-                            packageName = procPart,
-                            pid = pidPart,
-                            type = CrashType.PROCESS_KILL,
-                            title = "Process Terminated (Silent / RASP Kill)",
-                            summary = "Process $procPart (PID $pidPart) died: $reason",
-                            fullTrace = msg,
-                            threatDiagnosis = "Process terminated abruptly without an uncaught Java exception. Frequently caused by native RASP security routines calling _exit(0), abort(), or trigger-killing the app when tampering is detected.",
-                            recommendedFix = "Ensure target app is cloaked with 'Demote App-Zygote' and 'Hide Developer Options' enabled in Causentry."
+                        addCrashReport(
+                            CrashThreatReport(
+                                id = crashIdGen.getAndIncrement(),
+                                timestamp = entry.timestamp,
+                                packageName = procPart,
+                                pid = pidPart,
+                                type = CrashType.PROCESS_KILL,
+                                title = "Process Terminated (Silent / RASP Exit)",
+                                summary = "Process $procPart (PID $pidPart) died: $reason",
+                                fullTrace = msg,
+                                threatDiagnosis = "Process exited without an uncaught Java exception (often RASP self-exit or OOM kill).",
+                                recommendedFix = "Check package cloak template and verify App-Zygote demotion compatibility."
+                            )
                         )
-                        addCrashReport(report)
                     }
                 }
             }
@@ -451,101 +354,60 @@ class ForensicManager @Inject constructor(
 
     private fun commitActiveCrash() {
         if (activeCrashTrace.isEmpty()) return
-
         val trace = activeCrashTrace.toString().trim()
         activeCrashTrace.clear()
-
         val pkg = activeCrashPkg ?: pidToPackage[activeCrashPid] ?: "unknown"
 
-        var threatDiagnosis: String? = null
-        var recommendedFix: String? = null
-        var title = "App Crash (FATAL EXCEPTION)"
-
-        // Intelligent RASP & Anti-Detection Heuristics
-        when {
-            trace.contains("ArrayIndexOutOfBoundsException: length=") && trace.contains("index=-1") -> {
-                title = "🚨 PairIP Anti-Tamper Crash Trap"
-                threatDiagnosis = "Target application detected root or an uncloaked component and triggered a deliberate ArrayIndexOutOfBounds trap."
-                recommendedFix = "Enable 'Block App-Zygote Probes' + 'Hide Developer Options' for $pkg in Causentry."
-            }
-            trace.contains("OutOfMemoryError: Failed to allocate") && trace.contains("allocation with") -> {
-                title = "🚨 RASP Intentional OOM Bomb"
-                threatDiagnosis = "Target application intentionally attempted to allocate an impossible buffer to self-terminate after detecting a modification."
-                recommendedFix = "Enable 'Block App-Zygote Probes' (usesAppZygote=false) to prevent isolated security worker execution."
-            }
-            trace.contains("libzimperium") || trace.contains("libpairipcore") || trace.contains("libsecneo") || trace.contains("libdexguard") -> {
-                title = "🚨 Commercial RASP Shield Self-Defense"
-                threatDiagnosis = "Security library detected an integrity anomaly and called abort() or exit()."
-                recommendedFix = "Ensure target is added to Causentry Cloaked Targets with system_server hooks enabled."
-            }
-            activeCrashType == CrashType.NATIVE_CRASH -> {
-                title = "Native Signal Crash (SIGSEGV/SIGABRT)"
-                threatDiagnosis = "Process crashed in native C/C++ memory space."
-                recommendedFix = "Inspect fault address and library offset in stack trace below."
-            }
-        }
-
-        val summary = trace.lineSequence().take(4).joinToString("\n")
-
-        val report = CrashThreatReport(
-            id = crashIdGen.getAndIncrement(),
-            timestamp = activeCrashTimestamp.ifEmpty { "Recent" },
-            packageName = pkg,
-            pid = activeCrashPid,
-            type = activeCrashType,
-            title = title,
-            summary = summary,
-            fullTrace = trace,
-            threatDiagnosis = threatDiagnosis,
-            recommendedFix = recommendedFix
+        val classified = org.json.JSONObject(
+            com.causentry.app.core.CausentryRustBridge.classifyCrashTrace(trace, pkg, activeCrashType.name)
         )
+        val title = classified.optString("title", "App Crash (FATAL EXCEPTION)")
+        val threatDiagnosis = classified.optString("diagnosis", "").ifEmpty { null }
+        val recommendedFix = classified.optString("fix", "").ifEmpty { null }
 
-        addCrashReport(report)
+        addCrashReport(
+            CrashThreatReport(
+                id = crashIdGen.getAndIncrement(),
+                timestamp = activeCrashTimestamp.ifEmpty { "Recent" },
+                packageName = pkg,
+                pid = activeCrashPid,
+                type = activeCrashType,
+                title = title,
+                summary = trace.lineSequence().take(4).joinToString("\n"),
+                fullTrace = trace,
+                threatDiagnosis = threatDiagnosis,
+                recommendedFix = recommendedFix
+            )
+        )
         activeCrashPkg = null
         activeCrashPid = 0
         activeCrashLastTime = 0L
     }
 
     private fun addCrashReport(report: CrashThreatReport) {
-        val current = _crashReportsFlow.value
-        _crashReportsFlow.value = listOf(report) + current.take(49)
-        // LogFox-style proactive alert: notify user even when the app is backgrounded
+        _crashReportsFlow.value = listOf(report) + _crashReportsFlow.value.take(49)
         try { notifier.notifyCrash(report) } catch (_: Throwable) {}
-        // Capture crash into the active recording session so the ZIP export includes it
         synchronized(recordLock) {
-            if (_isRecording.value) {
-                sessionCrashes.add(report)
-            }
+            if (_isRecording.value) sessionCrashes.add(report)
         }
     }
 
-    // ------------------------------------------------------------------
-    // LogFox-style session recording (full capture to disk)
-    // ------------------------------------------------------------------
-    fun startRecording(tagFilter: String? = null, pidFilter: Int = 0): Boolean {
-        synchronized(recordLock) {
+    fun startRecording(): Boolean {
+        val started = synchronized(recordLock) {
             if (_isRecording.value) return true
-            return try {
+            try {
                 val dir = File(context.cacheDir, "logs")
                 if (!dir.exists()) dir.mkdirs()
-                val ts = timestampForFile()
-                val file = File(dir, "causentry-session-$ts.log")
+                val file = File(dir, "causentry-session-${timestampForFile()}.log")
                 val writer = BufferedWriter(OutputStreamWriter(FileOutputStream(file), Charsets.UTF_8), 32 * 1024)
                 writer.appendLine("# Causentry Forensic Session Recording")
                 writer.appendLine("# Started: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())}")
-                writer.appendLine("# Filter: tag=${tagFilter ?: "*"} pid=${if (pidFilter > 0) pidFilter else "*"}")
-                writer.appendLine("# Format: MM-DD HH:mm:ss.SSS PID TID LVL TAG: message")
                 writer.appendLine()
                 sessionFile = file
                 recordWriter = writer
                 sessionCrashes = mutableListOf()
-                sessionStartedAt = System.currentTimeMillis()
-                sessionTagFilter = tagFilter?.trim()?.takeIf { it.isNotEmpty() }
-                sessionPidFilter = pidFilter
                 _recordedCount.value = 0
                 _isRecording.value = true
-                prefs.edit().putBoolean("session_recording_enabled", true).apply()
-                // Persistent ongoing-recording indicator (LogFox-style)
                 try { notifier.showRecordingOngoing(0) } catch (_: Throwable) {}
                 true
             } catch (_: Throwable) {
@@ -554,53 +416,44 @@ class ForensicManager @Inject constructor(
                 false
             }
         }
+        if (started) {
+            synchronized(streamLock) { reconcileStreamLocked() }
+        }
+        return started
     }
 
-    /** Stop recording, flush & close the capture file. Returns the raw log file (not zipped). */
     fun stopRecording(): File? {
-        synchronized(recordLock) {
-            val file = sessionFile
+        val file = synchronized(recordLock) {
+            val f = sessionFile
             try {
                 recordWriter?.flush()
                 recordWriter?.close()
             } catch (_: Throwable) {}
             recordWriter = null
             _isRecording.value = false
-            prefs.edit().putBoolean("session_recording_enabled", false).apply()
             try { notifier.cancelRecordingOngoing() } catch (_: Throwable) {}
-            return file
+            f
         }
+        synchronized(streamLock) { reconcileStreamLocked() }
+        return file
     }
 
-    fun toggleRecording(): Boolean {
-        return if (_isRecording.value) { stopRecording(); false } else { startRecording(); _isRecording.value }
-    }
+    fun toggleRecording(): Boolean =
+        if (_isRecording.value) { stopRecording(); false } else { startRecording(); _isRecording.value }
 
     private fun appendToRecord(entry: LogEntry) {
         synchronized(recordLock) {
             val writer = recordWriter ?: return
-            // Session-scoped tag/PID filters (independent of the UI view filters)
-            val tf = sessionTagFilter
-            if (tf != null && !entry.tag.contains(tf, ignoreCase = true)) return
-            if (sessionPidFilter > 0 && entry.pid != sessionPidFilter) return
             try {
-                writer.append(entry.timestamp)
-                writer.append(' ')
-                writer.append(entry.pid.toString())
-                writer.append(' ')
-                writer.append(entry.tid.toString())
-                writer.append(' ')
-                writer.append(entry.level.letter)
-                writer.append(' ')
-                writer.append(entry.tag)
-                writer.append(": ")
-                writer.append(entry.message)
-                writer.append('\n')
+                writer.append(entry.timestamp).append(' ')
+                    .append(entry.pid.toString()).append(' ')
+                    .append(entry.tid.toString()).append(' ')
+                    .append(entry.level.letter).append(' ')
+                    .append(entry.tag).append(": ")
+                    .append(entry.message).append('\n')
                 val c = _recordedCount.value + 1
                 _recordedCount.value = c
-                // Periodic flush so a crash never loses the tail of the capture
                 if (c % 200 == 0) writer.flush()
-                // Keep the ongoing-recording indicator count fresh
                 if (c % 500 == 0) {
                     try { notifier.showRecordingOngoing(c) } catch (_: Throwable) {}
                 }
@@ -611,87 +464,47 @@ class ForensicManager @Inject constructor(
     private fun timestampForFile(): String =
         SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
 
-    /** Collect device/build info, mirroring LogFox's exported "device info". */
-    private fun collectDeviceInfo(): String {
-        val sb = StringBuilder()
-        fun line(k: String, v: String) { sb.append(k).append(": ").append(v).append('\n') }
-        line("App Version", appVersionName())
-        line("Manufacturer", Build.MANUFACTURER ?: "unknown")
-        line("Brand", Build.BRAND ?: "unknown")
-        line("Model", Build.MODEL ?: "unknown")
-        line("Device", Build.DEVICE ?: "unknown")
-        line("Product", Build.PRODUCT ?: "unknown")
-        line("Android Release", Build.VERSION.RELEASE ?: "unknown")
-        line("SDK Int", Build.VERSION.SDK_INT.toString())
-        line("Build ID", Build.ID ?: "unknown")
-        line("Build Fingerprint", Build.FINGERPRINT ?: "unknown")
-        line("ABIs", Build.SUPPORTED_ABIS?.joinToString(", ") ?: "unknown")
-        line("Hardware", Build.HARDWARE ?: "unknown")
-        line("Bootloader", Build.BOOTLOADER ?: "unknown")
-        line("Kernel", System.getProperty("os.version") ?: "unknown")
-        line("Locale", Locale.getDefault().toString())
-        line("Export Time", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
-        return sb.toString()
+    private fun collectDeviceInfo(): String = buildString {
+        appendLine("Manufacturer: ${Build.MANUFACTURER}")
+        appendLine("Model: ${Build.MODEL}")
+        appendLine("Device: ${Build.DEVICE}")
+        appendLine("Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
+        appendLine("Fingerprint: ${Build.FINGERPRINT}")
+        appendLine("ABIs: ${Build.SUPPORTED_ABIS.joinToString(", ")}")
+        appendLine("Kernel: ${System.getProperty("os.version") ?: "unknown"}")
+        appendLine("Exported: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())}")
     }
 
-    private fun appVersionName(): String = try {
-        val pi = context.packageManager.getPackageInfo(context.packageName, 0)
-        pi.versionName ?: "unknown"
-    } catch (_: Throwable) { "unknown" }
-
-    /** Human-readable crash digest (only crashes captured during/held in current session). */
-    private fun buildCrashDigest(crashes: List<CrashThreatReport>): String {
-        val sb = StringBuilder()
-        sb.appendLine("=== CAUSENTRY CRASH & THREAT REPORT ===")
-        sb.appendLine("Total Crashes: ${crashes.size}")
-        sb.appendLine()
-        if (crashes.isEmpty()) {
-            sb.appendLine("No crashes or threat triggers recorded in this session.")
-            return sb.toString()
-        }
+    private fun buildCrashDigest(crashes: List<CrashThreatReport>): String = buildString {
+        appendLine("=== CAUSENTRY CRASH & THREAT REPORT ===")
+        appendLine("Total: ${crashes.size}")
+        appendLine()
         for (c in crashes) {
-            sb.appendLine("[CRASH #${c.id}] ${c.timestamp} - ${c.packageName} (PID ${c.pid})")
-            sb.appendLine("Type: ${c.type}")
-            sb.appendLine("Title: ${c.title}")
-            c.threatDiagnosis?.let {
-                sb.appendLine("Diagnosis: $it")
-                sb.appendLine("Recommendation: ${c.recommendedFix}")
-            }
-            sb.appendLine("Trace:")
-            sb.appendLine(c.fullTrace)
-            sb.appendLine("--------------------------------------------------")
+            appendLine("[#${c.id}] ${c.timestamp} - ${c.packageName} (PID ${c.pid}) [${c.type}]")
+            appendLine("Title: ${c.title}")
+            c.threatDiagnosis?.let { appendLine("Diagnosis: $it") }
+            c.recommendedFix?.let { appendLine("Fix: $it") }
+            appendLine(c.fullTrace)
+            appendLine("--------------------------------------------------")
         }
-        return sb.toString()
     }
 
-    /**
-     * LogFox-style export: bundles the captured session log, a crash-threat digest and a
-     * device-info sheet into a single shareable .zip. If no session is active, exports the
-     * current in-memory ring buffer instead so the button always produces something useful.
-     */
     fun exportSessionZip(): File? {
         return try {
-            // If actively recording, flush current writer but keep the session going
             val rawFile: File?
             var crashes: List<CrashThreatReport>
             synchronized(recordLock) {
                 if (_isRecording.value) {
                     try { recordWriter?.flush() } catch (_: Throwable) {}
-                    rawFile = sessionFile
-                    crashes = sessionCrashes.toList()
-                } else {
-                    rawFile = sessionFile
-                    crashes = sessionCrashes.toList()
                 }
+                rawFile = sessionFile
+                crashes = sessionCrashes.toList()
             }
 
-            // Fallback: no recorded file → synthesize from live ring buffer + live crash reports
-            val logText: String = if (rawFile != null && rawFile.exists()) {
+            val logText = if (rawFile != null && rawFile.exists()) {
                 rawFile.readText()
             } else {
                 buildString {
-                    appendLine("# Causentry live log snapshot (no active recording)")
-                    appendLine()
                     for (l in _logsFlow.value) {
                         appendLine("${l.timestamp} ${l.pid} ${l.tid} ${l.level.letter} ${l.tag}: ${l.message}")
                     }
@@ -705,9 +518,8 @@ class ForensicManager @Inject constructor(
 
             ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { zip ->
                 fun put(name: String, content: String) {
-                    val bytes = content.toByteArray(Charsets.UTF_8)
                     zip.putNextEntry(ZipEntry(name))
-                    zip.write(bytes)
+                    zip.write(content.toByteArray(Charsets.UTF_8))
                     zip.closeEntry()
                 }
                 put("logs.txt", logText)
@@ -720,43 +532,5 @@ class ForensicManager @Inject constructor(
         }
     }
 
-    fun exportLogsToFile(): File? {
-        return try {
-            val dir = File(context.cacheDir, "logs")
-            if (!dir.exists()) dir.mkdirs()
-
-            val file = File(dir, "causentry-forensic-${System.currentTimeMillis()}.txt")
-            file.bufferedWriter().use { writer ->
-                writer.appendLine("=== CAUSENTRY FORENSIC & CRASH LOG DUMP ===")
-                writer.appendLine("Generated: ${java.util.Date()}")
-                writer.appendLine("Total Entries: ${_logsFlow.value.size}")
-                writer.appendLine("Total Crashes Recorded: ${_crashReportsFlow.value.size}")
-                writer.appendLine()
-
-                if (_crashReportsFlow.value.isNotEmpty()) {
-                    writer.appendLine("--- DETECTED CRASHES & THREATS ---")
-                    for (crash in _crashReportsFlow.value) {
-                        writer.appendLine("[CRASH #${crash.id}] ${crash.timestamp} - ${crash.packageName} (PID ${crash.pid})")
-                        writer.appendLine("Title: ${crash.title}")
-                        if (crash.threatDiagnosis != null) {
-                            writer.appendLine("Diagnosis: ${crash.threatDiagnosis}")
-                            writer.appendLine("Recommendation: ${crash.recommendedFix}")
-                        }
-                        writer.appendLine("Stack Trace:")
-                        writer.appendLine(crash.fullTrace)
-                        writer.appendLine("--------------------------------------------------")
-                    }
-                    writer.appendLine()
-                }
-
-                writer.appendLine("--- LOGCAT STREAM ---")
-                for (log in _logsFlow.value) {
-                    writer.appendLine("${log.timestamp} ${log.pid} ${log.tid} ${log.level.letter} ${log.tag}: ${log.message}")
-                }
-            }
-            file
-        } catch (_: Exception) {
-            null
-        }
-    }
+    fun exportLogsToFile(): File? = exportSessionZip()
 }

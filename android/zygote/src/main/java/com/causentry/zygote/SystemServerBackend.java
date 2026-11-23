@@ -4,15 +4,13 @@ import android.annotation.SuppressLint;
 import android.os.Process;
 import android.util.Log;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.lang.reflect.Method;
-import java.nio.charset.StandardCharsets;
+import org.json.JSONObject;
 
-/** Minimal system_server lifecycle proof; package hooks are installed after boot readiness. */
+import java.lang.reflect.Method;
+
+/** Coordinates system_server hook installation and live telemetry reporting to causentryd. */
 final class SystemServerBackend {
     private static final String TAG = "CausentryZygote";
-    private static final File STATE_DIR = new File("/data/system/causentry");
 
     private SystemServerBackend() {}
 
@@ -22,17 +20,12 @@ final class SystemServerBackend {
             return;
         }
 
-        try {
-            if (!STATE_DIR.exists() && !STATE_DIR.mkdirs()) {
-                throw new IllegalStateException("cannot create " + STATE_DIR);
-            }
-            writeMarker("zygisk.loaded", Integer.toString(Process.myPid()));
-            writeMarker("zygisk.system_server", "ready\n" + Process.myPid());
-            Log.i(TAG, "loaded in system_server pid=" + Process.myPid());
-        } catch (Throwable error) {
-            Log.e(TAG, "backend status unavailable", error);
-        }
-        // A diagnostics write failure must not prevent the actual backend from starting.
+        PolicyChannel.addListener(CloakPolicy::applyPushPolicy);
+        PolicyChannel.start("system_server");
+        CloakPolicy.loadColdStartFallback();
+
+        Log.i(TAG, "loaded in system_server pid=" + Process.myPid());
+
         Thread hookThread = new Thread(SystemServerBackend::installWhenPackageManagerReady, "causentry-hooks");
         hookThread.setDaemon(true);
         hookThread.start();
@@ -53,80 +46,60 @@ final class SystemServerBackend {
                 return;
             }
         }
-        PackageCloakHooks.install();
-        installSystemSettingsHooks();
-        installUsbStateHooks();
+
+        PackageCloakHooks.InstallResult pkgResult = PackageCloakHooks.install();
+        int settingsHooks = installSystemSettingsHooks();
+        int usbHooks = installUsbStateHooks();
+
+        try {
+            JSONObject telemetry = new JSONObject();
+            telemetry.put("pkgHooks", pkgResult.pkgHooks);
+            telemetry.put("appZygoteHooks", pkgResult.appZygoteHooks);
+            telemetry.put("a11yHooks", pkgResult.a11yHooks);
+            telemetry.put("settingsHooks", settingsHooks);
+            telemetry.put("usbHooks", usbHooks);
+            PolicyChannel.sendTelemetry(telemetry);
+        } catch (Throwable ignored) {}
     }
 
-    /**
-     * Keeps the sticky USB_STATE broadcast honest (adb=false) for protected
-     * apps. Runs even when SettingsProvider lives in another process, because
-     * the broadcast never passes through that provider.
-     */
-    private static void installUsbStateHooks() {
+    private static int installUsbStateHooks() {
         try {
-            int hooks = UsbStateHooks.install();
-            if (hooks > 0) {
-                writeMarker("zygisk.usb.ready", Integer.toString(Process.myPid()) + " " + hooks);
-            }
+            ClassLoader loader = findSystemServerLoader();
+            int hooks = UsbStateHooks.install(loader);
             Log.i(TAG, "usb state hooks=" + hooks);
+            return hooks;
         } catch (Throwable error) {
             Log.w(TAG, "usb state hook install failed", error);
+            return 0;
         }
     }
 
-    private static void installSystemSettingsHooks() {
-        // AOSP may host SettingsProvider in its own package process, while MIUI
-        // hosts it inside system_server. The dedicated package marker covers the
-        // former; retry briefly for the latter while framework providers finish
-        // initializing, without target-app injection.
-        for (int attempt = 0; attempt < 10; attempt++) {
-            int hooks = SettingsProviderHooks.install();
+    private static int installSystemSettingsHooks() {
+        for (int attempt = 0; attempt < 8; attempt++) {
+            int hooks = SettingsProviderHooks.install(true);
             if (hooks > 0) {
-                markSettingsProviderReady(hooks);
-                return;
+                Log.i(TAG, "system_server hosted SettingsProvider hooks=" + hooks);
+                return hooks;
             }
             try {
                 Thread.sleep(500L);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
-                return;
+                return 0;
             }
         }
         Log.i(TAG, "SettingsProvider not hosted in system_server");
+        return 0;
     }
 
-    static void markCloakReady(int hookCount) {
+    private static ClassLoader findSystemServerLoader() {
         try {
-            writeMarker("zygisk.cloak.ready", Integer.toString(Process.myPid()) + " " + hookCount);
-            Log.i(TAG, "package cloak ready hooks=" + hookCount);
-        } catch (Throwable error) {
-            Log.e(TAG, "failed to write cloak-ready marker", error);
-        }
-    }
-
-    static void markSettingsProviderReady(int hookCount) {
-        try {
-            if (!STATE_DIR.exists() && !STATE_DIR.mkdirs()) {
-                throw new IllegalStateException("cannot create " + STATE_DIR);
-            }
-            writeMarker("zygisk.settings.ready", Integer.toString(Process.myPid()) + " " + hookCount);
-            Log.i(TAG, "settings provider cloak ready hooks=" + hookCount);
-        } catch (Throwable error) {
-            Log.e(TAG, "failed to write settings-ready marker", error);
-        }
-    }
-
-    private static void writeMarker(String name, String value) throws Exception {
-        File target = new File(STATE_DIR, name);
-        File temporary = new File(STATE_DIR, "." + name + ".tmp");
-        try (FileOutputStream stream = new FileOutputStream(temporary, false)) {
-            stream.write((value + "\n").getBytes(StandardCharsets.US_ASCII));
-            stream.getFD().sync();
-        }
-        if (!temporary.renameTo(target)) {
-            throw new IllegalStateException("cannot replace " + target);
-        }
-        target.setReadable(true, false);
+            Class<?> zygoteInit = Class.forName("com.android.internal.os.ZygoteInit");
+            Method method = zygoteInit.getDeclaredMethod("getOrCreateSystemServerClassLoader");
+            method.setAccessible(true);
+            Object loader = method.invoke(null);
+            if (loader instanceof ClassLoader) return (ClassLoader) loader;
+        } catch (Throwable ignored) {}
+        return SystemServerBackend.class.getClassLoader();
     }
 }

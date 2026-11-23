@@ -1,11 +1,11 @@
 package com.causentry.zygote;
 
-import android.os.FileObserver;
 import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.nio.charset.StandardCharsets;
@@ -14,209 +14,233 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
-/** Reads the daemon's atomic target UID -> hidden package policy. */
+/**
+ * Lock-free, push-updated policy store.
+ * Zero disk I/O in hot paths: updates arrive via PolicyChannel from causentryd,
+ * with a single cold-start fallback read from /data/system/causentry/cloak.json (0640 system:system).
+ */
 final class CloakPolicy {
     private static final String TAG = "CausentryZygote";
-    private static final File[] POLICIES = new File[]{
-            new File("/data/system/causentry/cloak.json"),
-            new File("/data/local/tmp/causentry/cloak.json"),
-            new File("/sdcard/Android/media/com.causentry.app/cloak.json"),
-            new File("/data/media/0/Android/media/com.causentry.app/cloak.json"),
-    };
-    private static final long REFRESH_MS = 1000L;
+    private static final File SYSTEM_POLICY_FILE = new File("/data/system/causentry/cloak.json");
+    private static final File PROBE_FLAG = new File("/data/system/causentry/probe");
+    private static final int PER_USER_RANGE = 100_000;
 
-    private static volatile long lastModified;
-    private static volatile long lastLength;
-    private static volatile long lastRead;
-    private static volatile String lastPolicyPath = "";
-    private static volatile boolean policyDirty = true;
-    private static volatile FileObserver policyObserver;
-    private static volatile Map<Integer, Set<String>> hiddenByUid = Collections.emptyMap();
-    private static volatile Set<String> appZygoteBlocked = Collections.emptySet();
-    private static volatile Set<Integer> developerOptionsUids = Collections.emptySet();
-    private static volatile Set<Integer> accessibilityUids = Collections.emptySet();
+    static final class Snapshot {
+        static final Snapshot EMPTY = new Snapshot(
+                Collections.emptyMap(),
+                Collections.emptyMap(),
+                Collections.emptySet(),
+                Collections.emptySet(),
+                Collections.emptySet(),
+                Collections.emptySet(),
+                0L
+        );
+
+        final Map<Integer, Set<String>> hiddenByAppId;
+        final Map<Integer, Set<Integer>> hiddenAppIdsByCaller;
+        final Set<String> appZygoteBlocked;
+        final Set<Integer> developerOptionsAppIds;
+        final Set<Integer> accessibilityAppIds;
+        final Set<Integer> mockLocationAppIds;
+        final long generation;
+
+        Snapshot(
+                Map<Integer, Set<String>> hiddenByAppId,
+                Map<Integer, Set<Integer>> hiddenAppIdsByCaller,
+                Set<String> appZygoteBlocked,
+                Set<Integer> developerOptionsAppIds,
+                Set<Integer> accessibilityAppIds,
+                Set<Integer> mockLocationAppIds,
+                long generation
+        ) {
+            this.hiddenByAppId = hiddenByAppId;
+            this.hiddenAppIdsByCaller = hiddenAppIdsByCaller;
+            this.appZygoteBlocked = appZygoteBlocked;
+            this.developerOptionsAppIds = developerOptionsAppIds;
+            this.accessibilityAppIds = accessibilityAppIds;
+            this.mockLocationAppIds = mockLocationAppIds;
+            this.generation = generation;
+        }
+    }
+
+    private static final AtomicReference<Snapshot> CURRENT = new AtomicReference<>(Snapshot.EMPTY);
+    private static volatile long probeCheckedAt;
+    private static volatile boolean probeOn;
 
     private CloakPolicy() {}
 
+    static int toAppId(int uid) {
+        return uid < 0 ? -1 : (uid % PER_USER_RANGE);
+    }
+
     static boolean hasHiddenPackages(int uid) {
-        if (uid < 10000) return false;
-        refresh(false);
-        Set<String> hidden = hiddenByUid.get(uid);
+        int appId = toAppId(uid);
+        if (appId < 10_000) return false;
+        Set<String> hidden = CURRENT.get().hiddenByAppId.get(appId);
         return hidden != null && !hidden.isEmpty();
     }
 
     static boolean hides(int uid, String packageName) {
-        if (packageName == null || uid < 10000) return false;
-        refresh(false);
-        Set<String> hidden = hiddenByUid.get(uid);
+        if (packageName == null || packageName.isEmpty()) return false;
+        int appId = toAppId(uid);
+        if (appId < 10_000) return false;
+        Set<String> hidden = CURRENT.get().hiddenByAppId.get(appId);
         return hidden != null && hidden.contains(packageName);
+    }
+
+    static boolean hidesUid(int callerUid, int targetUid) {
+        int callerAppId = toAppId(callerUid);
+        int targetAppId = toAppId(targetUid);
+        if (callerAppId < 10_000 || targetAppId < 10_000 || callerAppId == targetAppId) return false;
+        Set<Integer> hiddenUids = CURRENT.get().hiddenAppIdsByCaller.get(callerAppId);
+        return hiddenUids != null && hiddenUids.contains(targetAppId);
     }
 
     static boolean blocksAppZygote(String packageName) {
         if (packageName == null || packageName.isEmpty()) return false;
-        refresh(false);
-        if (appZygoteBlocked.contains(packageName)) return true;
+        Set<String> set = CURRENT.get().appZygoteBlocked;
+        if (set.isEmpty()) return false;
+        if (set.contains(packageName)) return true;
         int colon = packageName.indexOf(':');
-        return colon > 0 && appZygoteBlocked.contains(packageName.substring(0, colon));
+        return colon > 0 && set.contains(packageName.substring(0, colon));
     }
 
     static boolean hidesDeveloperOptions(int uid) {
-        if (uid < 10000) return false;
-        refresh(false);
-        return developerOptionsUids.contains(uid);
+        int appId = toAppId(uid);
+        return appId >= 10_000 && CURRENT.get().developerOptionsAppIds.contains(appId);
     }
 
     static boolean hidesAccessibility(int uid) {
-        if (uid < 10000) return false;
-        refresh(false);
-        return accessibilityUids.contains(uid);
+        int appId = toAppId(uid);
+        return appId >= 10_000 && CURRENT.get().accessibilityAppIds.contains(appId);
     }
 
-    /**
-     * True when at least one protected app asks for developer-mode cloaking.
-     * Used by hooks that run inside system_server, where the caller UID is
-     * always 1000 and cannot be matched against the target list.
-     */
-    static boolean anyDeveloperOptionsHidden() {
-        refresh(false);
-        return !developerOptionsUids.isEmpty();
+    static boolean hidesMockLocation(int uid) {
+        int appId = toAppId(uid);
+        return appId >= 10_000 && CURRENT.get().mockLocationAppIds.contains(appId);
     }
 
-    private static final File PROBE_FLAG = new File("/data/system/causentry/probe");
-    private static volatile long probeCheckedAt;
-    private static volatile boolean probeOn;
-
-    /**
-     * Diagnostic switch: toggled by creating /data/system/causentry/probe.
-     * While enabled, every package-query hit from a protected UID is logged,
-     * so a detector's exact probe path can be identified without guessing.
-     */
     static boolean probeEnabled() {
         long now = System.currentTimeMillis();
-        if (now - probeCheckedAt < REFRESH_MS) return probeOn;
+        if (now - probeCheckedAt < 2000L) return probeOn;
         probeCheckedAt = now;
         probeOn = PROBE_FLAG.exists();
         return probeOn;
     }
 
-    static void refreshNow() {
-        refresh(true);
-    }
-
-    private static synchronized void ensurePolicyObserver() {
-        if (policyObserver != null) return;
-        File directory = POLICIES[0].getParentFile();
-        if (directory == null || !directory.isDirectory()) return;
-        try {
-            FileObserver observer = new FileObserver(directory.getAbsolutePath(),
-                    FileObserver.CLOSE_WRITE | FileObserver.MOVED_TO) {
-                @Override public void onEvent(int event, String path) {
-                    if (POLICIES[0].getName().equals(path)) policyDirty = true;
-                }
-            };
-            observer.startWatching();
-            policyObserver = observer;
-        } catch (Throwable error) {
-            Log.w(TAG, "policy watcher unavailable", error);
-        }
-    }
-
-    private static void refresh(boolean force) {
-        ensurePolicyObserver();
-        long now = System.currentTimeMillis();
-        boolean dirty = policyDirty;
-        if (!force && !dirty && now - lastRead < REFRESH_MS) return;
-        lastRead = now;
-
-        Throwable lastError = null;
-        for (File policy : POLICIES) {
-            long modified = policy.lastModified();
-            if (modified <= 0L) continue;
-            long length = policy.length();
-            String path = policy.getAbsolutePath();
-            if (!force && !dirty && path.equals(lastPolicyPath)
-                    && modified == lastModified && length == lastLength) return;
-
-            try (FileInputStream input = new FileInputStream(policy)) {
-                byte[] bytes = new byte[(int) Math.min(policy.length(), 1024 * 1024)];
-                int count = input.read(bytes);
-                JSONObject root = new JSONObject(new String(bytes, 0, Math.max(0, count), StandardCharsets.UTF_8));
-                JSONArray uids = root.optJSONArray("targetUids");
-                JSONArray targets = root.optJSONArray("targets");
-                JSONObject byTarget = root.optJSONObject("hiddenByTarget");
-                Map<Integer, Set<String>> next = new HashMap<>();
-                Set<String> nextAppZygote = new HashSet<>();
-                Set<Integer> nextDeveloperOptions = new HashSet<>();
-                Set<Integer> nextAccessibility = new HashSet<>();
-
-                if (uids == null || targets == null || byTarget == null
-                        || uids.length() != targets.length()) {
-                    throw new IllegalArgumentException("invalid target UID policy");
-                }
-                for (int i = 0; i < targets.length(); i++) {
-                    int uid = uids.optInt(i, -1);
-                    String target = targets.optString(i, "");
-                    JSONArray packages = byTarget.optJSONArray(target);
-                    if (uid < 10000 || packages == null) continue;
-                    Set<String> hidden = new HashSet<>();
-                    for (int p = 0; p < packages.length(); p++) {
-                        String name = packages.optString(p, "");
-                        if (!name.isEmpty()) hidden.add(name);
-                    }
-                    next.put(uid, Collections.unmodifiableSet(hidden));
-                }
-
-                JSONArray appZygote = root.optJSONArray("appZygote");
-                if (appZygote != null) {
-                    for (int i = 0; i < appZygote.length(); i++) {
-                        String name = appZygote.optString(i, "");
-                        if (!name.isEmpty()) nextAppZygote.add(name);
-                    }
-                }
-
-                JSONArray developerOptions = root.optJSONArray("developerOptionsUids");
-                if (developerOptions != null) {
-                    for (int i = 0; i < developerOptions.length(); i++) {
-                        int uid = developerOptions.optInt(i, -1);
-                        if (uid >= 10000) nextDeveloperOptions.add(uid);
-                    }
-                }
-
-                JSONArray accessibility = root.optJSONArray("accessibilityUids");
-                if (accessibility != null) {
-                    for (int i = 0; i < accessibility.length(); i++) {
-                        int uid = accessibility.optInt(i, -1);
-                        if (uid >= 10000) nextAccessibility.add(uid);
-                    }
-                } else {
-                    // Fallback to developerOptions for backward compatibility
-                    nextAccessibility.addAll(nextDeveloperOptions);
-                }
-
-                hiddenByUid = Collections.unmodifiableMap(next);
-                appZygoteBlocked = Collections.unmodifiableSet(nextAppZygote);
-                developerOptionsUids = Collections.unmodifiableSet(nextDeveloperOptions);
-                accessibilityUids = Collections.unmodifiableSet(nextAccessibility);
-                lastModified = modified;
-                lastLength = length;
-                lastPolicyPath = path;
-                policyDirty = false;
-                Log.i(TAG, "policy refreshed targets=" + next.size()
-                        + " appZygote=" + nextAppZygote.size()
-                        + " developerOptions=" + nextDeveloperOptions.size()
-                        + " accessibility=" + nextAccessibility.size()
-                        + " source=" + path);
-                return;
-            } catch (Throwable error) {
-                // A system_app process can be blocked from /data/system by SELinux.
-                // Try the root-written mirror before retaining the last known policy.
-                lastError = error;
+    /** Called once at startup to load the system-only cold-start fallback if socket push hasn't arrived yet. */
+    static synchronized void loadColdStartFallback() {
+        if (CURRENT.get().generation > 0L) return;
+        if (!SYSTEM_POLICY_FILE.isFile() || !SYSTEM_POLICY_FILE.canRead()) return;
+        try (FileInputStream in = new FileInputStream(SYSTEM_POLICY_FILE)) {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                bos.write(buf, 0, n);
+                if (bos.size() > 2 * 1024 * 1024) break;
             }
+            JSONObject root = new JSONObject(new String(bos.toByteArray(), StandardCharsets.UTF_8));
+            applyJson(root, "cold-start");
+        } catch (Throwable t) {
+            Log.w(TAG, "cold-start policy load skipped: " + t.getMessage());
         }
-        if (lastError != null) {
-            // Keep the last known-good policy. A malformed update must fail open.
-            Log.w(TAG, "policy refresh skipped", lastError);
+    }
+
+    static void applyPushPolicy(JSONObject root) {
+        if (root == null) return;
+        applyJson(root, "push");
+    }
+
+    private static void applyJson(JSONObject root, String source) {
+        try {
+            JSONArray uids = root.optJSONArray("targetUids");
+            JSONArray targets = root.optJSONArray("targets");
+            JSONObject byTarget = root.optJSONObject("hiddenByTarget");
+            JSONObject hiddenUidsByTarget = root.optJSONObject("hiddenUidsByTarget");
+
+            Map<Integer, Set<String>> nextHidden = new HashMap<>();
+            Map<Integer, Set<Integer>> nextHiddenUids = new HashMap<>();
+
+            if (uids != null && targets != null && byTarget != null
+                    && uids.length() == targets.length()) {
+                for (int i = 0; i < targets.length(); i++) {
+                    int appId = toAppId(uids.optInt(i, -1));
+                    String target = targets.optString(i, "");
+                    if (appId < 10_000 || target.isEmpty()) continue;
+
+                    JSONArray packages = byTarget.optJSONArray(target);
+                    if (packages != null) {
+                        Set<String> hidden = new HashSet<>(packages.length());
+                        for (int p = 0; p < packages.length(); p++) {
+                            String name = packages.optString(p, "");
+                            if (!name.isEmpty()) hidden.add(name);
+                        }
+                        nextHidden.put(appId, Collections.unmodifiableSet(hidden));
+                    }
+
+                    if (hiddenUidsByTarget != null) {
+                        JSONArray hUids = hiddenUidsByTarget.optJSONArray(target);
+                        if (hUids != null) {
+                            Set<Integer> uidSet = new HashSet<>(hUids.length());
+                            for (int u = 0; u < hUids.length(); u++) {
+                                int hid = toAppId(hUids.optInt(u, -1));
+                                if (hid >= 10_000 && hid != appId) uidSet.add(hid);
+                            }
+                            nextHiddenUids.put(appId, Collections.unmodifiableSet(uidSet));
+                        }
+                    }
+                }
+            }
+
+            Set<String> nextAppZygote = new HashSet<>();
+            JSONArray appZygote = root.optJSONArray("appZygote");
+            if (appZygote != null) {
+                for (int i = 0; i < appZygote.length(); i++) {
+                    String name = appZygote.optString(i, "");
+                    if (!name.isEmpty()) nextAppZygote.add(name);
+                }
+            }
+
+            Set<Integer> nextDev = readAppIdSet(root.optJSONArray("developerOptionsUids"));
+            Set<Integer> nextAcc = root.has("accessibilityUids")
+                    ? readAppIdSet(root.optJSONArray("accessibilityUids"))
+                    : new HashSet<>(nextDev);
+            Set<Integer> nextMock = root.has("mockLocationUids")
+                    ? readAppIdSet(root.optJSONArray("mockLocationUids"))
+                    : new HashSet<>(nextDev);
+
+            long gen = root.optLong("generation", System.currentTimeMillis());
+            Snapshot snap = new Snapshot(
+                    Collections.unmodifiableMap(nextHidden),
+                    Collections.unmodifiableMap(nextHiddenUids),
+                    Collections.unmodifiableSet(nextAppZygote),
+                    Collections.unmodifiableSet(nextDev),
+                    Collections.unmodifiableSet(nextAcc),
+                    Collections.unmodifiableSet(nextMock),
+                    gen
+            );
+            CURRENT.set(snap);
+            Log.i(TAG, "policy applied (" + source + ") gen=" + gen
+                    + " targets=" + nextHidden.size()
+                    + " dev=" + nextDev.size()
+                    + " acc=" + nextAcc.size()
+                    + " mock=" + nextMock.size()
+                    + " appZygote=" + nextAppZygote.size());
+        } catch (Throwable t) {
+            Log.w(TAG, "policy apply failed (" + source + ")", t);
         }
+    }
+
+    private static Set<Integer> readAppIdSet(JSONArray arr) {
+        if (arr == null) return Collections.emptySet();
+        Set<Integer> out = new HashSet<>(arr.length());
+        for (int i = 0; i < arr.length(); i++) {
+            int appId = toAppId(arr.optInt(i, -1));
+            if (appId >= 10_000) out.add(appId);
+        }
+        return out;
     }
 }
