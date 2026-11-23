@@ -17,3 +17,11 @@ allow untrusted_app_all ksu unix_stream_socket connectto
 allow untrusted_app_all priv_app unix_stream_socket connectto
 typeattribute ksu mlstrustedsubject
 typeattribute priv_app mlstrustedsubject
+
+# 3. Permit specialized target processes (system_server, SettingsProvider, MediaProvider)
+#    to read/write the Zygisk companion-bridged policy Unix stream socket created in zygote.
+allow system_server zygote unix_stream_socket { read write getattr getopt setopt shutdown }
+allow system_app zygote unix_stream_socket { read write getattr getopt setopt shutdown }
+allow mediaprovider_app zygote unix_stream_socket { read write getattr getopt setopt shutdown }
+allow mediaprovider zygote unix_stream_socket { read write getattr getopt setopt shutdown }
+typeattribute zygote mlstrustedobject
