@@ -30,6 +30,10 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", dobby_dir.display());
 
     // Locate NDK sysroot static C++ runtime for libdobby.a (tools/sdk/ndk/*).
+    // IMPORTANT: Search the API-level subdir (e.g. `.../26`) FIRST so `-lc`, `-ldl`, `-lm`, `-llog`
+    // link against dynamic Bionic stubs (`libc.so`, `libdl.so`, `libm.so`) instead of static
+    // `libc.a` in the parent directory (which would leave `__libc_shared_globals` uninitialized
+    // and crash `zygote64` inside `__bionic_getauxval`).
     let ndk_root = repo_root.join("tools/sdk/ndk");
     if let Ok(entries) = std::fs::read_dir(&ndk_root) {
         let mut versions: Vec<_> = entries.flatten().map(|e| e.path()).collect();
@@ -38,6 +42,10 @@ fn main() {
             let sysroot_lib = latest_ndk
                 .join("toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/lib")
                 .join(sysroot_triple);
+            let sysroot_api_lib = sysroot_lib.join("26");
+            if sysroot_api_lib.is_dir() {
+                println!("cargo:rustc-link-search=native={}", sysroot_api_lib.display());
+            }
             if sysroot_lib.is_dir() {
                 println!("cargo:rustc-link-search=native={}", sysroot_lib.display());
             }

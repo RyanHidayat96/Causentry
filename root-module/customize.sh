@@ -11,8 +11,8 @@ if ! command -v abort >/dev/null 2>&1; then
 fi
 
 ui_print "*******************************"
-ui_print "  Causentry v2.0"
-ui_print "  Native Anti-Detection Engine"
+ui_print "  Causentry v3.0"
+ui_print "  Full Native Rust Engine"
 ui_print "*******************************"
 
 ABI=$(getprop ro.product.cpu.abi 2>/dev/null)
@@ -74,4 +74,4 @@ else
 fi
 
 ui_print "- Configuration: /data/adb/causentry/config.json"
-ui_print "- Reboot to activate Causentry v2.0 native daemon & Zygisk engine"
+ui_print "- Reboot to activate Causentry v3.0 native Rust daemon & Zygisk engine"

@@ -1,4 +1,9 @@
-//! Zygisk Root Companion `SCM_RIGHTS` FD broker connecting targets to `causentryd`.
+//! Zygisk Root Companion bidirectional socket relay connecting target processes to `causentryd`.
+//!
+//! Rather than relying on `SCM_RIGHTS` FD passing (which is blocked or stripped by some
+//! Zygisk implementations / SELinux policies), the companion bridges Zygisk's already-authorized
+//! `connectCompanion()` Unix stream socket directly to `/data/adb/causentry/internal.sock`
+//! inside a detached zero-CPU `poll()` thread.
 
 #![cfg(target_os = "android")]
 
@@ -12,9 +17,9 @@ use std::ptr;
 use std::thread;
 use std::time::Duration;
 
-fn set_socket_timeout(fd: c_int) {
+fn set_socket_timeout(fd: c_int, secs: libc::time_t) {
     let tv = libc::timeval {
-        tv_sec: 2,
+        tv_sec: secs,
         tv_usec: 0,
     };
     unsafe {
@@ -35,87 +40,6 @@ fn set_socket_timeout(fd: c_int) {
     }
 }
 
-#[repr(C, align(8))]
-struct CmsgBuf([u8; 64]);
-
-fn send_fd_over_socket(sock: c_int, fd_to_send: c_int) -> bool {
-    let mut dummy: u8 = 1;
-    let mut iov = libc::iovec {
-        iov_base: (&raw mut dummy).cast(),
-        iov_len: 1,
-    };
-    let mut cmsg_buf = CmsgBuf([0u8; 64]);
-    let space = unsafe { libc::CMSG_SPACE(size_of::<c_int>() as u32) } as usize;
-    if space > cmsg_buf.0.len() {
-        return false;
-    }
-
-    let mut msg: libc::msghdr = unsafe { zeroed() };
-    msg.msg_iov = &raw mut iov;
-    msg.msg_iovlen = 1 as _;
-    msg.msg_control = cmsg_buf.0.as_mut_ptr().cast();
-    msg.msg_controllen = space as _;
-
-    unsafe {
-        let cmsg = libc::CMSG_FIRSTHDR(&raw const msg);
-        if cmsg.is_null() {
-            return false;
-        }
-        (*cmsg).cmsg_level = libc::SOL_SOCKET;
-        (*cmsg).cmsg_type = libc::SCM_RIGHTS;
-        (*cmsg).cmsg_len = libc::CMSG_LEN(size_of::<c_int>() as u32) as _;
-        ptr::copy_nonoverlapping(
-            (&raw const fd_to_send).cast::<u8>(),
-            libc::CMSG_DATA(cmsg),
-            size_of::<c_int>(),
-        );
-        libc::sendmsg(sock, &raw const msg, libc::MSG_NOSIGNAL) == 1
-    }
-}
-
-fn recv_fd_from_socket(sock: c_int) -> c_int {
-    let mut dummy: u8 = 0;
-    let mut iov = libc::iovec {
-        iov_base: (&raw mut dummy).cast(),
-        iov_len: 1,
-    };
-    let mut cmsg_buf = CmsgBuf([0u8; 64]);
-    let space = unsafe { libc::CMSG_SPACE(size_of::<c_int>() as u32) } as usize;
-    if space > cmsg_buf.0.len() {
-        return -1;
-    }
-
-    let mut msg: libc::msghdr = unsafe { zeroed() };
-    msg.msg_iov = &raw mut iov;
-    msg.msg_iovlen = 1 as _;
-    msg.msg_control = cmsg_buf.0.as_mut_ptr().cast();
-    msg.msg_controllen = space as _;
-
-    unsafe {
-        if libc::recvmsg(sock, &raw mut msg, 0) <= 0 {
-            return -1;
-        }
-        let mut cmsg = libc::CMSG_FIRSTHDR(&raw const msg);
-        let expected_len = libc::CMSG_LEN(size_of::<c_int>() as u32) as _;
-        while !cmsg.is_null() {
-            if (*cmsg).cmsg_level == libc::SOL_SOCKET
-                && (*cmsg).cmsg_type == libc::SCM_RIGHTS
-                && (*cmsg).cmsg_len == expected_len
-            {
-                let mut fd: c_int = -1;
-                ptr::copy_nonoverlapping(
-                    libc::CMSG_DATA(cmsg),
-                    (&raw mut fd).cast::<u8>(),
-                    size_of::<c_int>(),
-                );
-                return fd;
-            }
-            cmsg = libc::CMSG_NXTHDR(&raw const msg, cmsg);
-        }
-    }
-    -1
-}
-
 fn connect_to_daemon_internal_socket() -> c_int {
     let path_bytes = INTERNAL_SOCK_PATH.as_bytes();
     let mut addr: libc::sockaddr_un = unsafe { zeroed() };
@@ -131,7 +55,7 @@ fn connect_to_daemon_internal_socket() -> c_int {
         );
     }
 
-    for _ in 0..15 {
+    for _ in 0..20 {
         let fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0) };
         if fd < 0 {
             return -1;
@@ -152,8 +76,91 @@ fn connect_to_daemon_internal_socket() -> c_int {
     -1
 }
 
+fn write_all_fd(fd: c_int, mut buf: &[u8]) -> bool {
+    while !buf.is_empty() {
+        let n = unsafe { libc::send(fd, buf.as_ptr().cast(), buf.len(), libc::MSG_NOSIGNAL) };
+        if n < 0 {
+            let err = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+            if err == libc::EINTR {
+                continue;
+            }
+            return false;
+        }
+        if n == 0 {
+            return false;
+        }
+        buf = &buf[n as usize..];
+    }
+    true
+}
+
+fn forward_once(src: c_int, dst: c_int, buf: &mut [u8]) -> bool {
+    loop {
+        let n = unsafe { libc::recv(src, buf.as_mut_ptr().cast(), buf.len(), 0) };
+        if n < 0 {
+            let err = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+            if err == libc::EINTR {
+                continue;
+            }
+            return false;
+        }
+        if n == 0 {
+            return false;
+        }
+        return write_all_fd(dst, &buf[..n as usize]);
+    }
+}
+
+fn relay_bidirectional(client_fd: c_int, daemon_fd: c_int, target: i32, pid: i32) {
+    let mut buf = vec![0u8; 16 * 1024];
+    let mut fds = [
+        libc::pollfd {
+            fd: client_fd,
+            events: libc::POLLIN,
+            revents: 0,
+        },
+        libc::pollfd {
+            fd: daemon_fd,
+            events: libc::POLLIN,
+            revents: 0,
+        },
+    ];
+
+    loop {
+        fds[0].revents = 0;
+        fds[1].revents = 0;
+        let rc = unsafe { libc::poll(fds.as_mut_ptr(), 2, -1) };
+        if rc < 0 {
+            let err = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+            if err == libc::EINTR {
+                continue;
+            }
+            break;
+        }
+        if (fds[0].revents & libc::POLLIN) != 0 && !forward_once(client_fd, daemon_fd, &mut buf) {
+            break;
+        }
+        if (fds[1].revents & libc::POLLIN) != 0 && !forward_once(daemon_fd, client_fd, &mut buf) {
+            break;
+        }
+        if ((fds[0].revents | fds[1].revents) & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL))
+            != 0
+        {
+            break;
+        }
+    }
+
+    unsafe {
+        libc::close(client_fd);
+        libc::close(daemon_fd);
+    }
+    log::info(&format!(
+        "companion relay closed target={target} pid={pid}"
+    ));
+}
+
 pub fn handle_companion_request(client: c_int) {
-    set_socket_timeout(client);
+    set_socket_timeout(client, 2);
     let mut req = CompanionHandshake { target: -1, pid: 0 };
     let n = unsafe {
         libc::recv(
@@ -166,18 +173,40 @@ pub fn handle_companion_request(client: c_int) {
     if n == size_of::<CompanionHandshake>() as isize {
         let daemon_fd = connect_to_daemon_internal_socket();
         if daemon_fd >= 0 {
-            let _ = send_fd_over_socket(client, daemon_fd);
+            let relay_fd = unsafe { libc::dup(client) };
+            if relay_fd >= 0 {
+                // Clear timeouts before acking so the long-lived push stream stays open.
+                set_socket_timeout(relay_fd, 0);
+                let ok_ack: u8 = 1;
+                if write_all_fd(relay_fd, &[ok_ack]) {
+                    let target = req.target;
+                    let pid = req.pid;
+                    if thread::Builder::new()
+                        .name(format!("cs-relay-{target}"))
+                        .spawn(move || relay_bidirectional(relay_fd, daemon_fd, target, pid))
+                        .is_ok()
+                    {
+                        log::info(&format!(
+                            "companion relay started target={target} pid={pid}"
+                        ));
+                        return;
+                    }
+                }
+                unsafe { libc::close(relay_fd) };
+            }
             unsafe { libc::close(daemon_fd) };
-            return;
+        } else {
+            log::warn(&format!(
+                "companion could not connect to causentryd internal.sock for target={}",
+                req.target
+            ));
         }
     }
     let fail: u8 = 0;
-    unsafe {
-        libc::send(client, (&raw const fail).cast(), 1, libc::MSG_NOSIGNAL);
-    }
+    let _ = write_all_fd(client, &[fail]);
 }
 
-pub fn acquire_policy_socket_fd(api: *mut ApiTable, target: TargetProcess, is_app: bool) {
+pub fn acquire_policy_socket_fd(api: *mut ApiTable, target: TargetProcess, _is_app: bool) {
     if api.is_null() {
         return;
     }
@@ -186,7 +215,7 @@ pub fn acquire_policy_socket_fd(api: *mut ApiTable, target: TargetProcess, is_ap
         log::warn("connectCompanion failed");
         return;
     }
-    set_socket_timeout(client);
+    set_socket_timeout(client, 2);
     let req = CompanionHandshake {
         target: target as i32,
         pid: unsafe { libc::getpid() },
@@ -200,19 +229,29 @@ pub fn acquire_policy_socket_fd(api: *mut ApiTable, target: TargetProcess, is_ap
         )
     };
     if sent == size_of::<CompanionHandshake>() as isize {
-        let fd = recv_fd_from_socket(client);
-        if fd >= 0 {
-            if is_app {
-                unsafe {
-                    (*api).exempt_fd(fd);
-                }
+        let mut ack: u8 = 0;
+        let got = unsafe { libc::recv(client, (&raw mut ack).cast(), 1, libc::MSG_WAITALL) };
+        if got == 1 && ack == 1 {
+            set_socket_timeout(client, 0);
+            unsafe {
+                (*api).exempt_fd(client);
             }
-            set_policy_channel_fd(fd);
+            set_policy_channel_fd(client);
             log::info(&format!(
-                "acquired policy channel fd={fd} for target={}",
+                "acquired bridged policy channel fd={client} for target={}",
                 target as i32
             ));
+            return;
         }
+        log::warn(&format!(
+            "companion handshake rejected got={got} ack={ack} target={}",
+            target as i32
+        ));
+    } else {
+        log::warn(&format!(
+            "companion handshake send failed sent={sent} target={}",
+            target as i32
+        ));
     }
     unsafe { libc::close(client) };
 }

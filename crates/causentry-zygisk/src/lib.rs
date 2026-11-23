@@ -34,6 +34,8 @@ use zygisk_abi::{
 #[cfg(target_os = "android")]
 pub static G_VM: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
 #[cfg(target_os = "android")]
+static G_ENV: AtomicPtr<JNIEnv> = AtomicPtr::new(ptr::null_mut());
+#[cfg(target_os = "android")]
 pub static G_FUSEHIDE_HANDLE: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
 
 #[cfg(target_os = "android")]
@@ -57,15 +59,6 @@ struct AndroidDlExtInfo {
 const ANDROID_DLEXT_USE_LIBRARY_FD: u64 = 0x10;
 
 #[cfg(target_os = "android")]
-unsafe extern "C" {
-    fn android_dlopen_ext(
-        filename: *const libc::c_char,
-        flags: c_int,
-        extinfo: *const AndroidDlExtInfo,
-    ) -> *mut c_void;
-}
-
-#[cfg(target_os = "android")]
 fn abi_dir() -> &'static str {
     #[cfg(target_arch = "aarch64")]
     {
@@ -83,6 +76,10 @@ fn abi_dir() -> &'static str {
 
 #[cfg(target_os = "android")]
 fn vm_env() -> *mut JNIEnv {
+    let saved = G_ENV.load(Ordering::Acquire);
+    if !saved.is_null() {
+        return saved;
+    }
     let vm = G_VM.load(Ordering::Acquire) as *mut JavaVM;
     if vm.is_null() {
         return ptr::null_mut();
@@ -209,12 +206,21 @@ fn preload_module_runtime(api: *mut ApiTable, env: *mut JNIEnv) -> bool {
         library_fd_offset: 0,
         library_namespace: ptr::null_mut(),
     };
-    let handle = unsafe {
-        android_dlopen_ext(
-            c"libfusehide.so".as_ptr(),
-            libc::RTLD_NOW | libc::RTLD_LOCAL,
-            &raw const ext,
-        )
+    type AndroidDlopenExtFn =
+        unsafe extern "C" fn(*const libc::c_char, c_int, *const AndroidDlExtInfo) -> *mut c_void;
+    let sym = unsafe { libc::dlsym(libc::RTLD_DEFAULT, c"android_dlopen_ext".as_ptr()) };
+    let handle = if sym.is_null() {
+        log::error("android_dlopen_ext symbol unavailable");
+        ptr::null_mut()
+    } else {
+        let dlopen_ext: AndroidDlopenExtFn = unsafe { std::mem::transmute(sym) };
+        unsafe {
+            dlopen_ext(
+                c"libfusehide.so".as_ptr(),
+                libc::RTLD_NOW | libc::RTLD_LOCAL,
+                &raw const ext,
+            )
+        }
     };
     unsafe { libc::close(lib_fd) };
     if handle.is_null() {
@@ -257,11 +263,13 @@ extern "C" fn on_pre_app_specialize(_impl: *mut c_void, args: *mut AppSpecialize
     };
     let target = classify_process(vm_env(), nice_name);
     G_TARGET.store(target as i32, Ordering::Release);
+    let api = G_API.load(Ordering::Acquire);
     if target == TargetProcess::None {
+        if !api.is_null() {
+            unsafe { (*api).set_option(OPTION_DLCLOSE_MODULE_LIBRARY) };
+        }
         return;
     }
-
-    let api = G_API.load(Ordering::Acquire);
     companion::acquire_policy_socket_fd(api, target, true);
 
     if target == TargetProcess::Settings {
@@ -327,6 +335,7 @@ pub extern "C" fn zygisk_module_entry(table: *mut ApiTable, env: *mut JNIEnv) {
         return;
     }
     G_API.store(table, Ordering::Release);
+    G_ENV.store(env, Ordering::Release);
     let mut vm: *mut JavaVM = ptr::null_mut();
     unsafe {
         let fns = &**env;
