@@ -1,12 +1,10 @@
 # Causentry v3.0 SELinux Policy Rules
 # Space-separated Magisk/KernelSU sepolicy.rule syntax (no colons or semicolons).
 #
-# 1. Neutralize SELinux probing by app_zygote (PairIP/Zimperium).
-#    IMPORTANT: Do NOT deny app_zygote setcurrent/dyntransition or system_server execmem.
-deny app_zygote security_t dir { open read search getattr }
-deny app_zygote security_t file { open read write append getattr ioctl map }
-deny app_zygote selinuxfs dir { open read search getattr }
-deny app_zygote selinuxfs file { open read write append getattr ioctl map }
+# 1. Do NOT deny app_zygote access to selinuxfs / security_t globally.
+#    app_zygote is shared across all useAppZygote="true" apps (e.g. Chrome) and
+#    requires selinuxfs/context during selinux_android_setcontext(). Per-target
+#    app_zygote cloaking is handled per-package in the daemon/Zygisk layer.
 
 # 2. Permit Causentry Control UI (untrusted_app_all) to connect to causentryd's
 #    Unix domain socket (.rpc.sock) across Magisk, KernelSU Next, and SUSFS.
