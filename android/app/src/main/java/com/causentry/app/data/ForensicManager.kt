@@ -30,7 +30,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
-import java.util.regex.Pattern
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
@@ -76,10 +75,6 @@ class ForensicManager @Inject constructor(
     val recordedCount: StateFlow<Int> = _recordedCount.asStateFlow()
 
     private val pidToPackage = ConcurrentHashMap<Int, String>()
-
-    private val threadTimePattern = Pattern.compile(
-        "^([0-9]{2}-[0-9]{2}\\s+[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]+)\\s+([0-9]+)\\s+([0-9]+)\\s+([VDIWEF])\\s+([^:]+):\\s*(.*)$"
-    )
 
     private var activeCrashTrace = StringBuilder()
     private var activeCrashPkg: String? = null

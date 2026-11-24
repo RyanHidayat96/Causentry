@@ -13,8 +13,46 @@
 // limitations under the License.
 
 #include "fusehide/filters/reply_buf_filter.hpp"
+#include "causentry_fuse_core.h"
 
 namespace fusehide {
+
+namespace {
+
+struct ReadOutCtx {
+    uint32_t uid;
+    uint64_t ino;
+    bool requireParentMatch;
+};
+
+bool FilterReadOutDirentCallback(void* rawCtx, uint64_t childIno, const uint8_t* namePtr,
+                                 size_t nameLen) {
+    const auto* ctx = static_cast<const ReadOutCtx*>(rawCtx);
+    const std::string_view name(reinterpret_cast<const char*>(namePtr), nameLen);
+    return ShouldFilterTrackedHiddenDirentInode(ctx->uid, childIno, name) ||
+           HiddenPathPolicy::ShouldFilterHiddenRootDirent(ctx->uid, ctx->ino, name,
+                                                          ctx->requireParentMatch);
+}
+
+bool FilterReadOutInRust(const char* buf, size_t size, uint32_t uid, uint64_t ino,
+                         bool requireParentMatch, std::vector<char>* filteredStorage,
+                         size_t* removedCount) {
+    ReadOutCtx ctx{uid, ino, requireParentMatch};
+    CausentryBuf outBuf{};
+    if (!causentry_fuse_filter_read_out_dirent_payload(
+            reinterpret_cast<const uint8_t*>(buf), size, FilterReadOutDirentCallback, &ctx,
+            &outBuf, removedCount)) {
+        return false;
+    }
+    filteredStorage->resize(outBuf.len);
+    if (outBuf.ptr != nullptr && outBuf.len > 0) {
+        std::memcpy(filteredStorage->data(), outBuf.ptr, outBuf.len);
+    }
+    causentry_fuse_buf_free(outBuf);
+    return true;
+}
+
+}  // namespace
 
 ReplyBufFilterResult FilterReplyBufPayload(const char* buf, size_t size,
                                            const ReplyBufFilterContext& context,
@@ -38,19 +76,9 @@ ReplyBufFilterResult FilterReplyBufPayload(const char* buf, size_t size,
                 context.requireParentMatch)) {
             return {filteredStorage->data(), filteredStorage->size(), "readdirplus", removedCount};
         }
-    } else if (context.filterPostfilterReaddir && size >= sizeof(fuse_read_out)) {
-        const auto* readOut = reinterpret_cast<const fuse_read_out*>(buf);
-        const size_t payloadSize = std::min<size_t>(readOut->size, size - sizeof(fuse_read_out));
-        std::vector<char> filteredPayload;
-        if (DirentFilter::BuildFilteredDirentPayload(
-                buf + sizeof(fuse_read_out), payloadSize, context.filterUid, context.filterIno,
-                &filteredPayload, &removedCount, context.requireParentMatch)) {
-            fuse_read_out patched = *readOut;
-            patched.size = static_cast<uint32_t>(filteredPayload.size());
-            filteredStorage->resize(sizeof(patched) + filteredPayload.size());
-            std::memcpy(filteredStorage->data(), &patched, sizeof(patched));
-            std::memcpy(filteredStorage->data() + sizeof(patched), filteredPayload.data(),
-                        filteredPayload.size());
+    } else if (context.filterPostfilterReaddir) {
+        if (FilterReadOutInRust(buf, size, context.filterUid, context.filterIno,
+                                context.requireParentMatch, filteredStorage, &removedCount)) {
             return {filteredStorage->data(), filteredStorage->size(), "readdir_postfilter",
                     removedCount};
         }
@@ -66,23 +94,10 @@ ReplyBufFilterResult FilterReplyBufPayload(const char* buf, size_t size,
                                                      filteredStorage, &removedCount, false)) {
             return {filteredStorage->data(), filteredStorage->size(), "auto_dirent", removedCount};
         }
-        if (size >= sizeof(fuse_read_out)) {
-            const auto* readOut = reinterpret_cast<const fuse_read_out*>(buf);
-            const size_t payloadSize =
-                std::min<size_t>(readOut->size, size - sizeof(fuse_read_out));
-            std::vector<char> filteredPayload;
-            if (DirentFilter::BuildFilteredDirentPayload(buf + sizeof(fuse_read_out), payloadSize,
-                                                         context.filterUid, 0, &filteredPayload,
-                                                         &removedCount, false)) {
-                fuse_read_out patched = *readOut;
-                patched.size = static_cast<uint32_t>(filteredPayload.size());
-                filteredStorage->resize(sizeof(patched) + filteredPayload.size());
-                std::memcpy(filteredStorage->data(), &patched, sizeof(patched));
-                std::memcpy(filteredStorage->data() + sizeof(patched), filteredPayload.data(),
-                            filteredPayload.size());
-                return {filteredStorage->data(), filteredStorage->size(), "auto_read_out_dirent",
-                        removedCount};
-            }
+        if (FilterReadOutInRust(buf, size, context.filterUid, 0, false, filteredStorage,
+                                &removedCount)) {
+            return {filteredStorage->data(), filteredStorage->size(), "auto_read_out_dirent",
+                    removedCount};
         }
     }
     return result;

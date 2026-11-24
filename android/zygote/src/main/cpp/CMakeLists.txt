@@ -16,9 +16,6 @@ add_library(
     fusehide/jni/jni_entry.cpp
     fusehide/policy/path_policy.cpp
     fusehide/policy/unicode_policy.cpp
-    third_party/xz-embedded/xz_dec_stream.c
-    third_party/xz-embedded/xz_dec_lzma2.c
-    third_party/xz-embedded/xz_crc32.c
 )
 
 target_compile_features(fusehide PRIVATE cxx_std_20)
@@ -73,7 +70,6 @@ target_include_directories(
     PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CAUSENTRY_FUSE_CORE_INCLUDE}
-    third_party/xz-embedded
 )
 
 find_library(log-lib log)

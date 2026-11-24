@@ -1,6 +1,6 @@
 #requires -version 5
 <#
-Causentry v3.0 — Full Native Rust build pipeline:
+Causentry v3.1 — Full Native Rust build pipeline:
   [1/5] Static Dobby (arm64-v8a + armeabi-v7a)
   [2/5] Root Cargo Workspace (causentryd, causentry-zygisk, causentry-fuse-core)
   [3/5] Rust-Anything verified App Core JNI libs (forensic-core-rs, backup-core-rs)
@@ -57,7 +57,7 @@ if (-not $mutex.WaitOne([TimeSpan]::FromSeconds(60))) {
 try {
   function Read-Version {
     $v = (Select-String -Path $PropPath -Pattern '^version=v?([0-9].*)$').Matches.Groups[1].Value
-    if (-not $v) { $v = "3.0.0" }
+    if (-not $v) { $v = "3.1.0" }
     return $v.Trim()
   }
 
@@ -126,7 +126,7 @@ try {
     @{ Target = "armv7-linux-androideabi"; ClangTarget = "armv7a-linux-androideabi26"; Abi = "armeabi-v7a" }
   )
 
-  Say "== Causentry v3.0 Full Native Rust Build =="
+  Say "== Causentry v3.1 Full Native Rust Build =="
   Say "   root    : $Root"
   Say "   java    : $Java"
   Say "   sdk     : $Sdk"

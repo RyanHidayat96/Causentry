@@ -1,6 +1,6 @@
 [package]
 name = "causentry-proto"
-version = "3.0.0"
+version = "3.1.0"
 edition = "2024"
 description = "Shared IPC framing, protocol constants, and Zygisk companion handshake for Causentry"
 license = "Apache-2.0"

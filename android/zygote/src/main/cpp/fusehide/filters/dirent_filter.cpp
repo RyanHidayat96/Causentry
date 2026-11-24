@@ -18,6 +18,63 @@
 
 namespace fusehide {
 
+namespace {
+
+struct RootDirentCtx {
+    uint32_t uid;
+    uint64_t ino;
+    bool requireParentMatch;
+};
+
+struct ParentPathCtx {
+    uint32_t uid;
+    std::string_view parentPath;
+    std::vector<FilteredDirentMatch>* removedEntries;
+};
+
+bool FilterRootDirentCallback(void* rawCtx, uint64_t childIno, const uint8_t* namePtr,
+                              size_t nameLen) {
+    const auto* ctx = static_cast<const RootDirentCtx*>(rawCtx);
+    const std::string_view name(reinterpret_cast<const char*>(namePtr), nameLen);
+    return ShouldFilterTrackedHiddenDirentInode(ctx->uid, childIno, name) ||
+           HiddenPathPolicy::ShouldFilterHiddenRootDirent(ctx->uid, ctx->ino, name,
+                                                          ctx->requireParentMatch);
+}
+
+bool FilterParentPathCallback(void* rawCtx, uint64_t childIno, const uint8_t* namePtr,
+                              size_t nameLen) {
+    const auto* ctx = static_cast<const ParentPathCtx*>(rawCtx);
+    const std::string_view name(reinterpret_cast<const char*>(namePtr), nameLen);
+    if (!ShouldFilterDirentForParentPath(ctx->uid, ctx->parentPath, childIno, name)) {
+        return false;
+    }
+    if (ctx->removedEntries != nullptr) {
+        ctx->removedEntries->push_back(FilteredDirentMatch{std::string(name), childIno});
+    }
+    return true;
+}
+
+bool RunRustDirentFilter(const char* data, size_t size, bool isDirentplus,
+                         CausentryDirentPredicate pred, void* ctx, std::vector<char>* out,
+                         size_t* removedCount) {
+    if (data == nullptr || size == 0 || out == nullptr || removedCount == nullptr) {
+        return false;
+    }
+    CausentryBuf outBuf{};
+    if (!causentry_fuse_filter_dirent_payload(reinterpret_cast<const uint8_t*>(data), size,
+                                              isDirentplus, pred, ctx, &outBuf, removedCount)) {
+        return false;
+    }
+    out->resize(outBuf.len);
+    if (outBuf.ptr != nullptr && outBuf.len > 0) {
+        std::memcpy(out->data(), outBuf.ptr, outBuf.len);
+    }
+    causentry_fuse_buf_free(outBuf);
+    return true;
+}
+
+}  // namespace
+
 bool AlignDirentName(size_t nameLen, size_t* alignedSize) {
     return causentry_fuse_align_dirent_name(nameLen, alignedSize);
 }
@@ -72,8 +129,6 @@ bool ShouldFilterDirentForParentPath(uint32_t uid, std::string_view parentPath, 
     if (!HiddenPathPolicy::IsTestHiddenUid(uid)) {
         return false;
     }
-    // Prefer exact inode matches when a hidden child inode is already known, then fall back to
-    // exact path matching for the recovered visible parent directory.
     if (ShouldFilterTrackedHiddenDirentInode(uid, childIno, name)) {
         return true;
     }
@@ -84,145 +139,39 @@ bool ShouldFilterDirentForParentPath(uint32_t uid, std::string_view parentPath, 
 bool DirentFilter::BuildFilteredDirentPayload(const char* data, size_t size, uint32_t uid,
                                               uint64_t ino, std::vector<char>* out,
                                               size_t* removedCount, bool requireParentMatch) {
-    if (data == nullptr || size == 0 || out == nullptr || removedCount == nullptr) {
-        return false;
-    }
-
-    out->clear();
-    out->reserve(size);
-    size_t offset = 0;
-    size_t removed = 0;
-    while (offset <= size && size - offset >= offsetof(fuse_dirent, name)) {
-        const auto* dirent = reinterpret_cast<const fuse_dirent*>(data + offset);
-        size_t recordSize = 0;
-        if (!FuseDirentRecordSize(dirent, size - offset, &recordSize)) {
-            return false;
-        }
-        const std::string_view name(dirent->name, dirent->namelen);
-        if (ShouldFilterTrackedHiddenDirentInode(uid, dirent->ino, name) ||
-            HiddenPathPolicy::ShouldFilterHiddenRootDirent(uid, ino, name, requireParentMatch)) {
-            removed++;
-        } else {
-            out->insert(out->end(), data + offset, data + offset + recordSize);
-        }
-        offset += recordSize;
-    }
-    if (offset != size) {
-        return false;
-    }
-    *removedCount = removed;
-    return removed != 0;
+    RootDirentCtx ctx{uid, ino, requireParentMatch};
+    return RunRustDirentFilter(data, size, false, FilterRootDirentCallback, &ctx, out,
+                               removedCount);
 }
 
 bool BuildFilteredDirentPayloadForParentPath(const char* data, size_t size, uint32_t uid,
                                              std::string_view parentPath, std::vector<char>* out,
                                              size_t* removedCount,
                                              std::vector<FilteredDirentMatch>* removedEntries) {
-    if (data == nullptr || size == 0 || out == nullptr || removedCount == nullptr ||
-        parentPath.empty()) {
+    if (parentPath.empty()) {
         return false;
     }
-
-    out->clear();
-    out->reserve(size);
-    size_t offset = 0;
-    size_t removed = 0;
-    while (offset <= size && size - offset >= offsetof(fuse_dirent, name)) {
-        const auto* dirent = reinterpret_cast<const fuse_dirent*>(data + offset);
-        size_t recordSize = 0;
-        if (!FuseDirentRecordSize(dirent, size - offset, &recordSize)) {
-            return false;
-        }
-        const std::string_view name(dirent->name, dirent->namelen);
-        if (ShouldFilterDirentForParentPath(uid, parentPath, dirent->ino, name)) {
-            removed++;
-            if (removedEntries != nullptr) {
-                removedEntries->push_back(FilteredDirentMatch{std::string(name), dirent->ino});
-            }
-        } else {
-            out->insert(out->end(), data + offset, data + offset + recordSize);
-        }
-        offset += recordSize;
-    }
-    if (offset != size) {
-        return false;
-    }
-    *removedCount = removed;
-    return removed != 0;
+    ParentPathCtx ctx{uid, parentPath, removedEntries};
+    return RunRustDirentFilter(data, size, false, FilterParentPathCallback, &ctx, out,
+                               removedCount);
 }
 
 bool DirentFilter::BuildFilteredDirentplusPayload(const char* data, size_t size, uint32_t uid,
                                                   uint64_t ino, std::vector<char>* out,
                                                   size_t* removedCount, bool requireParentMatch) {
-    if (data == nullptr || size == 0 || out == nullptr || removedCount == nullptr) {
-        return false;
-    }
-
-    out->clear();
-    out->reserve(size);
-    size_t offset = 0;
-    size_t removed = 0;
-    constexpr size_t kHeaderSize = kFuseEntryOutWireSize + offsetof(fuse_dirent, name);
-    while (offset <= size && size - offset >= kHeaderSize) {
-        const auto* dirent =
-            reinterpret_cast<const fuse_dirent*>(data + offset + kFuseEntryOutWireSize);
-        size_t recordSize = 0;
-        if (!FuseDirentplusRecordSize(dirent, size - offset, &recordSize)) {
-            return false;
-        }
-        const std::string_view name(dirent->name, dirent->namelen);
-        if (ShouldFilterTrackedHiddenDirentInode(uid, dirent->ino, name) ||
-            HiddenPathPolicy::ShouldFilterHiddenRootDirent(uid, ino, name, requireParentMatch)) {
-            removed++;
-        } else {
-            out->insert(out->end(), data + offset, data + offset + recordSize);
-        }
-        offset += recordSize;
-    }
-    if (offset != size) {
-        return false;
-    }
-    *removedCount = removed;
-    return removed != 0;
+    RootDirentCtx ctx{uid, ino, requireParentMatch};
+    return RunRustDirentFilter(data, size, true, FilterRootDirentCallback, &ctx, out, removedCount);
 }
 
 bool BuildFilteredDirentplusPayloadForParentPath(const char* data, size_t size, uint32_t uid,
                                                  std::string_view parentPath,
                                                  std::vector<char>* out, size_t* removedCount,
                                                  std::vector<FilteredDirentMatch>* removedEntries) {
-    if (data == nullptr || size == 0 || out == nullptr || removedCount == nullptr ||
-        parentPath.empty()) {
+    if (parentPath.empty()) {
         return false;
     }
-
-    out->clear();
-    out->reserve(size);
-    size_t offset = 0;
-    size_t removed = 0;
-    constexpr size_t kHeaderSize = kFuseEntryOutWireSize + offsetof(fuse_dirent, name);
-    while (offset <= size && size - offset >= kHeaderSize) {
-        const auto* dirent =
-            reinterpret_cast<const fuse_dirent*>(data + offset + kFuseEntryOutWireSize);
-        size_t recordSize = 0;
-        if (!FuseDirentplusRecordSize(dirent, size - offset, &recordSize)) {
-            return false;
-        }
-        const std::string_view name(dirent->name, dirent->namelen);
-        if (ShouldFilterDirentForParentPath(uid, parentPath, dirent->ino, name)) {
-            removed++;
-            if (removedEntries != nullptr) {
-                removedEntries->push_back(FilteredDirentMatch{std::string(name), dirent->ino});
-            }
-        } else {
-            out->insert(out->end(), data + offset, data + offset + recordSize);
-        }
-        offset += recordSize;
-    }
-    if (offset != size) {
-        return false;
-    }
-    *removedCount = removed;
-    return removed != 0;
+    ParentPathCtx ctx{uid, parentPath, removedEntries};
+    return RunRustDirentFilter(data, size, true, FilterParentPathCallback, &ctx, out, removedCount);
 }
 
 }  // namespace fusehide

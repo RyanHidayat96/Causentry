@@ -19,10 +19,6 @@
 #include <span>
 #include <sys/mman.h>
 
-extern "C" {
-#include "linux_xz.h"
-}
-
 #include "fusehide/core/state.hpp"
 
 namespace fusehide {
@@ -320,7 +316,6 @@ uint32_t ReadLe32(const std::byte* ptr);
 std::optional<MappedFile> MapEmbeddedStoredElf(const std::string& modulePath);
 std::optional<std::pair<const std::byte*, size_t>> FindNamedSectionData(const MappedFile& file,
                                                                         std::string_view name);
-const char* XzRetName(enum xz_ret ret);
 std::optional<MappedFile> DecompressGnuDebugdata(const std::byte* compressed, size_t size);
 std::optional<uintptr_t> FindSymbolOffset(const MappedFile& file, std::string_view symbolName);
 std::vector<std::optional<uintptr_t>> FindSymbolOffsetsOnce(

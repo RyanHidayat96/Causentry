@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Causentry v2.0 - install-time hook (KernelSU / Magisk / APatch)
+# Causentry v3.1 - install-time hook (KernelSU / Magisk / APatch)
 MODDIR=${MODPATH:-${0%/*}}
 DIR=/data/adb/causentry
 
@@ -11,7 +11,7 @@ if ! command -v abort >/dev/null 2>&1; then
 fi
 
 ui_print "*******************************"
-ui_print "  Causentry v3.0"
+ui_print "  Causentry v3.1"
 ui_print "  Full Native Rust Engine"
 ui_print "*******************************"
 
@@ -74,4 +74,4 @@ else
 fi
 
 ui_print "- Configuration: /data/adb/causentry/config.json"
-ui_print "- Reboot to activate Causentry v3.0 native Rust daemon & Zygisk engine"
+ui_print "- Reboot to activate Causentry v3.1 native Rust daemon & Zygisk engine"

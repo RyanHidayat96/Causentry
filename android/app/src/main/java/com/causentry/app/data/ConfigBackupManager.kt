@@ -192,145 +192,16 @@ class ConfigBackupManager @Inject constructor(
                 currentJson,
                 backupInfo.fullConfigJson.toString(),
                 replaceAll
-            ).ifEmpty { buildFinalConfig(currentStatus, backupInfo.fullConfigJson, replaceAll).toString() }
+            )
+            if (resultJsonString.isEmpty()) {
+                return@withContext Result.failure(Exception("Failed to merge backup configuration"))
+            }
             val op = daemonBridge.importConfig(resultJsonString)
             if (op.rpcError == null) Result.success("applied")
             else Result.failure(Exception(op.rpcError))
         } catch (t: Throwable) {
             Result.failure(t)
         }
-    }
-
-    /**
-     * Builds the config that will be written to the daemon.
-     *
-     * Rule: a key the imported file does not carry is INHERITED from the live config and
-     * never reset to a hardcoded default. Restoring a backup must not silently disable
-     * protection that is active right now (system cloak, hide mode, storage cloak,
-     * hardened list, hidden-app list) — that was the old behaviour and it clobbered
-     * protection state on every legacy/HMA import.
-     */
-    private fun buildFinalConfig(
-        current: DaemonStatus,
-        imported: JSONObject,
-        replaceAll: Boolean
-    ): JSONObject {
-        val out = JSONObject()
-
-        // 1. Targets
-        val mergedTargets = if (replaceAll) LinkedHashSet<String>() else LinkedHashSet(current.targets)
-        mergedTargets.addAll(jsonArrayToList(imported.optJSONArray("targets")))
-        out.put("targets", toJsonArray(mergedTargets.toList()))
-
-        // 2. Per-app features (per-package absolut — imported entry wins for that package only)
-        val appsObj = JSONObject()
-        if (!replaceAll) {
-            current.perAppConfigs.forEach { (pkg, cfg) -> appsObj.put(pkg, appConfigToJson(cfg)) }
-        }
-        val importedApps = imported.optJSONObject("apps")
-        if (importedApps != null) {
-            val keys = importedApps.keys()
-            while (keys.hasNext()) {
-                val pkg = keys.next()
-                val raw = importedApps.optJSONObject(pkg) ?: continue
-                val prev = current.perAppConfigs[pkg]
-                appsObj.put(pkg, mergeAppEntry(raw, prev))
-            }
-        }
-        out.put("apps", appsObj)
-
-        // 3. Hide templates
-        val tplsObj = JSONObject()
-        if (!replaceAll) {
-            current.templates.forEach { (name, pkgs) ->
-                tplsObj.put(name, toJsonArray(pkgs))
-            }
-        }
-        val importedTpls = imported.optJSONObject("hideTemplates") ?: imported.optJSONObject("templates")
-        if (importedTpls != null) {
-            val keys = importedTpls.keys()
-            while (keys.hasNext()) {
-                val name = keys.next()
-                tplsObj.put(name, importedTpls.optJSONArray(name) ?: JSONArray())
-            }
-        }
-        out.put("hideTemplates", tplsObj)
-
-        // 4. Protection lists — union on merge, imported when present, live state otherwise
-        out.put(
-            "hardened",
-            mergedStringList(current.hardened, imported, "hardened", replaceAll)
-        )
-        out.put(
-            "denylist",
-            mergedStringList(current.denylist, imported, "denylist", replaceAll)
-        )
-
-        // 5. Protection subsystems — carry over live values when the file omits them
-        out.put(
-            "systemCloak",
-            if (imported.has("systemCloak")) imported.optBoolean("systemCloak", current.systemCloak)
-            else current.systemCloak
-        )
-        out.put(
-            "hideMode",
-            if (imported.has("hideMode")) imported.optString("hideMode", current.hideMode).ifEmpty { current.hideMode }
-            else current.hideMode
-        )
-        out.put(
-            "cloakPackages",
-            if (imported.has("cloakPackages")) toJsonArray(jsonArrayToList(imported.optJSONArray("cloakPackages")))
-            else toJsonArray(current.cloakPackages)
-        )
-        out.put(
-            "storageRules",
-            imported.optJSONObject("storageRules") ?: storageRulesFromStatus(current)
-        )
-
-        // 6. Global flags
-        out.put("autoDevOff", imported.optBoolean("autoDevOff", current.autoDevOff))
-        out.put("hideMockLocation", imported.optBoolean("hideMockLocation", current.hideMockLocation))
-        out.put("alwaysHidden", imported.optBoolean("alwaysHidden", current.alwaysHidden))
-        out.put("susfs", imported.optBoolean("susfs", current.susfsOn))
-        out.put("hideRootApps", imported.optBoolean("hideRootApps", current.hideRootApps))
-        out.put("uiApk", imported.optBoolean("uiApk", current.uiApk))
-
-        return out
-    }
-
-    private fun mergedStringList(
-        currentValues: List<String>,
-        imported: JSONObject,
-        key: String,
-        replaceAll: Boolean
-    ): JSONArray {
-        if (!imported.has(key)) return toJsonArray(currentValues)
-        val importedValues = jsonArrayToList(imported.optJSONArray(key))
-        if (replaceAll) return toJsonArray(importedValues)
-        val merged = LinkedHashSet(currentValues)
-        merged.addAll(importedValues)
-        return toJsonArray(merged.toList())
-    }
-
-    private fun mergeAppEntry(raw: JSONObject, prev: PerAppConfig?): JSONObject {
-        // A legacy (v1) entry never stored accOff; keep what the device actually runs.
-        val accOff = raw.optBoolean("accOff", prev?.accOff ?: false)
-        val devOff = raw.optBoolean("devOff", prev?.devOff ?: false)
-        val mock = raw.optBoolean("mock", prev?.mock ?: false)
-        val isolate = raw.optBoolean("isolate", prev?.isolate ?: false)
-        val tmpl = raw.optString("hideTemplate").ifEmpty { prev?.hideTemplate ?: "" }
-        return JSONObject().apply {
-            put("devOff", devOff)
-            put("mock", mock)
-            put("isolate", isolate)
-            put("accOff", accOff)
-            if (tmpl.isNotEmpty()) put("hideTemplate", tmpl)
-        }
-    }
-
-    private fun storageRulesFromStatus(status: DaemonStatus): JSONObject = JSONObject().apply {
-        put("hiddenRootEntryNames", toJsonArray(status.storageHiddenRoots))
-        put("hiddenRelativePaths", toJsonArray(status.storageHiddenRelatives))
     }
 
     private fun jsonArrayToList(arr: JSONArray?): List<String> {
