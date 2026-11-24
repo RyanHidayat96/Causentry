@@ -106,7 +106,7 @@ class ForensicNotifier @Inject constructor(
             Notification.Builder(context)
         }
         builder
-            .setSmallIcon(R.drawable.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_causentry)
             .setContentTitle(title)
             .setContentText(report.title)
             .setStyle(Notification.BigTextStyle().bigText(body))
@@ -131,7 +131,7 @@ class ForensicNotifier @Inject constructor(
             Notification.Builder(context)
         }
         builder
-            .setSmallIcon(R.drawable.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_causentry)
             .setContentTitle("Recording logcat session")
             .setContentText("$count lines captured \u2014 tap to open Forensics")
             .setOngoing(true)
