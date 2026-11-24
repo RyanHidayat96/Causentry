@@ -88,6 +88,10 @@ struct fuse_read_out {
     uint32_t size;
     uint32_t padding;
 };
+struct fuse_forget_data {
+    uint64_t ino;
+    uint64_t nlookup;
+};
 
 namespace mediaprovider {
 namespace fuse {
@@ -192,6 +196,8 @@ using PfLookupFn = void (*)(fuse_req_t req, uint64_t parent, const char* name);
 using PfLookupPostfilterFn = void (*)(fuse_req_t req, uint64_t parent, uint32_t errorIn,
                                       const char* name, fuse_entry_out* entryOut,
                                       fuse_entry_bpf_out* bpfOut);
+using PfForgetFn = void (*)(fuse_req_t req, uint64_t ino, uint64_t nlookup);
+using PfForgetMultiFn = void (*)(fuse_req_t req, size_t count, const fuse_forget_data* forgets);
 using PfAccessFn = void (*)(fuse_req_t req, uint64_t ino, int mask);
 using PfFileInfoFn = void (*)(fuse_req_t req, uint64_t ino, void* fileInfo);
 using PfMkdirFn = void (*)(fuse_req_t req, uint64_t parent, const char* name, uint32_t mode);
@@ -637,6 +643,8 @@ int CompareCaseFoldIgnoringDefaultIgnorables(const uint8_t* lhsData, size_t lhsL
 
 extern HookOriginal<PfLookupFn> gOriginalPfLookup;
 extern HookOriginal<PfLookupPostfilterFn> gOriginalPfLookupPostfilter;
+extern HookOriginal<PfForgetFn> gOriginalPfForget;
+extern HookOriginal<PfForgetMultiFn> gOriginalPfForgetMulti;
 extern HookOriginal<PfAccessFn> gOriginalPfAccess;
 extern HookOriginal<PfFileInfoFn> gOriginalPfOpen;
 extern HookOriginal<PfFileInfoFn> gOriginalPfOpendir;
@@ -777,6 +785,9 @@ void ClearRootSnapshotCacheForSession(SessionToken token);
 bool IsTrackedHiddenSubtreeInode(uint32_t uid, uint64_t ino);
 bool TrackHiddenSubtreeInode(uint32_t uid, uint64_t ino);
 bool RemoveTrackedHiddenSubtreeInode(uint32_t uid, uint64_t ino);
+void ForgetInodeTracking(SessionToken token, uint64_t ino);
+void ForgetInodeTracking(uint64_t ino);
+void ClearStaleHiddenInodeIfPathVisible(uint32_t uid, uint64_t ino, std::string_view path);
 std::optional<std::string> LookupTrackedPathForInode(uint64_t ino);
 std::optional<uint64_t> LookupTrackedInodeForPath(std::string_view path);
 void RememberTrackedPathForInode(uint64_t ino, std::string_view path);

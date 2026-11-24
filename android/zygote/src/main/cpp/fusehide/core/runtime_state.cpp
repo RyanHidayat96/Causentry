@@ -26,6 +26,8 @@ namespace fusehide {
 // Hook state for libfuse_jni.so running inside the MediaProvider process.
 HookOriginal<PfLookupFn> gOriginalPfLookup;
 HookOriginal<PfLookupPostfilterFn> gOriginalPfLookupPostfilter;
+HookOriginal<PfForgetFn> gOriginalPfForget;
+HookOriginal<PfForgetMultiFn> gOriginalPfForgetMulti;
 HookOriginal<PfAccessFn> gOriginalPfAccess;
 HookOriginal<PfFileInfoFn> gOriginalPfOpen;
 HookOriginal<PfFileInfoFn> gOriginalPfOpendir;
@@ -735,6 +737,17 @@ bool IsProtectedTrackedPath(std::string_view path) {
         }
     }
     return false;
+}
+
+std::string_view ParentDirectoryOfPath(std::string_view path) {
+    while (path.size() > 1 && path.back() == '/') {
+        path.remove_suffix(1);
+    }
+    const size_t slash = path.rfind('/');
+    if (slash == std::string_view::npos || slash == 0) {
+        return {};
+    }
+    return path.substr(0, slash);
 }
 
 }  // namespace
@@ -1529,28 +1542,33 @@ HiddenNamedTargetKind ClassifyHiddenNamedTarget(uint32_t uid, uint64_t parent, c
     }
     const uint64_t rootParent = CurrentRootParentInode();
     if (parent != 0 && parent != rootParent && IsTrackedHiddenSubtreeInode(uid, parent)) {
-        if constexpr (kEnableDebugHooks) {
-            // A stale inode mark can hide a child even when the full path is exempt.
-            // Always report that contradiction, not only the first N ordinary matches.
-            const auto parentPath = LookupTrackedPathForInode(parent);
-            const std::string childPath =
-                parentPath ? HiddenPathPolicy::JoinPathComponent(*parentPath, name) : "";
-            const bool pathHidden =
-                parentPath && HiddenPathPolicy::IsAnyHiddenSubtreePath(uid, childPath);
-            const bool mismatch = parentPath && !pathHidden;
-            static std::atomic<int> sampled{0};
-            if (mismatch || ShouldLogLimited(sampled, 96)) {
-                DebugLogPrint(
-                    mismatch ? 5 : 4,
-                    "hide-diag named uid=%u source=tracked_parent parent=0x%llx root=0x%llx "
-                    "parent_path=%s name=%s child_path_hidden=%d mismatch=%d",
-                    static_cast<unsigned>(uid), static_cast<unsigned long long>(parent),
-                    static_cast<unsigned long long>(rootParent),
-                    parentPath ? DebugPreview(*parentPath).c_str() : "(unknown)",
-                    DebugPreview(name).c_str(), pathHidden ? 1 : 0, mismatch ? 1 : 0);
+        const auto parentPath = LookupTrackedPathForInode(parent);
+        if (parentPath.has_value() && VisibleStorageRootForPath(*parentPath).has_value() &&
+            !HiddenPathPolicy::IsAnyHiddenSubtreePath(uid, *parentPath)) {
+            ClearStaleHiddenInodeIfPathVisible(uid, parent, *parentPath);
+        } else {
+            if constexpr (kEnableDebugHooks) {
+                // A stale inode mark can hide a child even when the full path is exempt.
+                // Always report that contradiction, not only the first N ordinary matches.
+                const std::string childPath =
+                    parentPath ? HiddenPathPolicy::JoinPathComponent(*parentPath, name) : "";
+                const bool pathHidden =
+                    parentPath && HiddenPathPolicy::IsAnyHiddenSubtreePath(uid, childPath);
+                const bool mismatch = parentPath && !pathHidden;
+                static std::atomic<int> sampled{0};
+                if (mismatch || ShouldLogLimited(sampled, 96)) {
+                    DebugLogPrint(
+                        mismatch ? 5 : 4,
+                        "hide-diag named uid=%u source=tracked_parent parent=0x%llx root=0x%llx "
+                        "parent_path=%s name=%s child_path_hidden=%d mismatch=%d",
+                        static_cast<unsigned>(uid), static_cast<unsigned long long>(parent),
+                        static_cast<unsigned long long>(rootParent),
+                        parentPath ? DebugPreview(*parentPath).c_str() : "(unknown)",
+                        DebugPreview(name).c_str(), pathHidden ? 1 : 0, mismatch ? 1 : 0);
+                }
             }
+            return HiddenNamedTargetKind::Descendant;
         }
-        return HiddenNamedTargetKind::Descendant;
     }
     if (rootParent != 0 && parent == rootParent &&
         HiddenPathPolicy::IsHiddenRootEntryName(uid, name)) {
@@ -1742,6 +1760,14 @@ extern "C" bool WrappedShouldNotCache(void* fuse, AbiStringParam pathArg) {
             HiddenPathPolicy::IsExactHiddenTargetPath(gCurrentLookupUid, path))
             gTrackRootHiddenLookup = true;
     }
+    if (gInPfLookup && gTrackHiddenSubtreeLookup && gCurrentLookupParentInode != 0 &&
+        VisibleStorageRootForPath(path).has_value() &&
+        !HiddenPathPolicy::IsAnyHiddenSubtreePath(gCurrentLookupUid, path)) {
+        gTrackHiddenSubtreeLookup = false;
+        const std::string_view parentPath = ParentDirectoryOfPath(path);
+        ClearStaleHiddenInodeIfPathVisible(
+            gCurrentLookupUid, gCurrentLookupParentInode, parentPath.empty() ? path : parentPath);
+    }
     const auto anyPackageRule = RuleForAnyPackage();
     if (anyPackageRule != nullptr && MayParticipateInHidePolicy(path, anyPackageRule.get()) &&
         HiddenPathPolicy::IsAnyHiddenSubtreePath(*anyPackageRule, path)) {
@@ -1804,10 +1830,17 @@ bool IsTrackedHiddenSubtreeInode(uint32_t uid, uint64_t ino) {
 bool TrackHiddenSubtreeInode(uint32_t uid, uint64_t ino) {
     const auto& rule = BorrowHideRuleForUid(uid);
     const auto state = CurrentTracking();
-    if (rule == nullptr || ino == 0 || !state)
+    if (rule == nullptr || ino == 0 || ino == 1 || !state)
         return false;
+    if (const auto existingPath = LookupTrackedPathForInode(ino); existingPath.has_value() &&
+        VisibleStorageRootForPath(*existingPath).has_value() &&
+        !HiddenPathPolicy::IsAnyHiddenSubtreePath(uid, *existingPath)) {
+        return false;
+    }
     {
         std::lock_guard<std::mutex> lock(state->mutex);
+        if (ino == state->rootIno)
+            return false;
         auto& rules = state->hiddenSubtreeRules[ino];
         const bool alreadyTracked =
             std::any_of(rules.begin(), rules.end(), [&](const auto& trackedRule) {
@@ -1869,6 +1902,61 @@ bool RemoveTrackedHiddenSubtreeInode(uint32_t uid, uint64_t ino) {
         }
     }
     return changed;
+}
+
+void ForgetInodeTracking(SessionToken token, uint64_t ino) {
+    if (!token || ino == 0 || ino == 1)
+        return;
+    const auto state = TrackingForToken(token);
+    if (!state)
+        return;
+    std::lock_guard<std::mutex> lock(state->mutex);
+    state->hiddenSubtreeRules.erase(ino);
+    if (ino == state->rootIno)
+        return;
+    if (const auto it = state->inodeToPath.find(ino); it != state->inodeToPath.end()) {
+        const auto rev = state->pathToInode.find(it->second);
+        if (rev != state->pathToInode.end() && rev->second == ino) {
+            state->pathToInode.erase(rev);
+        }
+        state->inodeToPath.erase(it);
+    }
+    if (const auto de = state->deferredEntries.find(ino); de != state->deferredEntries.end()) {
+        state->deferredEntryCount -= de->second.size();
+        state->deferredEntries.erase(de);
+    }
+    state->deferredInodes.erase(ino);
+}
+
+void ForgetInodeTracking(uint64_t ino) {
+    ForgetInodeTracking(CurrentSessionToken(), ino);
+}
+
+void ClearStaleHiddenInodeIfPathVisible(uint32_t uid, uint64_t ino, std::string_view path) {
+    if (ino == 0 || ino == 1 || path.empty() || !VisibleStorageRootForPath(path).has_value())
+        return;
+    {
+        const auto state = CurrentTracking();
+        if (!state)
+            return;
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (state->hiddenSubtreeRules.find(ino) == state->hiddenSubtreeRules.end())
+            return;
+    }
+    const bool hiddenForAny = HiddenPathPolicy::IsAnyHiddenSubtreePath(path);
+    if (!hiddenForAny) {
+        ForgetInodeTracking(CurrentSessionToken(), ino);
+        static std::atomic<int> gStaleHiddenInodeLogCount{0};
+        if (ShouldLogLimited(gStaleHiddenInodeLogCount, 16)) {
+            __android_log_print(ANDROID_LOG_WARN, kLogTag,
+                                "cleared stale hidden inode ino=0x%llx path=%s",
+                                static_cast<unsigned long long>(ino), DebugPreview(path).c_str());
+        }
+        return;
+    }
+    if (uid != 0 && !HiddenPathPolicy::IsAnyHiddenSubtreePath(uid, path)) {
+        RemoveTrackedHiddenSubtreeInode(uid, ino);
+    }
 }
 
 std::optional<std::string> LookupTrackedPathForInode(SessionToken token, uint64_t ino) {
@@ -2098,9 +2186,15 @@ void NoteHiddenSubtreePathForCache(uint32_t uid, std::string_view path) {
 
     if (gInPfLookup && gCurrentLookupParentInode != 0) {
         const uint64_t rootParent = CurrentRootParentInode();
-        if (HiddenPathPolicy::IsExactHiddenTargetPath(uid, path) &&
-            gCurrentLookupParentInode == rootParent) {
+        const std::string_view parentPath = ParentDirectoryOfPath(path);
+        const bool parentItselfHidden =
+            !parentPath.empty() && HiddenPathPolicy::IsAnyHiddenSubtreePath(uid, parentPath);
+        if (!parentItselfHidden || gCurrentLookupParentInode == 1 ||
+            (rootParent != 0 && gCurrentLookupParentInode == rootParent)) {
             RemoveTrackedHiddenSubtreeInode(uid, gCurrentLookupParentInode);
+            if (HiddenPathPolicy::IsExactHiddenTargetPath(uid, path)) {
+                gTrackRootHiddenLookup = true;
+            }
             return;
         }
         gTrackHiddenSubtreeLookup = true;

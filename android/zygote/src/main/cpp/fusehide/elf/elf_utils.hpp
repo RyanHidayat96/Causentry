@@ -117,6 +117,17 @@ inline constexpr std::string_view kPfLookupPostfilterSymbols[] = {
     "entry_bpf_out",
 };
 
+inline constexpr std::string_view kPfForgetSymbols[] = {
+    "_ZN13mediaprovider4fuseL9pf_forgetEP8fuse_reqmm",
+    "_ZN13mediaprovider4fuseL9pf_forgetEP8fuse_reqyy",
+};
+
+inline constexpr std::string_view kPfForgetMultiSymbols[] = {
+    "_ZN13mediaprovider4fuseL15pf_forget_multiEP8fuse_reqmP16fuse_forget_data",
+    "_ZN13mediaprovider4fuseL15pf_forget_multiEP8fuse_reqyP16fuse_forget_data",
+    "_ZN13mediaprovider4fuseL15pf_forget_multiEP8fuse_reqjP16fuse_forget_data",
+};
+
 inline constexpr std::string_view kPfGetattrSymbols[] = {
     "_ZN13mediaprovider4fuseL10pf_getattrEP8fuse_reqmP14fuse_file_info",
 };

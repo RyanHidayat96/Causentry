@@ -864,6 +864,30 @@ extern "C" void WrappedPfLookup(fuse_req_t req, uint64_t parent, const char* nam
     gCrossUidSensitiveLookup = false;
 }
 
+extern "C" void WrappedPfForget(fuse_req_t req, uint64_t ino, uint64_t nlookup) {
+    const ScopedFuseRequestSession scopedSession(req);
+    ForgetInodeTracking(CurrentSessionToken(), ino);
+    const auto fn = gOriginalPfForget.get();
+    if (fn) {
+        fn(req, ino, nlookup);
+    }
+}
+
+extern "C" void WrappedPfForgetMulti(fuse_req_t req, size_t count,
+                                     const fuse_forget_data* forgets) {
+    const ScopedFuseRequestSession scopedSession(req);
+    const SessionToken token = CurrentSessionToken();
+    if (forgets != nullptr) {
+        for (size_t i = 0; i < count; ++i) {
+            ForgetInodeTracking(token, forgets[i].ino);
+        }
+    }
+    const auto fn = gOriginalPfForgetMulti.get();
+    if (fn) {
+        fn(req, count, forgets);
+    }
+}
+
 bool ShouldFilterDirectoryEntry(uint32_t uid, std::string_view parentPath, std::string_view name) {
     return !name.empty() && name[0] != '/' &&
            HiddenPathPolicy::ShouldHideTestPath(
@@ -953,6 +977,10 @@ Entries WrappedGetDirectoryEntriesForAbi(OriginalFn fn, void* wrapper, uint32_t 
     const std::shared_ptr<const CompiledHideRule> rule =
         IsVisibleRootPath(path) ? ResolveHideRuleForUid(uid) : nullptr;
     if (gCurrentReaddirReqUnique != 0) {
+        if (gPfReaddirIno != 0 && VisibleStorageRootForPath(path).has_value() &&
+            !HiddenPathPolicy::IsAnyHiddenSubtreePath(uid, path)) {
+            ClearStaleHiddenInodeIfPathVisible(uid, gPfReaddirIno, path);
+        }
         UpdateActiveReaddirPath(gCurrentReaddirReqUnique, path);
         if (gActiveReaddirContext.depth != 0 &&
             gActiveReaddirContext.reqUnique == gCurrentReaddirReqUnique) {
@@ -1559,6 +1587,8 @@ extern "C" int WrappedReplyEntry(fuse_req_t req, const struct fuse_entry_param* 
             if (hiddenSubtreePath) {
                 TrackHiddenSubtreeInode(uid, e->ino);
                 forceUncachedReplyEntry = true;
+            } else {
+                ClearStaleHiddenInodeIfPathVisible(uid, e->ino, *childPath);
             }
             if (exactHiddenTargetReplyEntry) {
                 forceUncachedReplyEntry = true;
@@ -1982,6 +2012,9 @@ extern "C" int WrappedLstat(const char* path, struct stat* st) {
             }
             if (HiddenPathPolicy::IsAnyHiddenSubtreePath(gPfGetattrUid, pathView)) {
                 TrackHiddenSubtreeInode(gPfGetattrUid, gPfGetattrIno);
+            } else if (VisibleStorageRootForPath(pathView).has_value()) {
+                gZeroAttrCacheForCurrentGetattr = false;
+                ClearStaleHiddenInodeIfPathVisible(gPfGetattrUid, gPfGetattrIno, pathView);
             }
         }
         return ret;
@@ -2208,6 +2241,23 @@ bool WrappedIsAppAccessiblePath(void* fuse, AbiStringParam pathArg, uint32_t uid
     }
     const std::string_view path = AbiStringView(pathArg);
     const bool hasHideRule = BorrowHideRuleForUid(uid) != nullptr;
+    const auto clearParentIfVisible = [&](std::string_view effectivePath) {
+        if (!gInPfLookup || !gTrackHiddenSubtreeLookup || gCurrentLookupParentInode == 0 ||
+            !VisibleStorageRootForPath(effectivePath).has_value()) {
+            return;
+        }
+        gTrackHiddenSubtreeLookup = false;
+        std::string_view trimmed = effectivePath;
+        while (trimmed.size() > 1 && trimmed.back() == '/') {
+            trimmed.remove_suffix(1);
+        }
+        const size_t slash = trimmed.rfind('/');
+        const std::string_view parentDir =
+            (slash != std::string_view::npos && slash > 0) ? trimmed.substr(0, slash)
+                                                           : std::string_view();
+        ClearStaleHiddenInodeIfPathVisible(uid, gCurrentLookupParentInode,
+                                           parentDir.empty() ? trimmed : parentDir);
+    };
     if (!UnicodePolicy::NeedsSanitization(path)) {
         UnicodePolicy::LogSuspiciousDirectPath("app_accessible", path);
         if (ShouldLogLimited(gAppAccessibleLogCount)) {
@@ -2224,6 +2274,7 @@ bool WrappedIsAppAccessiblePath(void* fuse, AbiStringParam pathArg, uint32_t uid
                           DebugPreview(path).c_str());
             return false;
         }
+        clearParentIfVisible(path);
         return original(fuse, pathArg, uid);
     }
     std::string sanitized(path);
@@ -2243,6 +2294,7 @@ bool WrappedIsAppAccessiblePath(void* fuse, AbiStringParam pathArg, uint32_t uid
                       DebugPreview(sanitized).c_str(), DebugPreview(path).c_str());
         return false;
     }
+    clearParentIfVisible(sanitized);
     return original(fuse, sanitizedArg.get(), uid);
 }
 

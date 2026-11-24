@@ -31,6 +31,8 @@ static_assert(std::is_same_v<decltype(&WrappedAddDirectoryEntriesFromLowerFsValu
                              AddValueDirectoryEntriesFromLowerFsFn>);
 static_assert(std::is_same_v<decltype(&WrappedPfLookup), PfLookupFn>);
 static_assert(std::is_same_v<decltype(&WrappedPfLookupPostfilter), PfLookupPostfilterFn>);
+static_assert(std::is_same_v<decltype(&WrappedPfForget), PfForgetFn>);
+static_assert(std::is_same_v<decltype(&WrappedPfForgetMulti), PfForgetMultiFn>);
 static_assert(std::is_same_v<decltype(&WrappedPfAccess), PfAccessFn>);
 static_assert(std::is_same_v<decltype(&WrappedPfOpen), PfFileInfoFn>);
 static_assert(std::is_same_v<decltype(&WrappedPfOpendir), PfFileInfoFn>);
@@ -74,6 +76,8 @@ struct HookInstallProcessState {
     void*& originalEqualsIgnoreCase = gOriginalEqualsIgnoreCase.rawStorage();
     void*& originalPfLookup = gOriginalPfLookup.rawStorage();
     void*& originalPfLookupPostfilter = gOriginalPfLookupPostfilter.rawStorage();
+    void*& originalPfForget = gOriginalPfForget.rawStorage();
+    void*& originalPfForgetMulti = gOriginalPfForgetMulti.rawStorage();
     void*& originalPfAccess = gOriginalPfAccess.rawStorage();
     void*& originalPfOpen = gOriginalPfOpen.rawStorage();
     void*& originalPfOpendir = gOriginalPfOpendir.rawStorage();
@@ -1758,6 +1762,32 @@ void InstallMinimalDebugHooks(const ModuleInfo& module, const FileElfContext& fi
             module, "_ZN13mediaprovider4fuseL10pf_getattrEP8fuse_reqmP14fuse_file_info",
             (void*)WrappedPfGetattr, &process.originalPfGetattr, "hook pf_getattr failed");
     }
+    if (process.originalPfForget == nullptr) {
+        if (!InstallFirstAvailableFileInlineHook(module, kPfForgetSymbols, (void*)WrappedPfForget,
+                                                 &process.originalPfForget,
+                                                 "hook pf_forget failed")) {
+            if (const auto off = ResolveLargestSymbolOffsetContaining(module, "pf_forgetEP8fuse_req");
+                off.has_value() && *off != 0) {
+                TryInstallInlineHookAt(reinterpret_cast<void*>(module.base + *off),
+                                       (void*)WrappedPfForget, &process.originalPfForget,
+                                       "hook pf_forget failed");
+            }
+        }
+    }
+    if (process.originalPfForgetMulti == nullptr) {
+        if (!InstallFirstAvailableFileInlineHook(module, kPfForgetMultiSymbols,
+                                                 (void*)WrappedPfForgetMulti,
+                                                 &process.originalPfForgetMulti,
+                                                 "hook pf_forget_multi failed")) {
+            if (const auto off =
+                    ResolveLargestSymbolOffsetContaining(module, "pf_forget_multiEP8fuse_req");
+                off.has_value() && *off != 0) {
+                TryInstallInlineHookAt(reinterpret_cast<void*>(module.base + *off),
+                                       (void*)WrappedPfForgetMulti, &process.originalPfForgetMulti,
+                                       "hook pf_forget_multi failed");
+            }
+        }
+    }
     if (process.originalPfLookup == nullptr) {
         // Reverse-engineered record: pf_lookup @ 0x00175e48.
         TryInstallDeviceProfileInlineHook(module, deviceProfile.pfLookupOffset, "pf_lookup",
@@ -1886,6 +1916,8 @@ struct LowlevelCallbackSpec {
 };
 std::array<LowlevelCallbackSpec, 8> gLowlevelCallbacks{};
 std::atomic<size_t> gLowlevelCallbackCount{0};
+std::array<LowlevelCallbackSpec, 2> gOptionalLowlevelCallbacks{};
+std::atomic<size_t> gOptionalLowlevelCallbackCount{0};
 
 bool BackfillSessionLowlevelCallbacks(void* session) {
 #if !defined(FUSEHIDE_ENABLE_UNSAFE_LIVE_CALLBACK_PATCH)
@@ -1949,6 +1981,7 @@ void* CreateSessionWithPatchedCallbacks(void* args, const void* ops, size_t opsS
     // and the supplied size are checked; unknown layouts pass through unchanged.
     std::vector<void*> patched;
     size_t installed = 0;
+    size_t optionalInstalled = 0;
     const size_t required = gLowlevelCallbackCount.load(std::memory_order_acquire);
     if (ops && required == kRequiredFUSECallbacks && opsSize >= 376 && opsSize <= 4096 &&
         opsSize % sizeof(void*) == 0) {
@@ -1997,6 +2030,92 @@ void* CreateSessionWithPatchedCallbacks(void* args, const void* ops, size_t opsS
                 patched[positions[n]] = spec.replacement;
             }
             installed = required;
+            bool forgetPatched = false;
+            const size_t optCount =
+                std::min(gOptionalLowlevelCallbackCount.load(std::memory_order_acquire),
+                         gOptionalLowlevelCallbacks.size());
+            for (size_t k = 0; k < optCount; ++k) {
+                const auto& spec = gOptionalLowlevelCallbacks[k];
+                if (!spec.target || !spec.replacement || !spec.backup ||
+                    spec.target == spec.replacement) {
+                    continue;
+                }
+                const auto previous = __atomic_load_n(spec.backup, __ATOMIC_ACQUIRE);
+                if (previous != nullptr && previous != spec.target) {
+                    continue;
+                }
+                size_t matchPos = SIZE_MAX;
+                bool unique = true;
+                for (size_t i = 0; i < patched.size(); ++i) {
+                    if (patched[i] == spec.target) {
+                        if (matchPos != SIZE_MAX) {
+                            unique = false;
+                            break;
+                        }
+                        matchPos = i;
+                    }
+                }
+                if (!unique || matchPos == SIZE_MAX) {
+                    continue;
+                }
+                bool collides = false;
+                for (size_t n = 0; n < required; ++n) {
+                    if (positions[n] == matchPos || gLowlevelCallbacks[n].target == spec.target) {
+                        collides = true;
+                        break;
+                    }
+                }
+                if (collides) {
+                    continue;
+                }
+                void* expected = nullptr;
+                __atomic_compare_exchange_n(spec.backup, &expected, spec.target, false,
+                                            __ATOMIC_RELEASE, __ATOMIC_ACQUIRE);
+                patched[matchPos] = spec.replacement;
+                ++optionalInstalled;
+                if (std::strcmp(spec.name, "forget") == 0) {
+                    forgetPatched = true;
+                }
+            }
+            if (!forgetPatched) {
+                size_t lookupPos = SIZE_MAX;
+                size_t getattrPos = SIZE_MAX;
+                for (size_t n = 0; n < required; ++n) {
+                    if (std::strcmp(gLowlevelCallbacks[n].name, "lookup") == 0) {
+                        lookupPos = positions[n];
+                    } else if (std::strcmp(gLowlevelCallbacks[n].name, "getattr") == 0) {
+                        getattrPos = positions[n];
+                    }
+                }
+                if (lookupPos != SIZE_MAX && getattrPos != SIZE_MAX &&
+                    lookupPos + 2 == getattrPos && lookupPos + 1 < patched.size()) {
+                    void* cand = patched[lookupPos + 1];
+                    void* const replacement = reinterpret_cast<void*>(+WrappedPfForget);
+                    bool claimed = false;
+                    for (size_t n = 0; n < required; ++n) {
+                        if (positions[n] == lookupPos + 1 ||
+                            gLowlevelCallbacks[n].target == cand ||
+                            gLowlevelCallbacks[n].replacement == cand) {
+                            claimed = true;
+                            break;
+                        }
+                    }
+                    if (cand != nullptr && cand != replacement && !claimed) {
+                        void* expected = nullptr;
+                        const auto prev = __atomic_load_n(&gOriginalPfForget.rawStorage(),
+                                                          __ATOMIC_ACQUIRE);
+                        if (prev == nullptr || prev == cand) {
+                            if (prev == nullptr) {
+                                __atomic_compare_exchange_n(&gOriginalPfForget.rawStorage(),
+                                                            &expected, cand, false,
+                                                            __ATOMIC_RELEASE, __ATOMIC_ACQUIRE);
+                            }
+                            patched[lookupPos + 1] = replacement;
+                            ++optionalInstalled;
+                        }
+                    }
+                }
+            }
         } else {
             __android_log_print(ANDROID_LOG_ERROR, kLogTag,
                                 "FUSE Session callback layout incomplete; leaving ops unchanged");
@@ -2014,8 +2133,8 @@ void* CreateSessionWithPatchedCallbacks(void* args, const void* ops, size_t opsS
             RegisterSessionRootPath(token, fuseArgs->argv[0]);
         }
         __android_log_print(ANDROID_LOG_INFO, kLogTag,
-                            "lowlevel callback table se=%p replaced=%zu ops_size=%zu", se,
-                            installed, opsSize);
+                            "lowlevel callback table se=%p replaced=%zu optional=%zu ops_size=%zu",
+                            se, installed, optionalInstalled, opsSize);
     }
     return se;
 }
@@ -2085,7 +2204,7 @@ void InstallLowlevelCallbackFallback(const ModuleInfo& module, const RuntimeDyna
     // symbols. Map its ELF image once instead of repeatedly parsing the APK
     // and resolving unrelated profile features before intercepting Session new.
     if (const auto mapped = MapEmbeddedStoredElf(module.path); mapped.has_value()) {
-        constexpr std::array<std::string_view, 9> names = {
+        constexpr std::array<std::string_view, 14> names = {
             kPfLookupSymbols[0],
             kPfLookupPostfilterSymbols[0],
             kPfGetattrSymbols[0],
@@ -2095,6 +2214,11 @@ void InstallLowlevelCallbackFallback(const ModuleInfo& module, const RuntimeDyna
             kPfReaddirplusSymbols[1],
             kPfReaddirPostfilterSymbols[0],
             kPfReaddirPostfilterSymbols[1],
+            kPfForgetSymbols[0],
+            kPfForgetSymbols[1],
+            kPfForgetMultiSymbols[0],
+            kPfForgetMultiSymbols[1],
+            kPfForgetMultiSymbols[2],
         };
         const auto values = FindSymbolOffsetsOnce(*mapped, names);
         const std::array<std::optional<uintptr_t>, 6> offsets = {
@@ -2128,6 +2252,24 @@ void InstallLowlevelCallbackFallback(const ModuleInfo& module, const RuntimeDyna
                                      &gOriginalPfReaddirPostfilter.rawStorage(),
                                      "readdir_postfilter"};
             gLowlevelCallbackCount.store(offsets.size(), std::memory_order_release);
+            const auto forgetOffset = values[9].has_value() ? values[9] : values[10];
+            const auto forgetMultiOffset =
+                values[11].has_value() ? values[11]
+                                       : (values[12].has_value() ? values[12] : values[13]);
+            size_t optCount = 0;
+            if (forgetOffset.has_value() && *forgetOffset != 0) {
+                gOptionalLowlevelCallbacks[optCount++] = {
+                    reinterpret_cast<void*>(module.base + *forgetOffset),
+                    reinterpret_cast<void*>(+WrappedPfForget), &gOriginalPfForget.rawStorage(),
+                    "forget"};
+            }
+            if (forgetMultiOffset.has_value() && *forgetMultiOffset != 0) {
+                gOptionalLowlevelCallbacks[optCount++] = {
+                    reinterpret_cast<void*>(module.base + *forgetMultiOffset),
+                    reinterpret_cast<void*>(+WrappedPfForgetMulti),
+                    &gOriginalPfForgetMulti.rawStorage(), "forget_multi"};
+            }
+            gOptionalLowlevelCallbackCount.store(optCount, std::memory_order_release);
             __android_log_print(ANDROID_LOG_INFO, kLogTag,
                                 "early Session callback symbols resolved in one ELF mapping");
             InstallSessionNewImport(dyn, module.base);
@@ -2164,6 +2306,20 @@ void InstallLowlevelCallbackFallback(const ModuleInfo& module, const RuntimeDyna
     add(resolved(plan.pfReaddirPostfilter), reinterpret_cast<void*>(+WrappedPfReaddirPostfilter),
         &gOriginalPfReaddirPostfilter.rawStorage(), "readdir_postfilter");
     gLowlevelCallbackCount.store(count, std::memory_order_release);
+    size_t optCount = 0;
+    auto addOpt = [&](std::optional<uintptr_t> offset, void* replacement, void** backup,
+                      const char* name) {
+        if (!offset || *offset == 0 || optCount >= gOptionalLowlevelCallbacks.size())
+            return;
+        gOptionalLowlevelCallbacks[optCount++] = {reinterpret_cast<void*>(module.base + *offset),
+                                                  replacement, backup, name};
+    };
+    addOpt(ResolveFirstAvailableSymbolOffset(module, kPfForgetSymbols),
+           reinterpret_cast<void*>(+WrappedPfForget), &gOriginalPfForget.rawStorage(), "forget");
+    addOpt(ResolveFirstAvailableSymbolOffset(module, kPfForgetMultiSymbols),
+           reinterpret_cast<void*>(+WrappedPfForgetMulti), &gOriginalPfForgetMulti.rawStorage(),
+           "forget_multi");
+    gOptionalLowlevelCallbackCount.store(optCount, std::memory_order_release);
     InstallSessionNewImport(dyn, module.base);
 }
 #endif
@@ -2382,6 +2538,31 @@ void InstallAdvancedDebugHooks(const ModuleInfo& module) {
         InstallHookForSymbol("_ZN13mediaprovider4fuseL10pf_getattrEP8fuse_reqmP14fuse_file_info",
                              (void*)WrappedPfGetattr, &process.originalPfGetattr,
                              "hook pf_getattr failed");
+    }
+    if (process.originalPfForget == nullptr) {
+        if (!InstallFirstAvailableInlineHook(kPfForgetSymbols, (void*)WrappedPfForget,
+                                             &process.originalPfForget,
+                                             "hook pf_forget failed")) {
+            if (const auto off = ResolveLargestSymbolOffsetContaining(module, "pf_forgetEP8fuse_req");
+                off.has_value() && *off != 0) {
+                TryInstallInlineHookAt(reinterpret_cast<void*>(module.base + *off),
+                                       (void*)WrappedPfForget, &process.originalPfForget,
+                                       "hook pf_forget failed");
+            }
+        }
+    }
+    if (process.originalPfForgetMulti == nullptr) {
+        if (!InstallFirstAvailableInlineHook(kPfForgetMultiSymbols, (void*)WrappedPfForgetMulti,
+                                             &process.originalPfForgetMulti,
+                                             "hook pf_forget_multi failed")) {
+            if (const auto off =
+                    ResolveLargestSymbolOffsetContaining(module, "pf_forget_multiEP8fuse_req");
+                off.has_value() && *off != 0) {
+                TryInstallInlineHookAt(reinterpret_cast<void*>(module.base + *off),
+                                       (void*)WrappedPfForgetMulti, &process.originalPfForgetMulti,
+                                       "hook pf_forget_multi failed");
+            }
+        }
     }
     if (process.originalPfLookup == nullptr) {
         // Reverse-engineered record: pf_lookup @ 0x00175e48.
