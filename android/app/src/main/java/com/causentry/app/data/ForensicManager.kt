@@ -44,7 +44,8 @@ import javax.inject.Singleton
 @Singleton
 class ForensicManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val notifier: ForensicNotifier
+    private val notifier: ForensicNotifier,
+    private val userPreferences: UserPreferences
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val streamLock = Any()
@@ -65,8 +66,7 @@ class ForensicManager @Inject constructor(
     private val _crashReportsFlow = MutableStateFlow<List<CrashThreatReport>>(emptyList())
     val crashReportsFlow: StateFlow<List<CrashThreatReport>> = _crashReportsFlow.asStateFlow()
 
-    private val _isLiveStreaming = MutableStateFlow(true)
-    val isLiveStreaming: StateFlow<Boolean> = _isLiveStreaming.asStateFlow()
+    val isLiveStreaming: StateFlow<Boolean> = userPreferences.forensicsLiveStreaming
 
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
@@ -96,7 +96,7 @@ class ForensicManager @Inject constructor(
     }
 
     private fun reconcileStreamLocked() {
-        val shouldRun = screenVisible || _isRecording.value
+        val shouldRun = (screenVisible && isLiveStreaming.value) || _isRecording.value
         if (shouldRun) {
             if (streamJob?.isActive != true) {
                 preloadRunningProcesses()
@@ -130,7 +130,10 @@ class ForensicManager @Inject constructor(
     }
 
     fun toggleLiveStreaming() {
-        _isLiveStreaming.value = !_isLiveStreaming.value
+        synchronized(streamLock) {
+            userPreferences.setForensicsLiveStreaming(!isLiveStreaming.value)
+            reconcileStreamLocked()
+        }
     }
 
     fun clearLogs() {
@@ -167,7 +170,7 @@ class ForensicManager @Inject constructor(
                     val entry = parseLogLine(currentLine)
                     if (entry != null) {
                         detectThreatsAndCrashes(entry)
-                        if (_isLiveStreaming.value) {
+                        if (isLiveStreaming.value) {
                             batchList.add(entry)
                         }
                         if (_isRecording.value) {

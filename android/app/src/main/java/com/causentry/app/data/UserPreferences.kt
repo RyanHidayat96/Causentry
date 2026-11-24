@@ -44,6 +44,9 @@ class UserPreferences @Inject constructor(
     private val _language = MutableStateFlow(AppLanguage.fromKey(prefs.getString("app_language", AppLanguage.SYSTEM.key)))
     val language: StateFlow<AppLanguage> = _language.asStateFlow()
 
+    private val _forensicsLiveStreaming = MutableStateFlow(prefs.getBoolean("forensics_live_streaming", true))
+    val forensicsLiveStreaming: StateFlow<Boolean> = _forensicsLiveStreaming.asStateFlow()
+
     fun setThemeMode(mode: ThemeMode) {
         _themeMode.value = mode
         prefs.edit().putString("theme_mode", mode.key).apply()
@@ -57,5 +60,10 @@ class UserPreferences @Inject constructor(
     fun setLanguage(lang: AppLanguage) {
         _language.value = lang
         prefs.edit().putString("app_language", lang.key).apply()
+    }
+
+    fun setForensicsLiveStreaming(enabled: Boolean) {
+        _forensicsLiveStreaming.value = enabled
+        prefs.edit().putBoolean("forensics_live_streaming", enabled).apply()
     }
 }
