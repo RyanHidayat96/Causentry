@@ -1,6 +1,6 @@
 [package]
 name = "causentry-fuse-core"
-version = "3.1.0"
+version = "1.0.0"
 edition = "2024"
 description = "Memory-safe Rust Unicode 12.1, path canonicalization, ELF/ZIP/XZ binary parser, and FUSE dirent/direntplus payload filter for FuseHide"
 license = "Apache-2.0"

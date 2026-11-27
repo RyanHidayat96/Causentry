@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Causentry v3.1 - post-fs-data stage
+# Causentry v1.0.0 - post-fs-data stage
 # Prepares state directories and launches native causentryd BEFORE system_server specializes
 # so Zygisk Companion can hand off live policy socket FDs on cold boot.
 

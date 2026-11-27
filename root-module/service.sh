@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Causentry v3.1 - late_start service stage
+# Causentry v1.0.0 - late_start service stage
 # Ensures causentryd is alive, installs/updates Causentry.apk if needed, applies policy,
 # and grants READ_LOGS for lazy on-demand Forensics. Zero httpd, zero polling loops.
 

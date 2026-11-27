@@ -1,7 +1,7 @@
 id=causentry
 name=Causentry
-version=v3.1.0
-versionCode=310
+version=v1.0.0
+versionCode=100
 minSdkVersion=26
 author=exery
 description=System-side package cloaking, Settings/USB/Accessibility spoofing, and FUSE storage isolation for KernelSU, Magisk, and APatch.

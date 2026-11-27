@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Causentry v3.1 - install-time hook (KernelSU / Magisk / APatch)
+# Causentry v1.0.0 - install-time hook (KernelSU / Magisk / APatch)
 MODDIR=${MODPATH:-${0%/*}}
 DIR=/data/adb/causentry
 
@@ -11,7 +11,7 @@ if ! command -v abort >/dev/null 2>&1; then
 fi
 
 ui_print "*******************************"
-ui_print "  Causentry v3.1"
+ui_print "  Causentry v1.0.0"
 ui_print "  Native Daemon & Zygisk Module"
 ui_print "*******************************"
 

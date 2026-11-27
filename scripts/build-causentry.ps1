@@ -1,6 +1,6 @@
 #requires -version 5
 <#
-Causentry v3.1 - Native build pipeline:
+Causentry - Native build pipeline:
   [1/5] Static Dobby (arm64-v8a + armeabi-v7a)
   [2/5] Root Cargo Workspace (causentryd, causentry-zygisk, causentry-fuse-core)
   [3/5] App Core JNI libs (forensic-core-rs, backup-core-rs)
@@ -10,7 +10,7 @@ Causentry v3.1 - Native build pipeline:
   .\scripts\build-causentry.ps1                 build everything -> release\*.zip
   .\scripts\build-causentry.ps1 -NoApk          skip Control UI APK rebuild
   .\scripts\build-causentry.ps1 -Deploy         also adb push the zip to /sdcard/Download
-  .\scripts\build-causentry.ps1 -Version 3.0.0  stamp another module version
+  .\scripts\build-causentry.ps1 -Version 1.0.0  stamp another module version
   .\scripts\build-causentry.ps1 -Pause          wait for Enter at the end
 #>
 [CmdletBinding()]
@@ -57,7 +57,7 @@ if (-not $mutex.WaitOne([TimeSpan]::FromSeconds(60))) {
 try {
   function Read-Version {
     $v = (Select-String -Path $PropPath -Pattern '^version=v?([0-9].*)$').Matches.Groups[1].Value
-    if (-not $v) { $v = "3.1.0" }
+    if (-not $v) { $v = "1.0.0" }
     return $v.Trim()
   }
 
@@ -126,7 +126,7 @@ try {
     @{ Target = "armv7-linux-androideabi"; ClangTarget = "armv7a-linux-androideabi26"; Abi = "armeabi-v7a" }
   )
 
-  Say "== Causentry v3.1 Release Build =="
+  Say "== Causentry v$Version Release Build =="
   Say "   root    : $Root"
   Say "   java    : $Java"
   Say "   sdk     : $Sdk"

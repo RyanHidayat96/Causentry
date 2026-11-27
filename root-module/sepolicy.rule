@@ -1,4 +1,4 @@
-# Causentry v3.0 SELinux Policy Rules
+# Causentry SELinux Policy Rules
 # Space-separated Magisk/KernelSU sepolicy.rule syntax (no colons or semicolons).
 #
 # 1. Do NOT deny app_zygote access to selinuxfs / security_t globally.

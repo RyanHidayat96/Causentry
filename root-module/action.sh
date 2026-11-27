@@ -1,9 +1,9 @@
 #!/system/bin/sh
-# Causentry v3.1 - Module Action button
+# Causentry v1.0.0 - Module Action button
 DIR=/data/adb/causentry
 BIN="$DIR/causentryd"
 
-echo "Causentry v3.1: syncing policies..."
+echo "Causentry v1.0.0: syncing policies..."
 if [ -x "$BIN" ]; then
   "$BIN" apply 2>&1
   echo ""
