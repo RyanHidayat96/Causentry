@@ -2,7 +2,7 @@
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-cd "$repo_root/daemon"
+cd "$repo_root"
 
 cargo_bin=${CARGO:-}
 
@@ -23,4 +23,4 @@ if [ -z "$cargo_bin" ]; then
     exit 127
 fi
 
-exec "$cargo_bin" test
+exec "$cargo_bin" test --workspace

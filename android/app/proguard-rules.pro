@@ -2,6 +2,5 @@
 -keep class * extends android.app.Application
 -keep class * extends androidx.activity.ComponentActivity
 
-# Keep rust-anything JNI bridges & exception carriers
--keep class rustanything.** { *; }
+# Keep JNI bridge classes
 -keep class com.causentry.app.core.** { *; }

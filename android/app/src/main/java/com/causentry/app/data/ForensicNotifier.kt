@@ -19,7 +19,7 @@ import javax.inject.Singleton
 /**
  * LogFox-style proactive alerting. Surfaces crash / ANR / RASP-trigger events as system
  * notifications so the operator sees tamper or stability events even while the app is
- * backgrounded — without installing a separate log application.
+ * backgrounded, without installing a separate log application.
  */
 @Singleton
 class ForensicNotifier @Inject constructor(

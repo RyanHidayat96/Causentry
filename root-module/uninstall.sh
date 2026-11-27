@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Causentry v2.0 - Clean uninstall hook
+# Causentry - uninstall hook
 DIR=/data/adb/causentry
 BIN="$DIR/causentryd"
 

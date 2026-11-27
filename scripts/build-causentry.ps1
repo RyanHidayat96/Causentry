@@ -1,11 +1,11 @@
 #requires -version 5
 <#
-Causentry v3.1 — Full Native Rust build pipeline:
+Causentry v3.1 - Native build pipeline:
   [1/5] Static Dobby (arm64-v8a + armeabi-v7a)
   [2/5] Root Cargo Workspace (causentryd, causentry-zygisk, causentry-fuse-core)
-  [3/5] Rust-Anything verified App Core JNI libs (forensic-core-rs, backup-core-rs)
-  [4/5] FuseHide C++20 + Rust Safety Core (libfusehide.so)
-  [5/5] Android Control UI APK + Zygisk DEX + KernelSU/Magisk zip
+  [3/5] App Core JNI libs (forensic-core-rs, backup-core-rs)
+  [4/5] FuseHide C++20 + Rust core (libfusehide.so)
+  [5/5] Android Control UI APK + Zygisk DEX + module zip
 
   .\scripts\build-causentry.ps1                 build everything -> release\*.zip
   .\scripts\build-causentry.ps1 -NoApk          skip Control UI APK rebuild
@@ -126,7 +126,7 @@ try {
     @{ Target = "armv7-linux-androideabi"; ClangTarget = "armv7a-linux-androideabi26"; Abi = "armeabi-v7a" }
   )
 
-  Say "== Causentry v3.1 Full Native Rust Build =="
+  Say "== Causentry v3.1 Release Build =="
   Say "   root    : $Root"
   Say "   java    : $Java"
   Say "   sdk     : $Sdk"
@@ -199,10 +199,10 @@ try {
     Pop-Location
   }
 
-  # ---------------- [3/5] Rust-Anything App Core JNI Libs (Dual-ABI) ----------------
+  # ---------------- [3/5] App Core JNI Libs (Dual-ABI) ----------------
   if (-not $NoApk) {
     Say ""
-    Say "[3/5] Building rust-anything JNI App Core (forensic-core-rs + backup-core-rs)..."
+    Say "[3/5] Building App Core JNI libs (forensic-core-rs + backup-core-rs)..."
     $jniCrates = @(
       @{ Dir = (Join-Path $Root "android\app\rust\forensic-core-rs"); Lib = "libforensic_core_rs.so" },
       @{ Dir = (Join-Path $Root "android\app\rust\backup-core-rs");   Lib = "libbackup_core_rs.so" }
@@ -243,13 +243,13 @@ try {
       if ($null -eq $oldFlagsV7)   { Remove-Item Env:CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_RUSTFLAGS -ErrorAction SilentlyContinue } else { $env:CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_RUSTFLAGS = $oldFlagsV7 }
     }
   } else {
-    Say "[3/5] Skipping rust-anything JNI build (-NoApk)"
+    Say "[3/5] Skipping App Core JNI build (-NoApk)"
   }
 
-  # ---------------- [4/5] FuseHide C++20 + Rust Safety Core ----------------
+  # ---------------- [4/5] FuseHide C++20 + Rust Core ----------------
   if ($IncludeZygisk) {
     Say ""
-    Say "[4/5] Linking FuseHide C++20 + Rust causentry-fuse-core (arm64-v8a + armeabi-v7a)..."
+    Say "[4/5] Linking FuseHide C++20 + causentry-fuse-core (arm64-v8a + armeabi-v7a)..."
     foreach ($rt in $rustTargets) {
       $abi = $rt.Abi
       $fuseLib = (Join-Path $Root "target\$($rt.Target)\release\libcausentry_fuse_core.a").Replace("\", "/")
@@ -439,7 +439,7 @@ try {
     }
   } finally { $zipCheck.Dispose() }
 
-  # Verify embedded Dual-ABI rust-anything JNI libs inside Causentry.apk
+  # Verify embedded Dual-ABI JNI libs inside Causentry.apk
   $apkCheck = [System.IO.Compression.ZipFile]::OpenRead($ApkOut)
   try {
     $requiredJni = @(

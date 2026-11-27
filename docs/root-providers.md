@@ -1,18 +1,14 @@
 # Root Providers
 
-Supported package layout:
+Causentry packages a standard Magisk-compatible module directory (`root-module/`) that works across:
 
-- Magisk-compatible module directory and service/action scripts.
-- KernelSU and KernelSU-Next module managers.
-- APatch-compatible module installation when it honors the Magisk-style layout.
+- KernelSU and KernelSU Next
+- Magisk (with Zygisk enabled)
+- APatch (with ZygiskNext / compatible Zygisk loader)
 
-Runtime behavior is intentionally conservative:
+## Runtime Behavior
 
-- Module scripts avoid SELinux permissive mode.
-- Feature detection prefers local binaries (`ksud`, `magisk`, BusyBox/httpd, SUSFS
-  controls) instead of assuming one provider.
-- UI operation does not require the Android app to receive root.
-- `systemCloak` is served by the bundled Zygisk backend only. It should be verified
-  on the target ROM/provider combination before being treated as production.
-
-No-root limited mode and provider-specific Rust adapters remain future work.
+- SELinux stays `Enforcing` at all times; `sepolicy.rule` adds only the minimal domain rules required for socket IPC between the control UI, system processes, and `causentryd`.
+- Provider detection in `causentryd` (`daemon/src/system.rs`) checks `/data/adb/ksu`, `/data/adb/ap`, and `/data/adb/magisk` dynamically without hardcoding a single root manager.
+- SUSFS userspace tools (`ksu_susfs` / `susfsd`) are probed at runtime when `"susfs": true` is configured; if unavailable, the remaining hooks continue to operate normally.
+- The control UI (`com.causentry.app`) does not request `su` access. All privileged operations execute inside `causentryd`, gated by `SO_PEERCRED` UID checks.

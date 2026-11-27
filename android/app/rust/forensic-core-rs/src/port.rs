@@ -1,4 +1,4 @@
-//! The Rust port of `forensic/`.
+//! Native logcat parser and crash trace classifier.
 
 #![forbid(unsafe_code)]
 

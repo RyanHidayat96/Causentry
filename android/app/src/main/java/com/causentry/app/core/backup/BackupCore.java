@@ -7,8 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Pure Java JSON backup inspection & config merge engine (zero Android / org.json dependencies).
- * Ported and verified into Dual-ABI Android JNI `.so` via `rust-anything`.
+ * Pure Java JSON backup inspection and config merge fallback (no Android framework dependencies).
  */
 public final class BackupCore {
     private BackupCore() {}

@@ -4,6 +4,6 @@ version=v3.1.0
 versionCode=310
 minSdkVersion=26
 author=exery
-description=Zero-leak anti-detection engine powered by full native Rust (causentryd daemon, pure Rust Zygisk v4 loader, Rust FuseHide safety core, and rust-anything verified JNI App Core) for package cloaking, Settings/USB/A11y spoofing, and FUSE storage cloaking.
+description=System-side package cloaking, Settings/USB/Accessibility spoofing, and FUSE storage isolation for KernelSU, Magisk, and APatch.
 entrypoint=com.causentry.zygote.ZygoteEntry
 attachNativeLibs=false

@@ -12,7 +12,7 @@ fi
 
 ui_print "*******************************"
 ui_print "  Causentry v3.1"
-ui_print "  Full Native Rust Engine"
+ui_print "  Native Daemon & Zygisk Module"
 ui_print "*******************************"
 
 ABI=$(getprop ro.product.cpu.abi 2>/dev/null)
@@ -74,4 +74,4 @@ else
 fi
 
 ui_print "- Configuration: /data/adb/causentry/config.json"
-ui_print "- Reboot to activate Causentry v3.1 native Rust daemon & Zygisk engine"
+ui_print "- Reboot to activate Causentry"

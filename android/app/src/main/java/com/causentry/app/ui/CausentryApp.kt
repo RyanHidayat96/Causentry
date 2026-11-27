@@ -128,7 +128,7 @@ fun CausentryApp(
     val dynamicColor by viewModel.dynamicColor.collectAsState()
     val language by viewModel.language.collectAsState()
 
-    // Crash count badge only (low-frequency) — high-frequency log stream is collected inside ForensicsTabHost only!
+    // Crash count badge only (low-frequency); high-frequency log stream is collected inside ForensicsTabHost only.
     val crashReports by viewModel.crashReports.collectAsState()
 
     // Hoisted scroll states so switching tabs preserves scroll position

@@ -182,7 +182,7 @@ fun BackupRestoreCard(
                     } else {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Legacy backup (v${info.sourceVersion}) — current cloak settings are kept.",
+                            text = "Legacy backup (v${info.sourceVersion}) - current cloak settings are kept.",
                             color = cs.onSurfaceVariant,
                             fontSize = 11.sp
                         )

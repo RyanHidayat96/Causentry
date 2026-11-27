@@ -43,6 +43,10 @@ causentry.keystore
 /tools/
 /build/
 
+# Local helper scripts
+install-latest-module-and-reboot.bat
+install-control-apk-if-changed.bat
+
 # Logs, screenshots, and debug dumps
 *.log
 *.png

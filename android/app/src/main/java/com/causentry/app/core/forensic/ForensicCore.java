@@ -1,8 +1,7 @@
 package com.causentry.app.core.forensic;
 
 /**
- * Pure Java forensic parsing and classification core (zero Android framework dependencies).
- * Ported and verified into Dual-ABI Android JNI `.so` via `rust-anything`.
+ * Pure Java forensic log parser and crash classifier fallback (no Android framework dependencies).
  */
 public final class ForensicCore {
     private ForensicCore() {}

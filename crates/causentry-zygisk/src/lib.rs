@@ -1,4 +1,4 @@
-//! Causentry v3.0 — Pure Rust Zygisk v4 native loader.
+//! Causentry - Native Zygisk v4 loader.
 //!
 //! Replaces `zygisk/module.cpp`, `dex_loader.cpp`, `dlopen_monitor.cpp`, and
 //! `native_hook_adapter.cpp` with memory-safe Rust sharing `causentry-proto` with `causentryd`.

@@ -260,7 +260,7 @@ fun TemplateApplyDialog(
                 if (selectedSystemCount > 0) {
                     Spacer(modifier = Modifier.height(5.dp))
                     Text(
-                        text = "$selectedSystemCount system app(s) selected — cloaking system apps may destabilise the device.",
+                        text = "$selectedSystemCount system app(s) selected; cloaking system apps may destabilise the device.",
                         color = ext.warning,
                         fontSize = 11.sp
                     )

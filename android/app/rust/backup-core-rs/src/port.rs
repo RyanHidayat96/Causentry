@@ -1,4 +1,4 @@
-//! The Rust port of `backup/`.
+//! Native configuration backup inspector and merger.
 
 #![forbid(unsafe_code)]
 
